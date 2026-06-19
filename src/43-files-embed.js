@@ -60,9 +60,9 @@ async function removeDoc(id, event) {
   const idx = chat.docs.findIndex(d => d.id === id)
   if (idx === -1) return
   const doc = chat.docs[idx]
-  try { await evictDocFromCache(doc) } catch (e) { console.warn('[removeDoc]', e.message) }
   chat.docs.splice(idx, 1)
-  await persist()
+  await persist()                                  // server now has the updated doc list
+  try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc]', e.message) }  // prune vectors no longer referenced
   renderDocPanel(); updateDocsBtn()
   toast('Removed ' + doc.name, 'ok')
 }
