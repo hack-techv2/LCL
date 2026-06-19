@@ -85,7 +85,9 @@ function renderSpSkillsList() {
 }
 
 async function reloadSkillsFromUI() {
-  if (demoBlock()) return
+  if (typeof demoOn === 'function' && demoOn()) {
+    renderSpSkillsList(); renderSkillPicker(); toast('Skills reloaded', 'ok'); return
+  }
   try {
     const r = await fetch('/skills/reload', { method: 'POST' })
     if (!r.ok) throw new Error('HTTP ' + r.status)
@@ -100,7 +102,6 @@ async function reloadSkillsFromUI() {
 }
 
 async function uploadSkillFile(fileList) {
-  if (demoBlock()) return
   if (!fileList || !fileList.length) return
   const file = fileList[0]
   if (!file.name.toLowerCase().endsWith('.md')) {
@@ -121,6 +122,14 @@ async function uploadSkillFile(fileList) {
     if (!confirm('Skill "' + slug + '" already exists. Overwrite?')) return
   }
   const body = await file.text()
+  if (typeof demoOn === 'function' && demoOn()) {
+    const ex = skillsCache.find(s => s.id === slug)
+    if (ex) { ex.body = body; ex.bytes = body.length; ex.title = demoSkillTitle(body, slug); ex.mtime = Date.now() }
+    else { skillsCache.push({ id: slug, title: demoSkillTitle(body, slug), bytes: body.length, mtime: Date.now(), body }) }
+    renderSpSkillsList(); renderSkillPicker(); toast('Uploaded as "' + slug + '"', 'ok')
+    document.getElementById('sp-skill-upload').value = ''
+    return
+  }
   try {
     const r = await fetch('/skills/' + encodeURIComponent(slug), {
       method: 'PUT',
