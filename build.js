@@ -19,8 +19,8 @@ const MIN_OUTPUT_KB  = 140
 // these get packaged. After each release, paste the new hashes the build prints
 // here so the next build compares against what recipients actually have.
 const SHIPPED_HASHES = {
-  'index.html': '01190793ba0875d5d5dca818c005a5be725f0fe77cd6734d77e8126542041260',
-  'server.txt': '9deac22676e6b7c27dde21090d9960540a61189b40dd7848a5025f8705ac9bee'
+  'index.html': '219318c0a23b34b5badd29675ae0e9c78b9fefb4da3a7e80820c35fd93d9348c',
+  'server.txt': 'cd4fd6ab2d2af07c1b088d76418f1c2adc8a19291272c30bc25ed428a4ab200c'
 }
 const fileHash = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex')
 
@@ -53,7 +53,15 @@ function appBundle(out) {
   return blocks.length ? blocks.reduce((a, b) => b.length > a.length ? b : a) : null
 }
 
+// Strip block comments and full-line // comments so the scan never trips on
+// example calls written in comments (e.g. "see cancel: 'foo()'"). Full-line
+// only, so URLs like https:// inside string literals are left untouched.
+function stripComments(s) {
+  return s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, '')
+}
+
 function undefinedFns(bundleJs, headHtml) {
+  bundleJs = stripComments(bundleJs); headHtml = stripComments(headHtml)
   const defined = new Set(); let m
   const r1 = /\bfunction\s+(\w+)/g;            while ((m = r1.exec(bundleJs))) defined.add(m[1])
   const r2 = /\b(?:const|let|var)\s+(\w+)\s*=/g; while ((m = r2.exec(bundleJs))) defined.add(m[1])
@@ -99,7 +107,7 @@ function verify(out, jsFiles) {
   console.log('  [4/' + T + '] ' + pad('App bundle syntax') + (!bErr ? ' PASS' : ' FAIL'))
   if (bErr) errors.push('app bundle: ' + bErr.split('\n')[0])
 
-  const undef = bundle ? undefinedFns(bundle, readSrc('head.html')) : []
+  const undef = bundle ? undefinedFns(bundle, readSrc('head.html') + '\n' + readSrc('body.html')) : []
   console.log('  [5/' + T + '] ' + pad('Undefined-function scan') + (!undef.length ? ' PASS (0 issues)' : ' FAIL (' + undef.length + ')'))
   undef.forEach(u => errors.push('called but never defined: ' + u + '()'))
 
@@ -225,17 +233,21 @@ function build() {
   const all = fs.readdirSync(SRC_DIR).sort()
   if (all.indexOf('head.html') === -1) { console.error('✗ src/head.html missing'); process.exit(1) }
   if (all.indexOf('tail.html') === -1) { console.error('✗ src/tail.html missing'); process.exit(1) }
+  if (all.indexOf('styles.css') === -1) { console.error('✗ src/styles.css missing'); process.exit(1) }
+  if (all.indexOf('body.html') === -1) { console.error('✗ src/body.html missing'); process.exit(1) }
   const jsFiles = all.filter(f => f.endsWith('.js'))
   if (!jsFiles.length) { console.error('✗ no JS modules in src/'); process.exit(1) }
 
-  const parts = [TOP_BANNER, readSrc('head.html')]
+  const css  = readSrc('styles.css')
+  const head = readSrc('head.html').replace('/*__LCL_CSS__*/', () => css)
+  const parts = [TOP_BANNER, head, readSrc('body.html')]
   for (const f of jsFiles) { parts.push(sectionBanner(f)); parts.push(readSrc(f).trim()); parts.push('\n') }
   parts.push(readSrc('tail.html'))
   const out = parts.join('')
   fs.writeFileSync(OUT_FILE, out, 'utf8')
 
   console.log('✓ Wrote ' + OUT_FILE)
-  console.log('  ' + (out.length / 1024).toFixed(1) + ' KB from ' + (jsFiles.length + 2) + ' source files')
+  console.log('  ' + (out.length / 1024).toFixed(1) + ' KB from ' + (jsFiles.length + 4) + ' source files')
   verify(out, jsFiles)
   writeChecksums()
   promptZip()
