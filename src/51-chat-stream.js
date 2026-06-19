@@ -63,7 +63,7 @@ async function runStream(chat, payload, ragSources) {
       retry5xxCount = 0
       const labels = { 500:'Server error', 502:'Bad gateway', 503:'Service unavailable', 504:'Gateway timeout' }
       const note = labels[resp.status]
-        ? (labels[resp.status] + ' (' + resp.status + ') — the model service is temporarily unreachable. Please try again in a moment.')
+        ? ('Error ' + resp.status + ': ' + labels[resp.status] + ' — the model service is temporarily unreachable. Please try again in a moment.')
         : ('Error ' + resp.status + ': ' + cleanErrMsg(errData?.error?.message || errData?.error || ('HTTP ' + resp.status)))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
       appendMsg('ai', note, null, ragSources)
