@@ -19,6 +19,7 @@ async function resolveSystemPrompt(chat) {
 }
 
 async function loadSkillsList() {
+  if (typeof demoOn === 'function' && demoOn()) return  // keep seeded demo skills
   try {
     const r = await fetch('/skills')
     if (!r.ok) { skillsCache = []; return }
@@ -42,13 +43,13 @@ function renderSkillPicker() {
   } else {
     for (const s of skillsCache) {
       const active = (s.id === current) ? ' active' : ''
-      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" data-tip-right="${esc(s.id)}">
+      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" title="${esc(s.id)}">
         <span class="sb-skill-dot"></span>
         <span class="sb-skill-name">${esc(s.title)}</span>
       </div>`
     }
     if (current && !skillsCache.some(s => s.id === current)) {
-      html += `<div class="sb-skill-item active" data-id="${esc(current)}" data-tip-right="missing skill">
+      html += `<div class="sb-skill-item active" data-id="${esc(current)}" title="missing skill">
         <span class="sb-skill-dot"></span>
         <span class="sb-skill-name">(missing) ${esc(current)}</span>
       </div>`
@@ -98,6 +99,7 @@ async function send() {
   const input = document.getElementById('msg-in')
   const text  = input.value.trim()
   if (!text||busy||!chatId) return
+  if (typeof demoOn === 'function' && demoOn()) { demoSend(text, input); return }
 
   // If a 429 retry was pending from a previous send, cancel it. The user
   // is starting fresh; the old payload shouldn't auto-fire later.
