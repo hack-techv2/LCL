@@ -34,7 +34,9 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-tok'))
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
+  if (typeof wireModelField === 'function') { wireModelField('s-mdl', MODEL_GROUPS); wireModelField('s-embm', EMBED_GROUPS) }
   document.getElementById('sp').classList.remove('hidden')
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
 // Skills manager (independent of Settings; accessible without connection)
@@ -159,3 +161,15 @@ function cancelNewSkill() {
 function confirmNewSkill() {
   handleNewSkillKey({ key: 'Enter', preventDefault: () => {} })
 }
+
+
+// Esc closes the topmost open overlay (settings / skills / update dialog) so the
+// user doesn't have to scroll to the footer buttons. Tag: lcl-esc-overlays
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return
+  const open = id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden') ? el : null }
+  if (open('skill-edit-bd')) { closeSkillEdit(); return }
+  if (document.getElementById('update-bd')) { closeUpdateDialog(); return }
+  if (open('skills-mgr')) { closeSkillsManager(); return }
+  if (open('sp')) { closeSP(); return }
+})
