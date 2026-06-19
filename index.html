@@ -27,21 +27,21 @@
   --display: 'Space Grotesk', 'Inter', sans-serif;
 }
 [data-theme="dark"], :root {
-  --bg:     #0c0e11;
-  --bg2:    #14161b;
-  --bg3:    #1c1f26;
-  --bg4:    #262a33;
-  --bdr:    #31353f;
-  --bdr2:   #434853;
-  --tx:     #f0f3f8;
-  --tx2:    #aeb6c4;
-  --tx3:    #79808d;
+  --bg:     #080a0e;
+  --bg2:    #161922;
+  --bg3:    #1f232e;
+  --bg4:    #2a3040;
+  --bdr:    #353b49;
+  --bdr2:   #4a5263;
+  --tx:     #f6f9fd;
+  --tx2:    #c8d1de;
+  --tx3:    #8a93a4;
   --acbg:   #2e1500;
   --pinbg:  #2a2000;
   --redbg:  #2a0f0f;
   --info:   #7dd3fc;
   --infobg: #0c2330;
-  --ok:     #34d399;
+  --ok:     #4ade9f;
   --okbg:   #0d2320;
   --pre-bg: #06080d;
   --code-c: #7dd3b0;
@@ -171,8 +171,10 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .chat-item.pinned .ca-btn.pin-btn{color:var(--pin)}
 
 /* Sidebar bottom */
-.sb-bot{border-top:1px solid var(--bdr);padding:10px}
-.sb-btn{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);cursor:pointer;color:var(--tx2);font-size:13px;transition:all .15s;width:100%;background:none;border:none;font-family:var(--sans);text-align:left}
+.sb-bot{border-top:1px solid var(--bdr);padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sb-btn{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 10px;border-radius:var(--r);cursor:pointer;color:var(--tx2);font-size:13px;transition:all .15s;width:100%;background:var(--bg3);border:1px solid var(--bdr2);font-family:var(--sans);text-align:center}
+.sb-btn:hover{background:var(--bg4);color:var(--tx);border-color:var(--ac)}
+.sb-btn-lbl{line-height:1}
 .sb-btn:hover{background:var(--bg3);color:var(--tx)}
 
 /* ---- Main ---- */
@@ -184,8 +186,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .tb-brand-icon{width:32px;height:32px;background:var(--ac);border-radius:8px;display:flex;align-items:center;justify-content:center;padding:3px;flex-shrink:0}
 .tb-brand-icon svg{width:100%;height:100%}
 .tb-brand-text{display:flex;flex-direction:column;gap:1px}
-.tb-brand-name{font-size:13px;font-weight:600;color:var(--tx);line-height:1.3;letter-spacing:-.3px;font-family:var(--display)}
-.tb-brand-tag{font-weight:400;color:var(--tx2);font-size:12px}
+.tb-brand-name{font-size:19px;font-weight:600;color:var(--tx);line-height:1.2;letter-spacing:-.3px;font-family:var(--display)}
+.tb-brand-tag{font-weight:400;color:var(--tx2);font-size:19px}
 .tb-brand-sub{font-size:10px;color:var(--tx3);font-family:var(--mono);line-height:1.3}
 .tb-right{display:flex;align-items:center;gap:7px;flex-shrink:0;overflow:visible;position:relative}
 .tb-btn{padding:5px 11px;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--tx2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:var(--sans);white-space:nowrap}
@@ -256,15 +258,15 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .hint-card-sub{font-size:11px;color:var(--tx3);line-height:1.3}
 
 /* Message groups */
-.msg-group{padding:11px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.msg-group{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)}
 .msg-group:last-child{border-bottom:none}
-.msg-hdr{display:flex;align-items:center;gap:9px;margin-bottom:9px}
-.msg-av{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;font-family:var(--mono)}
+.msg-hdr{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.msg-av{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;font-family:var(--mono)}
 .msg-av.user{background:var(--bg4);border:1px solid var(--bdr2);color:var(--tx2)}
 .msg-av.ai{background:var(--ac);color:#fff}
 .msg-role{font-size:13px;font-weight:500}
 .msg-time{font-size:11px;color:var(--tx3);font-family:var(--mono)}
-.msg-body{font-size:14px;line-height:1.55;color:var(--tx);padding-left:0;white-space:pre-wrap;word-break:break-word}
+.msg-body{font-size:14px;line-height:1.5;color:var(--tx);padding-left:0;white-space:normal;word-break:break-word}
 .msg-body strong{font-weight:600}
 .msg-body em{font-style:italic;color:var(--tx2)}
 .msg-body code{background:var(--bg4);border:1px solid var(--bdr2);border-radius:4px;padding:1px 6px;font-family:var(--mono);font-size:12px;color:#7dd3b0}
@@ -287,9 +289,9 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .msg-body th,.msg-body td{border:1px solid var(--bdr2);padding:6px 10px;text-align:left}
 .msg-body th{background:var(--bg3);font-weight:600}
 .msg-body del{color:var(--tx3);text-decoration:line-through}
-.msg-acts{display:flex;gap:3px;margin-top:8px;padding-left:0;opacity:0;transition:opacity .12s}
+.msg-acts{display:flex;gap:3px;margin-top:0;margin-left:-6px;padding-left:0;opacity:0;transition:opacity .12s}
 .msg-group:hover .msg-acts{opacity:1}
-.mact{font-size:11px;font-family:var(--mono);color:var(--tx3);background:none;border:none;cursor:pointer;padding:3px 7px;border-radius:4px;transition:all .12s}
+.mact{font-size:11px;font-family:var(--mono);color:var(--tx3);background:none;border:none;cursor:pointer;padding:1px 6px;border-radius:4px;transition:all .12s}
 .mact:hover{background:var(--bg3);color:var(--tx)}
 
 /* Attached file chips shown on user messages */
@@ -305,7 +307,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .rag-tag{font-size:10px;font-family:var(--mono);background:var(--infobg);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);color:var(--info);padding:2px 8px;border-radius:var(--r-pill)}
 
 /* Typing */
-.typing{display:flex;gap:4px;align-items:center;padding:2px 0}
+.typing{display:flex;gap:4px;align-items:center;padding:10px 0 4px}
 .typing span{width:6px;height:6px;background:var(--ac);border-radius:50%;animation:td .9s infinite;opacity:.5}
 .typing span:nth-child(2){animation-delay:.18s}
 .typing span:nth-child(3){animation-delay:.36s}
@@ -371,9 +373,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sp-box::-webkit-scrollbar-track{background:var(--bg3);border-radius:4px;margin:8px}
 .sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:4px;border:1px solid var(--bg3)}
 .sp-box::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
-/* Soft fade hint at the bottom edge so users see content is cut off */
-#sp::after{content:"";position:fixed;left:50%;transform:translateX(-50%);bottom:max(8vh,40px);width:480px;height:32px;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--bg2));border-radius:0 0 16px 16px;z-index:151}
-#sp.hidden::after{display:none}
+/* (bottom-fade hint removed - tabbed settings fits without scrolling) */
 .sp-title{font-size:17px;font-weight:600;margin-bottom:22px;letter-spacing:-.2px}
 .sp-sec{margin-bottom:22px}
 .sp-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);margin-bottom:10px}
@@ -420,7 +420,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sl input[type=range]::-moz-range-track{background:transparent;height:4px}
 .sl input[type=range]:hover::-webkit-slider-thumb{background:var(--ac2);box-shadow:0 0 0 1px var(--ac2), 0 1px 4px rgba(0,0,0,.4)}
 .sl input[type=range]:hover::-moz-range-thumb{background:var(--ac2)}
-.sp-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+.sp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:6px}
+.ver-alpha{font-size:8px;font-weight:700;letter-spacing:.1em;color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:20px;padding:1px 7px;line-height:1.5}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
 .btn-sv{padding:8px 16px;background:var(--ac);border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:background .12s}
@@ -484,8 +485,8 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 
 
 /* Toast */
-#toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:10px;padding:10px 16px;font-size:13px;color:var(--tx);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:300;opacity:0;transform:translateY(6px);transition:all .18s;pointer-events:none}
-#toast.show{opacity:1;transform:none}
+#toast{position:fixed;bottom:20px;left:50%;background:var(--bg2);border:1px solid var(--bdr2);border-radius:10px;padding:10px 16px;font-size:13px;color:var(--tx);text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:300;opacity:0;transform:translate(-50%,6px);transition:all .18s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)}
 #toast.ok{border-color:rgba(232,97,10,.4);color:var(--ac)}
 #toast.err{border-color:rgba(231,76,60,.4);color:var(--red)}
 #toast.info{border-color:rgba(240,165,0,.3);color:var(--pin)}
@@ -523,7 +524,7 @@ body.sb-collapsed .chat-avatar{display:flex}
 body.sb-collapsed .chat-item.pinned{border-color:var(--pin)}
 body.sb-collapsed .chat-item.pinned .chat-avatar{color:var(--pin)}
 body.sb-collapsed .chat-item.active{border-color:var(--ac)}
-body.sb-collapsed .sb-bot{margin-top:auto;padding:9px 0;display:flex;justify-content:center}
+body.sb-collapsed .sb-bot{margin-top:auto;padding:9px 0;display:flex;flex-direction:column;align-items:center;gap:6px}
 body.sb-collapsed .sb-btn{width:38px;height:38px;padding:0;gap:0;justify-content:center;font-size:0}
 body.sb-collapsed .sb-btn svg{width:16px;height:16px}
 body.sb-collapsed .app-footer{justify-content:center;padding:10px 0}
@@ -541,6 +542,49 @@ select.model-sel{width:100%;background:var(--bg3);border:1px solid var(--bdr);bo
 select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sp-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:5}
 .sp-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
+.sp-tabs{display:flex;gap:2px;border-bottom:1px solid var(--bdr);margin-bottom:18px}
+.sp-tab{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--tx3);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 14px;cursor:pointer;transition:color .12s}
+.sp-tab:hover{color:var(--tx2)}
+.sp-tab.on{color:var(--tx);border-bottom-color:var(--ac)}
+.sp-pane{display:none}
+.sp-pane.on{display:block}
+.seg-cls{display:flex;gap:6px}
+.seg-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;font-size:13px;font-weight:600;padding:8px 6px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx3);cursor:pointer;transition:all .12s;font-family:var(--sans)}
+.seg-code{font-size:13px;font-weight:600}
+.seg-full{font-size:10px;font-weight:400;opacity:.85;line-height:1.2}
+.seg-btn:hover{color:var(--tx2)}
+.seg-btn.on-cce{background:rgba(240,165,0,.16);border-color:rgba(240,165,0,.6);color:#ffc24d}
+.seg-btn.on-rsn{background:rgba(96,165,225,.16);border-color:rgba(96,165,225,.6);color:#a9d2f6}
+/* Light mode: dark text on the tint reads far better than bright amber/blue */
+[data-theme="light"] .seg-btn.on-cce{background:rgba(240,165,0,.20);border-color:rgba(200,130,0,.75);color:#7a4a00}
+[data-theme="light"] .seg-btn.on-rsn{background:rgba(56,130,200,.16);border-color:rgba(40,110,190,.7);color:#1b4d80}
+.seg-btn.on-cce .seg-full,.seg-btn.on-rsn .seg-full{opacity:1}
+.sp-contrib{font-size:11px;color:var(--tx3);margin-right:auto}
+.upd-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:13px}
+.upd-top{display:flex;align-items:center;justify-content:space-between}
+.upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
+.upd-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;margin-right:6px}
+.upd-pill.ok{background:rgba(52,211,153,.15);color:var(--ok)}
+.upd-pill.warn{background:rgba(240,165,0,.15);color:var(--pin)}
+.upd-pill.err{background:rgba(231,76,60,.15);color:var(--red)}
+.upd-pill.neutral{background:var(--bg4);color:var(--tx3)}
+.upd-pill.alpha{background:rgba(231,76,60,.15);color:var(--red)}
+.upd-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.upd-build{font-family:var(--mono);font-size:11px;color:var(--tx3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
+.upd-metric{background:var(--bg2);border-radius:9px;padding:10px 12px}
+.upd-mk{font-size:11px;color:var(--tx3);margin-bottom:2px}
+.upd-mv{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--tx)}
+.upd-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px solid var(--bdr2)}
+.upd-auto{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--tx2);cursor:pointer;user-select:none}
+.upd-auto input{display:none}
+.upd-sw{position:relative;width:32px;height:17px;border-radius:10px;background:var(--bdr2);flex:0 0 auto;transition:background .15s}
+.upd-auto input:checked+.upd-sw{background:var(--ac)}
+.upd-sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s}
+.upd-auto input:checked+.upd-sw::after{left:17px}
+.upd-btn{font-size:12px;font-weight:500;padding:7px 14px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--tx2);cursor:pointer;transition:all .12s}
+.upd-btn:hover{background:var(--bg4);color:var(--tx)}
+.upd-btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
 </style>
 </head>
 <body>
@@ -558,6 +602,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <div class="modal-sub">// GovTech Models API - v0.67d Alpha</div>
     <div class="field"><label>GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
+    <div class="field"><label>Data classification</label>
+      <div class="seg-cls" id="cls-seg-cfg"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','cfg')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','cfg')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
     <div class="field"><label>Model Name</label>
       <select id="cfg-mdl-sel" class="model-sel"></select><input type="text" id="cfg-mdl" value="cce.claude-opus-4-6" placeholder="custom model id"></div>
     <button class="btn-p" id="connect-btn" onclick="connect()">Connect</button>
@@ -571,17 +617,17 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
   <div class="sp-box">
     <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
-    <div class="sp-sec">
+    <div class="sp-tabs"><button type="button" class="sp-tab on" data-tab="models" onclick="spTab('models')">Models</button><button type="button" class="sp-tab" data-tab="settings" onclick="spTab('settings')">Settings</button></div>
+    <div class="sp-pane on" data-pane="models"><div class="sp-sec">
       <div class="sp-lbl">Connection</div>
+      <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
       <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
     <div class="sp-sec">
-      <div class="sp-lbl">Defaults</div>
-      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
-      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
-        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
-      </div>
+      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
+      <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
+      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
@@ -594,13 +640,16 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         </div>
       </div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
-      <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
-      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Connection</div>
+    <div class="sp-pane" data-pane="settings"><div class="sp-sec">
+      <div class="sp-lbl">Defaults</div>
+      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
+      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
+        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
+      </div>
+    </div>
+    <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
+      <div class="sp-lbl">Account</div>
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
       </div>
@@ -609,23 +658,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         Disconnect
       </button>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Updates</div>
-      <div id="sp-update-body" style="font-size:12px;color:var(--tx2);line-height:1.7">Not checked yet.</div>
-      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn-s" onclick="checkForUpdate(true)">Check now</button>
-        <button class="btn-s" id="sp-update-btn" onclick="openUpdateDialog()" style="display:none;border-color:rgba(232,97,10,.4);color:var(--ac)">Update…</button>
-        <label style="font-size:11px;color:var(--tx3);display:inline-flex;align-items:center;gap:5px;margin-left:auto"><input type="checkbox" id="upd-auto" checked onchange="setUpdateAuto(this.checked)">check on launch</label>
-      </div>
-    </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Contributors</div>
-      <div style="font-size:12px;color:var(--tx2);line-height:1.8">
-        <div>Melvin Yung &nbsp;<span style="color:var(--tx3);font-family:var(--mono);font-size:11px">CSA / Regulations</span></div>
-        <div>Ko Zheng Teng &nbsp;<span style="color:var(--tx3);font-family:var(--mono);font-size:11px">CSA / ASG</span></div>
-      </div>
     </div>
     <div class="sp-foot">
+      <div class="sp-contrib">Contributors &middot; Melvin Yung &middot; Ko Zheng Teng</div>
       <button class="btn-s" onclick="closeSP()">Cancel</button>
       <button class="btn-sv" onclick="saveSP()">Save</button>
     </div>
@@ -677,7 +712,6 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 <div id="drop-overlay"><div class="drop-msg">Drop files to attach</div></div>
 <div id="connect-banner" class="hidden">
   <div class="cb-inner">
-    <div class="cb-icon" id="cb-icon"></div>
     <div class="cb-text">
       <div class="cb-title">Not connected</div>
       <div class="cb-sub">Get your API key from <a href="https://platform.ai.tech.gov.sg" target="_blank" style="color:var(--ac);text-decoration:none">platform.ai.tech.gov.sg</a> to start chatting</div>
@@ -697,13 +731,12 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
   <div class="chat-list" id="chat-list"></div>
   <div class="sb-skills" id="sb-skills"></div>
   <div class="sb-bot">
-    <button class="sb-btn" onclick="openSP()" data-tip-right="Settings">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg>
-      Settings
-    </button>
-
+    <button class="sb-btn" onclick="openSP()" data-tip="Settings">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg><span class="sb-btn-lbl">Settings</span></button>
+    <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span></span></div>
 </div>
 
 <!-- Main -->
@@ -728,7 +761,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <svg id="icon-moon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z"/></svg>
         <svg id="icon-sun" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:none"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.061-1.06a.75.75 0 010-1.061zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM0 8a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H.75A.75.75 0 010 8zm13 0a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 0113 8zM2.343 13.657a.75.75 0 010-1.06l1.061-1.061a.75.75 0 011.06 1.06l-1.06 1.061a.75.75 0 01-1.061 0zm9.193-9.193a.75.75 0 010-1.06l1.06-1.061a.75.75 0 111.061 1.06l-1.06 1.061a.75.75 0 01-1.061 0z"/></svg>
       </button>
-      <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom-left="Upload files for RAG — requires an embedding API key">Embed (0)</button>
+      <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom="Upload files for RAG — requires an embedding API key">Embed (0)</button>
     </div>
   </div>
 
@@ -815,43 +848,73 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 
 // SECTION: 05-models.js
 // =============================================================================
-// Model catalogue — drives the Settings / Connect dropdowns.
-// Source: GovTech PlatformAI Models page. A "Custom…" option always remains so
-// any model not listed here can still be entered by hand.
+// Model catalogue — organised by GovTech PlatformAI data-classification tier.
+// The user picks a classification first; the Model / Embed dropdowns then show
+// only models cleared for that tier. A "Custom…" option always remains so any
+// model not listed here can still be entered by hand.
+//   cce = CCE/SN  (Confidential Cloud Eligible & Sensitive Normal)
+//   rsn = R/SN    (Restricted & Sensitive Normal and below)
 // =============================================================================
-const MODEL_GROUPS = [
-  { label: 'Claude (Anthropic)', ids: [
-    'cce.claude-opus-4-6','cce.claude-sonnet-4-6','cce.claude-opus-4-5','cce.claude-sonnet-4-5','cce.claude-3-5-sonnet',
-    'rsn.claude-opus-4-8','rsn.claude-opus-4-7','rsn.claude-opus-4-6','rsn.claude-opus-4-5','rsn.claude-opus-4-1',
-    'rsn.claude-sonnet-4-6','rsn.claude-sonnet-4-5','rsn.claude-sonnet-4-0','rsn.claude-haiku-4-5',
-    'rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-sonnet-4-6','rsn.vertex_ai.claude-sonnet-4-5',
-    'azure.claude-opus-4-8','azure.claude-opus-4-7','azure.claude-opus-4-6','azure.claude-opus-4-5',
-    'azure.claude-sonnet-4-6','azure.claude-sonnet-4-5','azure.claude-haiku-4-5',
-    'bedrock.claude-opus-4-8','bedrock.claude-opus-4-7','bedrock.claude-opus-4-6','bedrock.claude-opus-4-5',
-    'bedrock.claude-sonnet-4-6','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-0','bedrock.claude-haiku-4-5','bedrock.claude-3-5-sonnet',
-    'vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-6','vertex_ai.claude-opus-4-5','vertex_ai.claude-opus-4-1',
-    'vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-4-5','vertex_ai.claude-haiku-4-5'
-  ] },
-  { label: 'OpenAI', ids: [
-    'gpt-5.5','gpt-5.4-pro','gpt-5.4','gpt-5.3-codex','gpt-5.2-chat','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano',
-    'gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','gpt-4o','gpt-4o-pt','gpt-4o-mini','o3','o3-mini','o4-mini'
-  ] },
-  { label: 'Google Gemini', ids: [
-    'gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-3.1-flash-lite-preview','gemini-3-flash-preview',
-    'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-pt','gemini-2.5-flash-lite'
-  ] },
-]
+const CLS = {
+  cce: { short: 'CCE/SN', full: 'Confidential Cloud Eligible (Sensitive Normal)' },
+  rsn: { short: 'R/SN',  full: 'Restricted (Sensitive Normal)' },
+}
 
-const EMBED_GROUPS = [
-  { label: 'Embedding models', ids: [
-    'cohere.embed-english-v3','cohere.embed-multilingual-v3','cohere.embed-v4:0',
-    'text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002',
-    'gemini-embedding-001'
-  ] },
-]
+const MODEL_TIERS = {
+  cce: [
+    { label: 'Claude (Anthropic)', ids: [
+      'cce.claude-opus-4-6','cce.claude-sonnet-4-6','cce.claude-opus-4-5','cce.claude-sonnet-4-5','cce.claude-3-5-sonnet',
+      'vertex_ai.claude-opus-4-6','vertex_ai.claude-opus-4-5','vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-4-5',
+      'bedrock.claude-3-5-sonnet'
+    ] },
+    { label: 'OpenAI', ids: ['gpt-4o-pt'] },
+    { label: 'Google Gemini', ids: ['gemini-2.5-flash-pt'] },
+  ],
+  rsn: [
+    { label: 'Claude (Anthropic)', ids: [
+      'azure.claude-opus-4-8','azure.claude-opus-4-7','azure.claude-opus-4-6','azure.claude-opus-4-5','azure.claude-sonnet-4-6','azure.claude-sonnet-4-5','azure.claude-haiku-4-5',
+      'rsn.claude-opus-4-8','rsn.claude-opus-4-7','rsn.claude-opus-4-6','rsn.claude-opus-4-5','rsn.claude-opus-4-1','rsn.claude-sonnet-4-6','rsn.claude-sonnet-4-5','rsn.claude-sonnet-4-0','rsn.claude-haiku-4-5',
+      'rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-sonnet-4-6','rsn.vertex_ai.claude-sonnet-4-5',
+      'bedrock.claude-opus-4-8','bedrock.claude-opus-4-7','bedrock.claude-opus-4-6','bedrock.claude-opus-4-5','bedrock.claude-sonnet-4-6','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-0','bedrock.claude-haiku-4-5',
+      'vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-1','vertex_ai.claude-haiku-4-5'
+    ] },
+    { label: 'OpenAI', ids: [
+      'gpt-5.5','gpt-5.4-pro','gpt-5.4','gpt-5.3-codex','gpt-5.2-chat','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano',
+      'gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','gpt-4o','gpt-4o-mini','o3','o3-mini','o4-mini'
+    ] },
+    { label: 'Google Gemini', ids: [
+      'gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-3.1-flash-lite-preview','gemini-3-flash-preview',
+      'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite'
+    ] },
+  ],
+}
 
-// Populate a <select> from grouped model ids; selects `current` if present.
-// Always appends a "Custom…" option. Returns true if current matched a listed id.
+const EMBED_TIERS = {
+  cce: [ { label: 'Embedding models', ids: ['cohere.embed-english-v3','cohere.embed-multilingual-v3','gemini-embedding-001'] } ],
+  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0'] } ],
+}
+
+function tierGroups(kind, tier) {
+  const src = (kind === 'embed') ? EMBED_TIERS : MODEL_TIERS
+  return src[tier] || src.cce
+}
+function clsLabel(tier) { return (CLS[tier] || {}).short || '' }
+
+function inferTier(modelId) {
+  const id = (modelId || '').trim()
+  if (!id) return null
+  for (const t of ['cce', 'rsn']) {
+    if (MODEL_TIERS[t].some(g => g.ids.includes(id)) || EMBED_TIERS[t].some(g => g.ids.includes(id))) return t
+  }
+  return null
+}
+
+function clsSuffix(c) {
+  const t = (c && c.classification) || inferTier(c && c.model)
+  const l = clsLabel(t)
+  return l ? ' <span style="color:var(--tx3)">(' + l + ')</span>' : ''
+}
+
 function fillModelSelect(sel, groups, current) {
   sel.innerHTML = ''
   let found = false
@@ -872,9 +935,6 @@ function fillModelSelect(sel, groups, current) {
   return found
 }
 
-// Wire a model <select id="<inputId>-sel"> to its hidden text <input id="<inputId>">.
-// The input still holds the value (so existing save/connect logic is unchanged);
-// the select writes into it, and "Custom…" reveals the input for free-text entry.
 function wireModelField(inputId, groups) {
   const input = document.getElementById(inputId)
   const sel = document.getElementById(inputId + '-sel')
@@ -885,6 +945,52 @@ function wireModelField(inputId, groups) {
     if (sel.value === '__custom__') { input.style.display = ''; input.focus() }
     else { input.value = sel.value; input.style.display = 'none' }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Classification control (shared): pick a tier, then the model + embed lists
+// filter to it. scope 'sp' = Settings panel, 'cfg' = Connect modal.
+// ---------------------------------------------------------------------------
+let _clsState = { sp: 'cce', cfg: 'cce' }
+
+function ensureTierModel(inputId, groups) {
+  const input = document.getElementById(inputId)
+  if (!input) return
+  const ids = groups.flatMap(g => g.ids)
+  if (!ids.includes((input.value || '').trim())) input.value = ids[0] || ''
+}
+
+function applyClsUI(scope, tier) {
+  const seg = document.getElementById(scope === 'cfg' ? 'cls-seg-cfg' : 'cls-seg-sp')
+  if (seg) seg.querySelectorAll('.seg-btn').forEach(b => {
+    const on = b.dataset.cls === tier
+    b.classList.toggle('on-cce', on && tier === 'cce')
+    b.classList.toggle('on-rsn', on && tier === 'rsn')
+  })
+  if (scope === 'cfg') {
+    wireModelField('cfg-mdl', tierGroups('model', tier))
+  } else {
+    wireModelField('s-mdl', tierGroups('model', tier))
+    wireModelField('s-embm', tierGroups('embed', tier))
+  }
+}
+
+function initClassification(scope, tier) {
+  tier = (tier === 'cce' || tier === 'rsn') ? tier : 'cce'
+  _clsState[scope] = tier
+  applyClsUI(scope, tier)
+}
+
+function setClassification(tier, scope) {
+  tier = (tier === 'cce' || tier === 'rsn') ? tier : 'cce'
+  _clsState[scope] = tier
+  if (scope === 'cfg') {
+    ensureTierModel('cfg-mdl', tierGroups('model', tier))
+  } else {
+    ensureTierModel('s-mdl', tierGroups('model', tier))
+    ensureTierModel('s-embm', tierGroups('embed', tier))
+  }
+  applyClsUI(scope, tier)
 }
 
 // SECTION: 10-state.js
@@ -901,6 +1007,7 @@ let inflightCtl = null  // AbortController for the current streaming request
 let skillsCache = []    // [{ id, title, bytes, mtime }] populated on connect
 let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
+const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
 let ragStickyChunks = []
 
 // =============================================================================
@@ -1154,6 +1261,8 @@ async function gcEmbedCache() {
 // Init & persistence
 // =============================================================================
 async function init() {
+  // Demo mode (?demo=1) seeds sample content and skips all network work.
+  if (typeof maybeDemo === 'function' && maybeDemo()) return
   await loadData()
   // Try to auto-connect from saved settings
   try {
@@ -1165,7 +1274,7 @@ async function init() {
               : (D.settings?.apiKey && D.settings?.modelId) ? D.settings
               : null
       if (s) {
-        creds = { apiKey: s.apiKey, model: s.modelId || s.model, maxTokens: s.maxTokens||8192, systemPrompt: s.systemPrompt||'', chunkSize: s.chunkSize||800, topK: s.topK||5, embedApiKey: s.embedApiKey||'', embedModelId: s.embedModelId||'' }
+        creds = { apiKey: s.apiKey, model: s.modelId || s.model, maxTokens: s.maxTokens||8192, systemPrompt: s.systemPrompt||'', chunkSize: s.chunkSize||800, topK: s.topK||5, embedApiKey: s.embedApiKey||'', embedModelId: s.embedModelId||'', classification: s.classification||'' }
         setHealth('ok', connectedLabel())
         document.body.classList.remove('not-connected')
         document.getElementById('connect-banner')?.classList.add('hidden')
@@ -1251,9 +1360,9 @@ async function connect() {
   // Preserve any already-saved embed settings when (re)connecting
   const prevEmbedApiKey  = creds?.embedApiKey  || D.settings?.embedApiKey  || ''
   const prevEmbedModelId = creds?.embedModelId || D.settings?.embedModelId || ''
-  creds = { apiKey, model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId }
+  creds = { apiKey, model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') }
   // Write settings into D directly — persist() will carry them to disk on every save
-  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey, embedModelId: creds.embedModelId }
+  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey, embedModelId: creds.embedModelId, classification: creds.classification }
   // Also save via /api/config for immediate server-side update
   try {
     await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
@@ -1298,7 +1407,7 @@ function connectedLabel() {
 }
 
 function openConnect() {
-  if (typeof wireModelField === 'function') wireModelField('cfg-mdl', MODEL_GROUPS)
+  if (typeof initClassification === 'function') initClassification('cfg', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce')
   document.getElementById('modal-bd').classList.remove('hidden')
   setTimeout(() => document.getElementById('cfg-key').focus(), 50)
 }
@@ -1430,7 +1539,7 @@ function toggleDP() {
           + '</div>'
           + '<div id="embed-test-result" style="margin-top:6px;font-size:11px"></div>'
         desc.insertAdjacentElement('afterend', banner)
-        if (typeof wireModelField === 'function') wireModelField('embed-model-input', EMBED_GROUPS)
+        if (typeof wireModelField === 'function') wireModelField('embed-model-input', tierGroups('embed', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce'))
       }
     }
   }
@@ -1932,7 +2041,7 @@ function renderSkillPicker() {
     }
   }
 
-  html += '<div class="sb-skills-foot"><button class="sb-skills-manage" onclick="openSkillsManager()">Manage skills...</button></div>'
+  // "Manage skills" now lives in the 2-column sb-bot row next to Settings.
   root.innerHTML = html
 }
 
@@ -2082,7 +2191,7 @@ async function runStream(chat, payload, ragSources) {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       signal: inflightCtl.signal,
-      body: JSON.stringify({ apiKey: creds.apiKey, modelId: creds.model, payload })
+      body: JSON.stringify({ apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload })
     })
 
     // Non-200 responses from our proxy are JSON, not SSE.
@@ -2113,11 +2222,13 @@ async function runStream(chat, payload, ragSources) {
         return
       }
       retry5xxCount = 0
-      const em2 = errData?.error?.message || errData?.error || ('HTTP '+resp.status)
-      const note = 'Error '+resp.status+': '+em2
+      const labels = { 500:'Server error', 502:'Bad gateway', 503:'Service unavailable', 504:'Gateway timeout' }
+      const note = labels[resp.status]
+        ? (labels[resp.status] + ' (' + resp.status + ') — the model service is temporarily unreachable. Please try again in a moment.')
+        : ('Error ' + resp.status + ': ' + cleanErrMsg(errData?.error?.message || errData?.error || ('HTTP ' + resp.status)))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
       appendMsg('ai', note, null, ragSources)
-      setHealth('err', 'Unreachable')
+      setHealth('err', labels[resp.status] ? 'Service unavailable' : ('Error ' + resp.status))
       return
     }
     if (!resp.body) throw new Error('No response body for streaming')
@@ -2354,7 +2465,7 @@ function handleRateLimitWait(chat, payload, ragSources, resetMs, rawErrMsg) {
   const render = () => {
     const remain = resetMs - Date.now()
     bodyEl.innerHTML =
-      '<div style="background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:14px 16px;">' +
+      '<div style="background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:14px 16px;margin-top:14px;">' +
         '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--pin);margin-bottom:8px;font-size:13px">' +
           '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 01.5.5v4.5l3 1.5a.5.5 0 01-.4.9l-3.3-1.65A.5.5 0 017.5 8.5V4a.5.5 0 01.5-.5z"/><path d="M8 16A8 8 0 108 0a8 8 0 000 16zM1 8a7 7 0 1114 0A7 7 0 011 8z"/></svg>' +
           'Rate limit reached' +
@@ -2400,13 +2511,22 @@ function cancelRateLimitRetry() {
   if (pendingRetry) pendingRetry.cancel()
 }
 
-// Auto-retry for 502/503/504. Backoff: 5s → 10s → 20s (3 retries max).
+// Auto-retry for 502/503/504. Backoff: 10s → 20s → 60s (3 retries max).
 // Shows a transient countdown bubble; cancellable by the user.
 
 // SECTION: 53-chat-actions.js
+// Strip any HTML (e.g. an upstream proxy error page) and truncate, so a raw
+// upstream error body never renders in the chat.
+function cleanErrMsg(raw) {
+  let s = String(raw || '')
+  if (/<\/?[a-z][\s\S]*>/i.test(s)) s = s.replace(/<[^>]+>/g, ' ')
+  s = s.replace(/\s+/g, ' ').trim()
+  return s.length > 160 ? s.slice(0, 160) + '…' : (s || 'request failed')
+}
+
 function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   retry5xxCount++
-  const delays = [5000, 10000, 20000]
+  const delays = (typeof RETRY_STEPS_MS !== 'undefined') ? RETRY_STEPS_MS : [10000, 20000, 60000]
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
   const retryAt = Date.now() + delayMs
 
@@ -2432,7 +2552,7 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   const render = () => {
     const remain = retryAt - Date.now()
     bodyEl.innerHTML =
-      '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;">' +
+      '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">' +
         '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">' +
           '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>' +
           'Error ' + status + ': ' + statusLabel +
@@ -2465,7 +2585,7 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
       retry5xxCount = 0
       bodyEl.innerHTML =
         '<div style="font-size:12px;color:var(--tx2);padding:4px 0">Retry cancelled. ' +
-        '<em style="opacity:.7">Error ' + status + ': ' + (errMsg || statusLabel) + '</em></div>'
+        '<em style="opacity:.7">Error ' + status + ': ' + statusLabel + '</em></div>'
       pendingRetry = null
       setHealth('err', 'Error ' + status)
     }
@@ -2732,7 +2852,7 @@ function chatItemHTML(c) {
 
 function renderTopbar() {
   const chat = curChat()
-  const subEl = document.getElementById('tb-chat-title'); if(subEl) subEl.textContent = chat ? chat.title : ''
+  const subEl = document.getElementById('tb-chat-title'); if(subEl) subEl.textContent = (chat && chat.title && chat.title !== 'New chat') ? chat.title : ''
 }
 
 function renderMessages() {
@@ -2743,11 +2863,14 @@ function renderMessages() {
     const embModel = (creds && creds.embedModelId) || (D.settings && D.settings.embedModelId) || ''
     const embKey   = (creds && creds.embedApiKey)  || (D.settings && D.settings.embedApiKey)  || ''
     const embOk    = !!(embModel && embKey)
+    // Example hint cards are first-run onboarding only: hide once the user
+    // already has chat history (more than just this empty new chat).
+    const firstRun = Object.keys(D.chats||{}).length <= 1
     const cap = ' — ask questions, write &amp; review code, summarise and draft documents.'
     const copyLine = '<br><em style="color:var(--tx2)">Copy any reply straight into Word or Outlook with formatting intact.</em>'
     let sub
     if (creds) {
-      sub = 'Connected to <strong style="color:var(--ac)">' + esc(creds.model||'a model') + '</strong>' + cap + copyLine + '<br>' +
+      sub = 'Connected to <strong style="color:var(--ac)">' + esc(creds.model||'a model') + '</strong>' + clsSuffix(creds) + cap + copyLine + '<br>' +
         (embOk ? 'Embeddings ready (<strong style="color:var(--ac)">' + esc(embModel) + '</strong>) — attach files to chat over them.'
                : 'Add an embedding key in Settings to chat over your files.')
     } else if (embOk) {
@@ -2759,11 +2882,11 @@ function renderMessages() {
       <div class="empty-logo" style="padding:6px"><svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg></div>
       <div class="empty-title">${chat?chat.title:'Local Comet LLM (LCL)'}</div>
       <div class="empty-sub">${sub}</div>
-      <div class="hint-cards">
+      ${firstRun ? `<div class="hint-cards">
         <button class="hint-card" onclick="useHint('Summarise this document for me: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5A1.5 1.5 0 015.5 0h4.1a1.5 1.5 0 011.06.44l1.9 1.9A1.5 1.5 0 0113 3.41V14.5A1.5 1.5 0 0111.5 16h-6A1.5 1.5 0 014 14.5v-13zM6 6.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h2a.5.5 0 000-1H6z"/></svg><span class="hint-card-title">Summarise a document</span><span class="hint-card-sub">Paste or attach a file</span></button>
         <button class="hint-card" onclick="useHint('Help me write a pentest report. ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .6l5.4 2.1v4.2c0 3.4-2.3 6.5-5.4 7.4C4.9 13.4 2.6 10.3 2.6 6.9V2.7L8 .6z"/></svg><span class="hint-card-title">Write a pentest report</span><span class="hint-card-sub">Draft findings &amp; structure</span></button>
         <button class="hint-card" onclick="useHint('Explain this concept to me step by step: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4.5 4.5 0 00-2.7 8.1c.4.3.6.8.6 1.3v.6h4.2v-.6c0-.5.2-1 .6-1.3A4.5 4.5 0 008 1zM6 13h4v.4A1.6 1.6 0 018.4 15h-.8A1.6 1.6 0 016 13.4V13z"/></svg><span class="hint-card-title">Explain a concept</span><span class="hint-card-sub">Step-by-step breakdown</span></button>
-      </div>
+      </div>` : ''}
     </div>`
     return
   }
@@ -3147,9 +3270,18 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-tok'))
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
-  if (typeof wireModelField === 'function') { wireModelField('s-mdl', MODEL_GROUPS); wireModelField('s-embm', EMBED_GROUPS) }
+  if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
   document.getElementById('sp').classList.remove('hidden')
+  let _spTab = 'models'; try { _spTab = localStorage.getItem('lcl_sp_tab') || 'models' } catch {}
+  if (typeof spTab === 'function') spTab(['models','settings'].includes(_spTab) ? _spTab : 'models')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+}
+
+// Switch the Settings panel tab (Model / Embed / Settings); remembers last choice.
+function spTab(name){
+  document.querySelectorAll('#sp .sp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name))
+  document.querySelectorAll('#sp .sp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name))
+  try { localStorage.setItem('lcl_sp_tab', name) } catch {}
 }
 
 // Skills manager (independent of Settings; accessible without connection)
@@ -3172,7 +3304,7 @@ function renderSpSkillsList() {
   const root = document.getElementById('sp-skills-list')
   if (!root) return
   if (!skillsCache.length) {
-    root.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:6px">No skills yet. Upload a .md file or drop one into LCL_DIR/skills/.</div>'
+    root.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:6px">No skills yet. Upload a .md file or drop one into LCL/skills.</div>'
     return
   }
   root.innerHTML = skillsCache.map(s => `
@@ -3433,8 +3565,9 @@ function saveSP() {
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
   creds.embedModelId = document.getElementById('s-embm').value.trim() || creds.embedModelId
+  creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
-  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey||'', embedModelId: creds.embedModelId||'' }
+  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey||'', embedModelId: creds.embedModelId||'', classification: creds.classification }
   try {
     fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
   } catch {}
@@ -3531,6 +3664,7 @@ function eggClick(e) {
   eggTimer = setTimeout(() => { eggClicks = 0 }, 2000)
   if (eggClicks >= 7) {
     eggClicks = 0
+    if (typeof unlockAlpha === 'function') unlockAlpha()
     launchComet(e.clientX, e.clientY)
   }
 }
@@ -3641,6 +3775,10 @@ function initComposerPlaceholder() {
   let pi = 0, ci = 0, erasing = false
   const tick = () => {
     if (el === document.activeElement || el.value) { setTimeout(tick, 700); return }
+    // Only show the rotating example prompts on an empty/new chat. In an existing
+    // conversation just keep the plain placeholder.
+    const c = (typeof curChat === 'function') ? curChat() : null
+    if (c && c.messages && c.messages.length) { el.setAttribute('placeholder', base); ci = 0; erasing = false; setTimeout(tick, 1200); return }
     const w = phrases[pi]
     if (!erasing) {
       ci++; el.setAttribute('placeholder', w.slice(0, ci))
@@ -3662,7 +3800,7 @@ function initComposerPlaceholder() {
 // Auto-update — checks GitHub releases via the local server (server.txt does
 // the network + file work; this is the display + consent layer).
 // =============================================================================
-let lclUpdate = { checked:false, current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null }
+let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
 
 function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
@@ -3671,40 +3809,75 @@ async function checkForUpdate(manual){
   try{
     const r = await fetch('/api/update/check')
     const d = await r.json()
-    lclUpdate = { checked:true, current:d.current||'', latest:d.latest||'', tag:d.tag||'',
-                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null }
-  }catch(e){ lclUpdate = { checked:true, error:e.message } }
+    lclUpdate = { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'',
+                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null,
+                  ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'' }
+  }catch(e){ lclUpdate = { checked:true, channel:'stable', error:e.message } }
   renderUpdateBadge(); renderUpdateSettings()
   if (manual){
     if (lclUpdate.error) toast('Update check failed: '+lclUpdate.error,'err')
+    else if (lclUpdate.channel==='alpha') toast(lclUpdate.inSync ? ('Alpha: in sync ('+lclUpdate.hash+')') : ('Alpha: changes on @'+lclUpdate.ref+' — restart Node to apply'),'ok')
     else if (lclUpdate.newer) toast('Update available: '+lclUpdate.tag,'ok')
     else toast("You're on the latest version",'ok')
   }
 }
 
 function renderUpdateBadge(){
+  const va = document.getElementById('ver-alpha')
+  if (va) va.style.display = (lclUpdate.channel === 'alpha') ? 'inline-block' : 'none'
   const el = document.getElementById('footer-upd')
   if (!el) return
-  if (lclUpdate.newer){ el.style.display='inline-block'; el.setAttribute('data-tip','Update available: '+lclUpdate.tag) }
+  const show = lclUpdate.channel==='alpha' ? (lclUpdate.checked && !lclUpdate.error && !lclUpdate.inSync) : !!lclUpdate.newer
+  if (show){ el.style.display='inline-block'; el.setAttribute('data-tip', lclUpdate.channel==='alpha' ? ('Alpha changes on @'+(lclUpdate.ref||'alpha')+' — restart Node') : ('Update available: '+lclUpdate.tag)) }
   else el.style.display='none'
 }
 
 function renderUpdateSettings(){
-  const auto = document.getElementById('upd-auto')
-  if (auto) auto.checked = updateAutoOn()
-  const body = document.getElementById('sp-update-body')
-  const btn  = document.getElementById('sp-update-btn')
+  const body = document.getElementById('upd-body')
   if (!body) return
-  if (!lclUpdate.checked){ body.textContent='Not checked yet.'; if(btn)btn.style.display='none'; return }
-  if (lclUpdate.error){
-    body.innerHTML="Couldn't reach GitHub (<span style=\"color:var(--tx3)\">"+esc(lclUpdate.error)+"</span>). Check network access to api.github.com."
-    if(btn)btn.style.display='none'; return
+  const u = lclUpdate
+  const vb = document.getElementById('ver-badge')
+  const cur = u.current || (vb ? vb.textContent.replace(/^v/i,'') : '')
+  const pill = (cls,txt)=> '<span class="upd-pill '+cls+'">'+txt+'</span>'
+  const tile = (k,val,col)=> '<div class="upd-metric"><div class="upd-mk">'+k+'</div><div class="upd-mv"'+(col?(' style="color:'+col+'"'):'')+'>'+val+'</div></div>'
+  const top  = (lbl,p)=> '<div class="upd-top"><span style="font-size:12px;color:var(--tx2)">'+lbl+'</span>'+p+'</div>'
+  const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
+  const testerRow = ()=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Try alpha updates</label><span style="font-size:11px;color:var(--tx3)">tester</span></div>'
+  if (!u.checked){ body.innerHTML = top('Updates', pill('neutral','Not checked')) + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>'); return }
+  if (u.channel === 'alpha'){
+    if (u.error){
+      body.innerHTML = top('Channel', pill('err','Alpha · check failed'))
+        + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
+        + '<div class="upd-row"><span style="font-size:11px;color:var(--tx3)">tracking @'+esc(u.ref||'alpha')+'</span><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Retry</button><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></span></div>'
+      return
+    }
+    if (u.applied){
+      const ap = u.applied
+      const note = (ap.refreshNeeded?'Reload for new index':'') + (ap.refreshNeeded&&ap.restartNeeded?' · ':'') + (ap.restartNeeded?'restart Node for new server':'')
+      body.innerHTML = top('Channel', pill('ok','Alpha · updated'))
+        + '<div style="font-size:12px;color:var(--ok);margin-top:11px">Downloaded &amp; verified '+esc((ap.applied||[]).join(', ')||'(already current)')+'</div>'
+        + (note ? '<div style="font-size:11px;color:var(--pin);margin-top:6px">'+note+'</div>' : '')
+        + '<div class="upd-row">'+(ap.refreshNeeded?'<button class="upd-btn pri" onclick="location.reload()">Reload now</button>':'<span></span>')+'<button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
+      return
+    }
+    // Compact one-liner: Channel | Alpha · status · build/changed
+    const sPill = u.inSync ? pill('ok','Up to date') : pill('warn','Update available')
+    const buildBit = u.inSync
+      ? '<span class="upd-build">'+esc(u.hash||'—')+'</span>'
+      : '<span class="upd-build" title="'+esc((u.changed||[]).join(', '))+'">'+esc((u.changed||[]).join(', ')||'—')+'</span>'
+    body.innerHTML = top('Channel', '<span class="upd-line">'+pill('alpha','Alpha')+sPill+buildBit+'</span>')
+      + '<div class="upd-row"><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Check updates</button>'+(u.inSync?'':'<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>')+'</span><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
+    return
   }
-  let html = 'Installed: <span style="font-family:var(--mono);color:var(--tx)">v'+esc(lclUpdate.current)+'</span><br>'+
-    'Latest: <span style="font-family:var(--mono);color:'+(lclUpdate.newer?'var(--ok)':'var(--tx)')+'">'+(lclUpdate.latest?('v'+esc(lclUpdate.latest)):'—')+'</span>'
-  if (!lclUpdate.newer) html += '<br><span style="color:var(--tx3)">You are up to date.</span>'
-  body.innerHTML = html
-  if (btn) btn.style.display = lclUpdate.newer ? 'inline-flex' : 'none'
+  if (u.error){
+    body.innerHTML = top('Version', pill('err','Check failed'))
+      + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
+      + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Retry</button>')
+    return
+  }
+  body.innerHTML = top('Version', u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
+    + '<div class="upd-mets">'+tile('Installed', cur?('v'+esc(cur)):'—')+tile('Latest', u.latest?('v'+esc(u.latest)):'—', u.newer?'var(--ok)':'var(--tx)')+'</div>'
+    + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>') + (alphaUnlocked() ? testerRow() : '')
 }
 
 function openUpdateDialog(){
@@ -3768,6 +3941,211 @@ async function applyUpdate(){
 }
 
 function initUpdates(){ if (updateAutoOn()) checkForUpdate(false) }
+
+// Channel switch (alpha tester channel <-> stable). Persisted server-side.
+async function setChannel(ch){
+  try{
+    const r = await fetch('/api/update/channel',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channel:ch}) })
+    const d = await r.json()
+    if (ch==='stable' && d.restored) toast('Restored stable '+(d.restored.tag||'')+' — restart Node & refresh','ok')
+    else if (ch==='stable' && d.restoreError) toast('Switched to stable; restore failed: '+d.restoreError,'err')
+    else if (ch==='alpha') toast('Alpha on — restart Node to begin auto-updating','ok')
+  }catch(e){ toast('Channel switch failed: '+e.message,'err') }
+  await checkForUpdate(true)
+}
+
+// Alpha enrolment is gated behind the easter egg: 7 clicks on the version badge
+// unlock the "Try alpha updates" toggle inside Settings -> Updates.
+function alphaUnlocked(){ try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false } }
+function unlockAlpha(){ try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {}; if (typeof toast === 'function') toast('Tester options unlocked - Open Settings','ok'); if (typeof renderUpdateSettings === 'function') renderUpdateSettings() }
+
+// Front-end alpha apply: download + verify the alpha pair via the server, then
+// prompt reload (index) / restart (server). Boot-time auto-update still exists.
+async function applyAlphaNow(){
+  try{
+    toast('Downloading alpha update...','info')
+    const r = await fetch('/api/update/apply', { method:'POST' })
+    const d = await r.json()
+    if (d.error){ toast('Update failed: '+d.error,'err'); return }
+    const applied = (d.applied||[]).join(', ') || 'no changes'
+    if (d.restartNeeded){
+      toast('Applied ('+applied+'). Restarting Node…','ok')
+      try { await fetch('/api/update/restart', { method:'POST' }) } catch {}
+      waitForServerThenReload()
+      return
+    }
+    if (d.refreshNeeded){ toast('Applied ('+applied+'). Reloading…','ok'); setTimeout(()=>location.reload(), 700); return }
+    lclUpdate.applied = { applied:d.applied||[], restartNeeded:false, refreshNeeded:false }
+    lclUpdate.inSync = true; lclUpdate.changed = []
+    renderUpdateBadge(); renderUpdateSettings()
+    toast('Already current','ok')
+  }catch(e){ toast('Update failed: '+e.message,'err') }
+}
+
+// After a server restart request, poll /api/health until the new server answers,
+// then reload so the page picks up the new index.html.
+async function waitForServerThenReload(){
+  for (let i=0;i<60;i++){
+    await new Promise(r=>setTimeout(r,500))
+    try { const h = await fetch('/api/health',{cache:'no-store'}); if (h.ok){ location.reload(); return } } catch {}
+  }
+  toast('Server still restarting — reload when ready','info')
+}
+
+// SECTION: 96-demo.js
+// =============================================================================
+// Demo mode (#demo) — renders the chat UI with seeded sample content WITHOUT
+// connecting or calling the API. Exercises every output path: user messages
+// (plain, multi-paragraph, with attachments), AI markdown (headings, lists,
+// tables, code, blockquote, links, hr), RAG source tags, and the transient
+// states (loading dots, 5xx retry box, 429 rate-limit box, generic error).
+// Purely for visual / layout debugging. STRIP this module + the maybeDemo()
+// guard in init() before promoting alpha -> stable.
+// =============================================================================
+function demoOn() {
+  // Hash-only trigger: the #demo fragment is never sent to the server, so it
+  // sidesteps the static-route query-string 404. Open http://localhost:3000/#demo
+  try { return (location.hash || '').toLowerCase() === '#demo' } catch { return false }
+}
+
+const DEMO_AI_MARKDOWN = [
+  '# Heading 1',
+  '## Heading 2',
+  '### Heading 3',
+  '',
+  'This reply demonstrates **bold**, *italic*, ~~strikethrough~~, and `inline code`, plus a [link](https://platform.ai.tech.gov.sg).',
+  '',
+  '> A blockquote, for when the model wants to emphasise something.',
+  '',
+  'Unordered list:',
+  '- First item',
+  '- Second item',
+  '  - Nested item A',
+  '  - Nested item B',
+  '',
+  'Ordered list:',
+  '1. Step one',
+  '2. Step two',
+  '3. Step three',
+  '',
+  '| Model | Tier | Notes |',
+  '|---|---|---|',
+  '| cce.claude-opus-4-6 | CCE/SN | default |',
+  '| gpt-5.5 | R/SN | OpenAI |',
+  '| gemini-2.5-pro | R/SN | Google |',
+  '',
+  '---',
+  '',
+  'A fenced code block:',
+  '',
+  '```js',
+  'function greet(name) {',
+  '  return `hello, ${name}`',
+  '}',
+  '```'
+].join('\n')
+
+const DEMO_AI_CODE = [
+  "Here are the same idea in three languages:",
+  '',
+  '```python',
+  'def greet(name):',
+  '    return f"hello, {name}"',
+  '```',
+  '',
+  '```bash',
+  'echo "hello, $1"',
+  '```',
+  '',
+  'And a longer paragraph to check wrapping and line-height across multiple lines of prose so the spacing between the body text and the action row can be eyeballed at a realistic length.'
+].join('\n')
+
+// Called at the top of init(); returns true if it took over the boot so init()
+// skips all network work (no /api/config, /api/data, /api/skills calls).
+function maybeDemo() {
+  if (!demoOn()) return false
+
+  // Fake a connection so rendering treats us as connected; nothing hits network.
+  creds = { apiKey: 'demo', model: 'cce.claude-opus-4-6', maxTokens: 8192,
+            systemPrompt: '', chunkSize: 800, topK: 5,
+            embedApiKey: '', embedModelId: '', classification: 'cce' }
+  setHealth('ok', 'Demo')
+  try { document.body.classList.remove('not-connected') } catch {}
+  try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
+
+  const now = Date.now()
+  const id = 'demo_chat'
+  D.chats = {}
+  D.chats[id] = {
+    id, title: 'Demo - all output cases', pinned: false,
+    createdAt: now, updatedAt: now, docs: [],
+    messages: [
+      // 1) plain user message
+      { role: 'user', content: 'hello how are you', ts: now - 600000 },
+      // 2) rich AI markdown (headings, lists, table, code, blockquote, hr, link)
+      { role: 'assistant', content: DEMO_AI_MARKDOWN, ts: now - 590000 },
+      // 3) user message WITH an attachment (expandable file chip)
+      { role: 'user',
+        content: 'Please summarise the attached report.\n<file name="quarterly-report.pdf">Q2 revenue rose 12% QoQ driven by cloud. Headcount flat. Two risks flagged: supply chain and FX exposure.</file>',
+        fileNames: ['quarterly-report.pdf'], ts: now - 580000 },
+      // 4) AI reply WITH RAG source tags
+      { role: 'assistant',
+        content: 'Based on the attached document, Q2 revenue grew **12% quarter-on-quarter**, led by cloud. Headcount was flat, and two risks were flagged: supply chain and FX exposure.',
+        sources: ['quarterly-report.pdf #3', 'quarterly-report.pdf #7', 'notes.md #1'],
+        ts: now - 570000 },
+      // 5) long multi-paragraph user message
+      { role: 'user',
+        content: 'Can you walk me through the trade-offs?\n\nI care about latency, cost, and data classification. We are on Comet, behind Zscaler, and most of our traffic is Sensitive Normal with the occasional Confidential Cloud Eligible workload. Keep it concise.',
+        ts: now - 560000 },
+      // 6) AI reply with multiple code blocks + long prose
+      { role: 'assistant', content: DEMO_AI_CODE, ts: now - 550000 }
+    ]
+  }
+  chatId = id
+  if (typeof renderAll === 'function') renderAll()
+
+  // --- Transient UI states (not part of message history) -------------------
+  const inner = document.querySelector('#messages .msgs-inner')
+  if (!inner) return true
+  const hdr = '<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">cce.claude-opus-4-6</div><div class="msg-time">now</div></div>'
+  const grp = (bodyHtml) => { const d = document.createElement('div'); d.className = 'msg-group'; d.innerHTML = hdr + '<div class="msg-body">' + bodyHtml + '</div>'; inner.appendChild(d) }
+
+  // (a) loading / typing indicator
+  grp('<div class="typing"><span></span><span></span><span></span></div>')
+
+  // (b) 5xx error + auto-retry box
+  grp(
+    '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">'
+    + '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">'
+    + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>'
+    + 'Error 502: Bad gateway</div>'
+    + '<div style="font-size:12px;color:var(--tx2);line-height:1.7"><div style="margin-bottom:4px">The PlatformAI gateway returned a temporary error.</div>'
+    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">10s</strong>&nbsp;<span style="font-size:11px;opacity:.7">(attempt 1 of 3)</span></div></div>'
+    + '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px">Cancel retry</button></div></div>'
+  )
+
+  // (c) 429 rate-limit box
+  grp(
+    '<div style="background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:14px 16px;margin-top:14px;">'
+    + '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--pin);margin-bottom:8px;font-size:13px">'
+    + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 01.5.5v4.5l3 1.5a.5.5 0 01-.4.9l-3.3-1.65A.5.5 0 017.5 8.5V4a.5.5 0 01.5-.5z"/><path d="M8 16A8 8 0 108 0a8 8 0 000 16zM1 8a7 7 0 1114 0A7 7 0 011 8z"/></svg>'
+    + 'Rate limit reached</div>'
+    + '<div style="font-size:12px;color:var(--tx2);line-height:1.7"><div>Resets at:&nbsp; <strong style="color:var(--tx);font-family:var(--mono)">02:45 AM</strong></div>'
+    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">0:42</strong></div></div>'
+    + '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px">Cancel retry</button></div></div>'
+  )
+
+  // (d) generic terminal error (no retry)
+  grp(
+    '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">'
+    + '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">'
+    + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>'
+    + 'Request failed</div>'
+    + '<div style="font-size:12px;color:var(--tx2);line-height:1.7">Upstream returned HTTP 500 after 3 attempts. Please try again.</div></div>'
+  )
+
+  return true
+}
 // Boot
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
