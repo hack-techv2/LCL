@@ -30,7 +30,7 @@ async function runStream(chat, payload, ragSources) {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       signal: inflightCtl.signal,
-      body: JSON.stringify({ apiKey: creds.apiKey, modelId: creds.model, payload })
+      body: JSON.stringify({ apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload })
     })
 
     // Non-200 responses from our proxy are JSON, not SSE.
@@ -61,11 +61,13 @@ async function runStream(chat, payload, ragSources) {
         return
       }
       retry5xxCount = 0
-      const em2 = errData?.error?.message || errData?.error || ('HTTP '+resp.status)
-      const note = 'Error '+resp.status+': '+em2
+      const labels = { 500:'Server error', 502:'Bad gateway', 503:'Service unavailable', 504:'Gateway timeout' }
+      const note = labels[resp.status]
+        ? (labels[resp.status] + ' (' + resp.status + ') — the model service is temporarily unreachable. Please try again in a moment.')
+        : ('Error ' + resp.status + ': ' + cleanErrMsg(errData?.error?.message || errData?.error || ('HTTP ' + resp.status)))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
       appendMsg('ai', note, null, ragSources)
-      setHealth('err', 'Unreachable')
+      setHealth('err', labels[resp.status] ? 'Service unavailable' : ('Error ' + resp.status))
       return
     }
     if (!resp.body) throw new Error('No response body for streaming')
