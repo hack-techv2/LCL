@@ -19,8 +19,8 @@ const MIN_OUTPUT_KB  = 140
 // these get packaged. After each release, paste the new hashes the build prints
 // here so the next build compares against what recipients actually have.
 const SHIPPED_HASHES = {
-  'index.html': '33f9b2244f1ba32e83631637ca731b21a097e00b2599c1b98f9f5cc53abbf90c',
-  'server.txt': 'e2670da7c98326a88ee59e4793ff907f477abaec01d532fa6e0a2bbb57918a40'
+  'index.html': '01190793ba0875d5d5dca818c005a5be725f0fe77cd6734d77e8126542041260',
+  'server.txt': '9deac22676e6b7c27dde21090d9960540a61189b40dd7848a5025f8705ac9bee'
 }
 const fileHash = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex')
 
@@ -211,6 +211,15 @@ function promptZip() {
   })
 }
 
+function writeChecksums() {
+  // sha256 of the shipped files, in `sha256  filename` format. Committed to the
+  // repo so the in-app updater can verify a download before applying it.
+  const files = ['index.html', 'server.txt'].filter(f => fs.existsSync(path.join(ROOT, f)))
+  const lines = files.map(f => fileHash(f) + '  ' + f)
+  fs.writeFileSync(path.join(ROOT, 'checksums.txt'), lines.join('\n') + '\n')
+  console.log('  \u2713 Wrote checksums.txt  [' + files.join(', ') + ']')
+}
+
 function build() {
   if (!fs.existsSync(SRC_DIR)) { console.error('✗ src/ not found at', SRC_DIR); process.exit(1) }
   const all = fs.readdirSync(SRC_DIR).sort()
@@ -228,6 +237,7 @@ function build() {
   console.log('✓ Wrote ' + OUT_FILE)
   console.log('  ' + (out.length / 1024).toFixed(1) + ' KB from ' + (jsFiles.length + 2) + ' source files')
   verify(out, jsFiles)
+  writeChecksums()
   promptZip()
 }
 
