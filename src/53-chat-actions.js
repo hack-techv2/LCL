@@ -1,6 +1,15 @@
+// Strip any HTML (e.g. an upstream proxy error page) and truncate, so a raw
+// upstream error body never renders in the chat.
+function cleanErrMsg(raw) {
+  let s = String(raw || '')
+  if (/<\/?[a-z][\s\S]*>/i.test(s)) s = s.replace(/<[^>]+>/g, ' ')
+  s = s.replace(/\s+/g, ' ').trim()
+  return s.length > 160 ? s.slice(0, 160) + '…' : (s || 'request failed')
+}
+
 function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   retry5xxCount++
-  const delays = [5000, 10000, 20000]
+  const delays = (typeof RETRY_STEPS_MS !== 'undefined') ? RETRY_STEPS_MS : [10000, 20000, 60000]
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
   const retryAt = Date.now() + delayMs
 
@@ -26,7 +35,7 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   const render = () => {
     const remain = retryAt - Date.now()
     bodyEl.innerHTML =
-      '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;">' +
+      '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">' +
         '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">' +
           '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>' +
           'Error ' + status + ': ' + statusLabel +
@@ -59,7 +68,7 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
       retry5xxCount = 0
       bodyEl.innerHTML =
         '<div style="font-size:12px;color:var(--tx2);padding:4px 0">Retry cancelled. ' +
-        '<em style="opacity:.7">Error ' + status + ': ' + (errMsg || statusLabel) + '</em></div>'
+        '<em style="opacity:.7">Error ' + status + ': ' + statusLabel + '</em></div>'
       pendingRetry = null
       setHealth('err', 'Error ' + status)
     }
