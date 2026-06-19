@@ -11,6 +11,12 @@ const API_HOST = 'api.ai.tech.gov.sg'
 const CHAT_PATH = '/platform/models/chat/completions'
 const EMBED_PATH = '/platform/models/embeddings'
 
+// --- Auto-update: checks GitHub releases for this repo ---
+const APP_VERSION = '0.67d'
+const UPDATE_REPO = 'hack-techv2/LCL'
+const UPDATE_FILES = ['index.html', 'server.txt']
+let _updateCache = { ts: 0, data: null }
+
 // ---------------------------------------------------------------------------
 // Change 1: M365 PATH FIX
 // Use 'OneDrive - SG Govt M365' as the first candidate instead of process.env.OneDrive
@@ -18,6 +24,7 @@ const EMBED_PATH = '/platform/models/embeddings'
 function resolveLCLDir() {
   const home = process.env.USERPROFILE || process.env.HOME || os.homedir()
   const candidates = [
+    process.env.LCL_DIR,                                       // explicit override (testing)
     path.join(home, 'OneDrive - SG Govt M365', 'Desktop', 'LCL'),
     path.join(home, 'Desktop', 'LCL'),
     __dirname
@@ -202,6 +209,7 @@ function saveData(data) {
 }
 
 let appData = loadData()
+pruneEmbedCache()   // drop cached vectors no longer referenced by any saved doc
 
 function json(res, data, status = 200) {
   res.writeHead(status, {
@@ -712,10 +720,16 @@ function handleEmbed(req, res) {
 // text-embedding-3: 2048 inputs, ~8191 tokens (~30000 chars). Unknown models fall
 // back to the conservative Cohere caps so we never exceed a provider limit.
 const EMBED_LIMITS = {
-  'cohere.embed-english-v3':      { batch: 96,   maxChars: 2000 },
+  'cohere.embed-english-v3':      { batch: 96,   maxChars: 2000 },   // 512-token inputs
   'cohere.embed-multilingual-v3': { batch: 96,   maxChars: 2000 },
-  'text-embedding-3-small':       { batch: 2048, maxChars: 30000 },
-  'text-embedding-3-large':       { batch: 2048, maxChars: 30000 }
+  'cohere.embed-v4:0':            { batch: 96,   maxChars: 8000 },   // larger context, array cap still 96
+  'text-embedding-3-small':       { batch: 2048, maxChars: 30000 },  // 8191-token inputs
+  'text-embedding-3-large':       { batch: 2048, maxChars: 30000 },
+  'text-embedding-ada-002':       { batch: 2048, maxChars: 30000 },
+  // gemini-embedding-001: batching IS supported (batchEmbedContents); inputs cap
+  // at 8192 tokens. 96 sits safely under Gemini's ~100 / Vertex's ~250 documented
+  // per-request caps; lower it only if the gateway returns a 400.
+  'gemini-embedding-001':         { batch: 96,   maxChars: 8000 }
 }
 function embedLimitsFor(modelId) {
   if (EMBED_LIMITS[modelId]) return EMBED_LIMITS[modelId]
@@ -924,6 +938,40 @@ function handleEmbedEvict(req, res) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Embed-cache garbage collection. The on-disk vector cache (embed_cache.bin)
+// can outlive the docs that produced it (removed docs, old orphans). prune
+// keeps only vectors still referenced by a chunk in some saved doc, and never
+// drops a vector another doc still shares. Run on doc removal + at startup.
+// ---------------------------------------------------------------------------
+function referencedHashes() {
+  const keep = new Set()
+  const chats = (appData && appData.chats) || {}
+  for (const c of Object.values(chats)) {
+    if (!Array.isArray(c.docs)) continue
+    for (const d of c.docs) {
+      if (!Array.isArray(d.chunks)) continue
+      for (const ch of d.chunks) if (typeof ch.embHash === 'string') keep.add(ch.embHash)
+    }
+  }
+  return keep
+}
+
+function pruneEmbedCache() {
+  const keep = referencedHashes()
+  let removed = 0
+  for (const h of Object.keys(embedCache)) {
+    if (!keep.has(h)) { delete embedCache[h]; removed++ }
+  }
+  if (removed) saveEmbedCache()
+  console.log('[embed-cache] prune: kept ' + keep.size + ', removed ' + removed)
+  return removed
+}
+
+function handleEmbedGc(req, res) {
+  json(res, { ok: true, removed: pruneEmbedCache() })
+}
+
 function handleGetData(req, res) {
   json(res, appData)
 }
@@ -1085,6 +1133,125 @@ function serveStatic(req, res) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Auto-update engine. Checks GitHub releases/latest; on consent, downloads the
+// files at the release tag (raw URLs), verifies each against the published
+// checksums.txt (sha256) into a .tmp, and only then atomically renames over the
+// live file. index.html applies on browser refresh; server.txt needs a Node
+// restart. Nothing outside LCL_DIR is ever written.
+// ---------------------------------------------------------------------------
+function cmpVer(a, b) {
+  const norm = v => String(v || '').replace(/^v/i, '').trim()
+  const re = /\d+|[a-zA-Z]+/g
+  const ta = norm(a).match(re) || [], tb = norm(b).match(re) || []
+  const n = Math.max(ta.length, tb.length)
+  for (let i = 0; i < n; i++) {
+    const x = ta[i], y = tb[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const xn = /^\d+$/.test(x), yn = /^\d+$/.test(y)
+    if (xn && yn) { const d = parseInt(x, 10) - parseInt(y, 10); if (d) return d > 0 ? 1 : -1 }
+    else if (x !== y) { return x > y ? 1 : -1 }
+  }
+  return 0
+}
+
+function httpsGetBuf(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url)
+    const opts = { hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
+      headers: { 'User-Agent': 'LCL-updater', 'Accept': '*/*', ...headers } }
+    const r = https.request(opts, resp => {
+      if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+        resp.resume()
+        return resolve(httpsGetBuf(resp.headers.location, headers))
+      }
+      const chunks = []
+      resp.on('data', c => chunks.push(c))
+      resp.on('end', () => resolve({ statusCode: resp.statusCode, buf: Buffer.concat(chunks) }))
+    })
+    r.setTimeout(20000, () => r.destroy(new Error('update fetch timeout')))
+    r.on('error', reject)
+    r.end()
+  })
+}
+
+async function fetchLatestRelease() {
+  if (_updateCache.data && Date.now() - _updateCache.ts < 600000) return _updateCache.data
+  const r = await httpsGetBuf('https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest',
+    { 'Accept': 'application/vnd.github+json' })
+  if (r.statusCode !== 200) throw new Error('GitHub releases API returned ' + r.statusCode)
+  const rel = JSON.parse(r.buf.toString('utf8'))
+  const data = { tag: rel.tag_name, name: rel.name, notes: rel.body || '',
+                 html_url: rel.html_url, published_at: rel.published_at }
+  _updateCache = { ts: Date.now(), data }
+  return data
+}
+
+function sha256Buf(buf) { return crypto.createHash('sha256').update(buf).digest('hex') }
+
+function handleUpdateCheck(req, res) {
+  fetchLatestRelease().then(rel => {
+    const latest = (rel.tag || '').replace(/^v/i, '')
+    json(res, {
+      current: APP_VERSION, latest, tag: rel.tag,
+      newer: latest ? cmpVer(latest, APP_VERSION) > 0 : false,
+      notes: rel.notes, html_url: rel.html_url, published_at: rel.published_at
+    })
+  }).catch(e => json(res, { current: APP_VERSION, error: e.message }))
+}
+
+async function handleUpdateApply(req, res) {
+  try {
+    const rel = await fetchLatestRelease()
+    const tag = rel.tag
+    if (!tag) return json(res, { error: 'No release tag found' }, 400)
+    const rawBase = 'https://raw.githubusercontent.com/' + UPDATE_REPO + '/' + tag
+
+    const csRes = await httpsGetBuf(rawBase + '/checksums.txt')
+    if (csRes.statusCode !== 200) {
+      return json(res, { error: 'No checksums.txt in release ' + tag + ' - refusing to apply unverified files.' }, 400)
+    }
+    const expected = {}
+    for (const line of csRes.buf.toString('utf8').split(/\r?\n/)) {
+      const m = line.trim().match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/)
+      if (m) expected[m[2].trim()] = m[1].toLowerCase()
+    }
+
+    // Download + verify ALL changed files first; apply nothing unless every one passes.
+    const verified = {}, unchanged = []
+    for (const fname of UPDATE_FILES) {
+      const want = expected[fname]
+      if (!want) throw new Error('No checksum published for ' + fname)
+      const dest = path.join(LCL_DIR, fname)
+      let cur = null
+      try { cur = sha256Buf(fs.readFileSync(dest)) } catch {}
+      if (cur === want) { unchanged.push(fname); continue }
+      const dl = await httpsGetBuf(rawBase + '/' + fname)
+      if (dl.statusCode !== 200) throw new Error('Download failed for ' + fname + ' (HTTP ' + dl.statusCode + ')')
+      if (sha256Buf(dl.buf) !== want) throw new Error('Checksum mismatch for ' + fname + ' - download rejected.')
+      verified[fname] = dl.buf
+    }
+
+    const applied = []
+    for (const fname of Object.keys(verified)) {
+      const dest = path.join(LCL_DIR, fname)
+      const tmp = dest + '.tmp'
+      fs.writeFileSync(tmp, verified[fname])
+      fs.renameSync(tmp, dest)   // atomic swap on the same volume
+      applied.push(fname)
+    }
+
+    json(res, {
+      ok: true, tag, applied, unchanged,
+      restartNeeded: applied.includes('server.txt'),
+      refreshNeeded: applied.includes('index.html')
+    })
+  } catch (e) {
+    json(res, { error: e.message }, 500)
+  }
+}
+
 const server = http.createServer((req, res) => {
   // Host-header guard: refuse anything that wasn't addressed to localhost.
   if (!isLocalHost(req)) {
@@ -1115,10 +1282,14 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && p === '/api/embed-batch')   return handleEmbedBatch(req, res)
   if (req.method === 'POST' && p === '/api/embed-lookup')  return handleEmbedLookup(req, res)
   if (req.method === 'POST' && p === '/api/embed-evict')   return handleEmbedEvict(req, res)
+  if (req.method === 'POST' && p === '/api/embed-gc')      return handleEmbedGc(req, res)
   if (req.method === 'GET'  && p === '/api/config')       return handleGetConfig(req, res)
   if (req.method === 'POST' && p === '/api/config')       return handleSaveConfig(req, res)
   if (req.method === 'GET'  && p === '/api/data')         return handleGetData(req, res)
   if (req.method === 'POST' && p === '/api/data')         return handleSaveData(req, res)
+
+  if (req.method === 'GET'  && p === '/api/update/check') return handleUpdateCheck(req, res)
+  if (req.method === 'POST' && p === '/api/update/apply') return handleUpdateApply(req, res)
 
   if (req.method === 'GET'  && p === '/skills') return handleSkillsList(req, res)
   if (req.method === 'POST' && p === '/skills/reload') return handleSkillsList(req, res)
@@ -1142,6 +1313,17 @@ server.listen(PORT, BIND_HOST, () => {
   console.log('  Folder                 ->  ' + LCL_DIR)
   console.log('  Data file              ->  ' + DATA_FILE)
   console.log('  API Host               ->  ' + API_HOST)
+  console.log('  Version                ->  v' + APP_VERSION)
+  console.log('  Updates                ->  checking ' + UPDATE_REPO + ' ...')
+  fetchLatestRelease().then(rel => {
+    const latest = (rel.tag || '').replace(/^v/i, '')
+    if (latest && cmpVer(latest, APP_VERSION) > 0)
+      console.log('  Updates                ->  v' + latest + ' available  (open Settings in LCL to update)')
+    else if (latest)
+      console.log('  Updates                ->  up to date (latest v' + latest + ')')
+    else
+      console.log('  Updates                ->  no releases found yet')
+  }).catch(e => console.log('  Updates                ->  check failed (' + e.message + ')'))
   console.log('  Node version           ->  ' + process.version)
   console.log('')
 })
