@@ -146,6 +146,7 @@ function connectedLabel() {
 }
 
 function openConnect() {
+  if (typeof wireModelField === 'function') wireModelField('cfg-mdl', MODEL_GROUPS)
   document.getElementById('modal-bd').classList.remove('hidden')
   setTimeout(() => document.getElementById('cfg-key').focus(), 50)
 }
@@ -168,3 +169,4 @@ function updateConnectedUI() {
   }
   updateSendBtn()
 }
+
