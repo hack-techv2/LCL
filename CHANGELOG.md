@@ -4,6 +4,51 @@ LCL CHANGELOG  —  v0.67d
 Released: 17 Jun 2026
 
 
+Additional v0.67d updates (19 Jun 2026, release batch)
+---------------------------------------------------------
+
+Embedding cache cleanup
+- Removing an embedded document now garbage-collects its vectors from
+  embed_cache.bin. A server-side GC (/api/embed-gc) keeps only vectors
+  still referenced by a chunk in some saved doc, and never drops a
+  vector another doc still shares. A startup sweep also prunes orphans
+  left behind by older builds. Replaces the previous per-hash eviction,
+  which left removed docs' vectors stranded on disk.
+
+Settings / models
+- Chat model and embedding model are now dropdowns, grouped by provider
+  (Claude / OpenAI / Gemini), each with a "Custom..." fallback for manual
+  entry. Wired consistently across the Connect modal, Settings, and the
+  embed-key banner.
+- Embedding batch limits corrected: gemini-embedding-001 raised from 1 to
+  96 texts/request (the API supports batching).
+- Settings button uses a proper gear icon. The Settings panel gains an X
+  close button (top-right) and Esc-to-close (closes the topmost open
+  overlay), so no more scrolling to the bottom to dismiss it.
+- AI reply header and the typing indicator now show the full prefixed
+  model id (e.g. cce.claude-opus-4-6) instead of the stripped short name.
+
+Sidebar
+- Long chat names scroll (marquee) on hover instead of staying truncated.
+
+Auto-update (new)
+- LCL can check GitHub releases for a newer version and update on user
+  consent. Front end: a footer version badge (shows "up to date" or a
+  "new version" prompt) and an Updates section in Settings (check / view
+  notes / download & apply).
+- The apply flow downloads index.html and server.txt to temp files and
+  verifies each against checksums.txt (SHA-256) before atomically swapping
+  them in. server.txt changes require a Node restart to take effect.
+- server.txt: /api/update/check and /api/update/apply endpoints; cmpVer
+  version comparison (numbers + trailing letter, so 0.67e > 0.67d). The
+  startup log now narrates the check (checking / up to date / available /
+  failed).
+- build.js writes checksums.txt for the shipped files (index.html,
+  server.txt) on every build.
+- LCL_DIR resolution adds an environment-variable override plus
+  OneDrive/home Desktop fallbacks.
+
+
 Additional v0.67d updates (18 Jun 2026, later batch)
 ---------------------------------------------------------
 
