@@ -126,7 +126,7 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 .chat-list::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
 
 .section-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding:10px 8px 4px}
-.sb-skills{border-top:1px solid var(--bdr);padding:6px 6px 8px;max-height:30vh;overflow-y:auto;flex-shrink:0}
+.sb-skills{border-top:1px solid var(--bdr);padding:6px 6px 8px;max-height:30vh;overflow-y:auto;overflow-x:hidden;flex-shrink:0}
 .sb-skills::-webkit-scrollbar{width:3px}
 .sb-skills::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
 .sb-skills-hd{padding:6px 8px 4px}
@@ -421,6 +421,13 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sl input[type=range]:hover::-webkit-slider-thumb{background:var(--ac2);box-shadow:0 0 0 1px var(--ac2), 0 1px 4px rgba(0,0,0,.4)}
 .sl input[type=range]:hover::-moz-range-thumb{background:var(--ac2)}
 .sp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:6px}
+.skill-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);background:var(--bg3);border:1px solid var(--bdr)}
+.skill-row-main{flex:1;min-width:0;font-size:12px}
+.skill-row-title{font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.skill-row-meta{font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:1px}
+.skill-row .tb-btn{padding:4px 9px}
+#demo-reset{position:fixed;right:24px;bottom:104px;z-index:120;background:var(--ac);color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:.9;transition:all .15s}
+#demo-reset:hover{opacity:1;transform:translateY(-1px)}
 .ver-alpha{font-size:8px;font-weight:700;letter-spacing:.1em;color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:20px;padding:1px 7px;line-height:1.5}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
@@ -671,6 +678,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 <!-- Skills manager (independent of Settings; works without connection) -->
 <div id="skills-mgr" class="hidden" onclick="if(event.target===this)closeSkillsManager()">
   <div class="sp-box">
+    <button class="sp-close" onclick="closeSkillsManager()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Manage Skills</div>
     <div class="sp-sec">
       <div id="sp-skills-list" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;border:1px solid var(--bdr);border-radius:6px;padding:6px;margin-bottom:8px"></div>
@@ -1918,6 +1926,18 @@ function renderChips() {
 
 // SECTION: 43-files-embed.js
 async function embedDoc(doc) {
+  // Demo mode: skip the API — fake chunk hashes and mark ready so the upload +
+  // Embed-panel flow can be tried offline.
+  if (typeof demoOn === 'function' && demoOn()) {
+    const size = creds.chunkSize || 800
+    const raw = (typeof chunkText === 'function' && doc.content) ? chunkText(doc.content, size, Math.floor(size * 0.2)) : []
+    doc.chunks = raw.map((t, i) => ({ text: t, embHash: 'demo' + i }))
+    doc.status = 'ready'
+    if (typeof renderDocPanel === 'function') renderDocPanel()
+    if (typeof updateDocsBtn === 'function') updateDocsBtn()
+    if (typeof toast === 'function') toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks, demo)', 'ok')
+    return
+  }
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON).
   // Only the 16-char SHA-1 hash is stored per chunk (embHash) — the actual
   // vector lives in the server's binary cache (embed_cache.bin).
@@ -2008,6 +2028,7 @@ async function resolveSystemPrompt(chat) {
 }
 
 async function loadSkillsList() {
+  if (typeof demoOn === 'function' && demoOn()) return  // keep seeded demo skills
   try {
     const r = await fetch('/skills')
     if (!r.ok) { skillsCache = []; return }
@@ -2031,13 +2052,13 @@ function renderSkillPicker() {
   } else {
     for (const s of skillsCache) {
       const active = (s.id === current) ? ' active' : ''
-      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" data-tip-right="${esc(s.id)}">
+      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" title="${esc(s.id)}">
         <span class="sb-skill-dot"></span>
         <span class="sb-skill-name">${esc(s.title)}</span>
       </div>`
     }
     if (current && !skillsCache.some(s => s.id === current)) {
-      html += `<div class="sb-skill-item active" data-id="${esc(current)}" data-tip-right="missing skill">
+      html += `<div class="sb-skill-item active" data-id="${esc(current)}" title="missing skill">
         <span class="sb-skill-dot"></span>
         <span class="sb-skill-name">(missing) ${esc(current)}</span>
       </div>`
@@ -2087,6 +2108,7 @@ async function send() {
   const input = document.getElementById('msg-in')
   const text  = input.value.trim()
   if (!text||busy||!chatId) return
+  if (typeof demoOn === 'function' && demoOn()) { demoSend(text, input); return }
 
   // If a 429 retry was pending from a previous send, cancel it. The user
   // is starting fresh; the old payload shouldn't auto-fire later.
@@ -2218,8 +2240,9 @@ async function runStream(chat, payload, ragSources) {
         }
       }
 
-      // 5xx transient errors — auto-retry with backoff (up to 3 times)
-      if ([502, 503, 504].includes(resp.status) && retry5xxCount < 3) {
+      // Any 5xx is transient — auto-retry with backoff (up to 3 times). 429 is
+      // handled above (quota wait); everything else falls through to a clean box.
+      if (resp.status >= 500 && resp.status < 600 && retry5xxCount < 3) {
         const em5 = errData?.error?.message || errData?.error || ('HTTP '+resp.status)
         handle5xxRetry(chat, payload, ragSources, resp.status, em5)
         return
@@ -2227,10 +2250,10 @@ async function runStream(chat, payload, ragSources) {
       retry5xxCount = 0
       const labels = { 500:'Server error', 502:'Bad gateway', 503:'Service unavailable', 504:'Gateway timeout' }
       const note = labels[resp.status]
-        ? ('Error ' + resp.status + ': ' + labels[resp.status] + ' — the model service is temporarily unreachable. Please try again in a moment.')
+        ? ('Error ' + resp.status + ': ' + labels[resp.status] + ' — The model service is temporarily unreachable. Please try again in a moment.')
         : ('Error ' + resp.status + ': ' + cleanErrMsg(errData?.error?.message || errData?.error || ('HTTP ' + resp.status)))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources)
+      appendMsg('ai', note, null, ragSources, null, true)
       setHealth('err', labels[resp.status] ? 'Service unavailable' : ('Error ' + resp.status))
       return
     }
@@ -2308,7 +2331,7 @@ async function runStream(chat, payload, ragSources) {
       try { typingEl.remove() } catch {}
       const note = 'Stream error: '+streamErr
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources)
+      appendMsg('ai', note, null, ragSources, null, true)
       setHealth('err', 'Unreachable')
       return
     }
@@ -2351,7 +2374,7 @@ async function runStream(chat, payload, ragSources) {
         ? 'SSL certificate error — Please try restarting your Zscaler connection, then retry.'
         : 'Network error: '+err.message
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources)
+      appendMsg('ai', note, null, ragSources, null, true)
       setHealth('err', 'Unreachable')
     }
   } finally {
@@ -2525,8 +2548,8 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
   const retryAt = Date.now() + delayMs
 
-  const statusLabels = { 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
-  const statusLabel = statusLabels[status] || ('HTTP ' + status)
+  const statusLabels = { 500: 'Server error', 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
+  const statusLabel = statusLabels[status] || 'Server error'   // any other 5xx: show the number, still retry
   const hint = status === 504
     ? 'The AI took too long to respond. If it keeps failing, try a shorter request.'
     : 'The AI service is temporarily unavailable.'
@@ -2930,7 +2953,7 @@ function renderMessages() {
   inner.className = 'msgs-inner'
   chat.messages.forEach(m => {
     const t = typeof m.content==='string'?m.content:m.content?.find?.(b=>b.type==='text')?.text||'[attachment]'
-    const div = buildMsgEl(m.role==='user'?'user':'ai', t, new Date(m.ts), m.sources, m.fileNames)
+    const div = buildMsgEl(m.role==='user'?'user':'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
     inner.appendChild(div)
   })
   el.innerHTML=''
@@ -2939,7 +2962,7 @@ function renderMessages() {
   refreshTailActions()
 }
 
-function appendMsg(role, text, date, sources, fileNames) {
+function appendMsg(role, text, date, sources, fileNames, errored) {
   let inner = document.querySelector('.msgs-inner')
   if (!inner) {
     document.getElementById('messages').innerHTML=''
@@ -2947,14 +2970,14 @@ function appendMsg(role, text, date, sources, fileNames) {
     inner.className='msgs-inner'
     document.getElementById('messages').appendChild(inner)
   }
-  const div = buildMsgEl(role, text, date, sources, fileNames)
+  const div = buildMsgEl(role, text, date, sources, fileNames, errored)
   inner.appendChild(div)
   document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight
   refreshTailActions()
   return div
 }
 
-function buildMsgEl(role, text, date, sources, fileNames) {
+function buildMsgEl(role, text, date, sources, fileNames, errored) {
   const isUser = role==='user'
   const time   = (date||new Date()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
   const label  = isUser?'You':(creds?.model||'LCL')
@@ -2985,13 +3008,24 @@ function buildMsgEl(role, text, date, sources, fileNames) {
   // Action row: Copy always; Regenerate on assistant messages; Edit on user messages.
   // The renderer sets `data-last-user` / `data-last-ai` on the final ones so the
   // specific buttons only show on the last matching message (cleaner UX).
-  const acts = [
+  const acts = (errored && !isUser) ? '' : [
     `<button class="mact" onclick="copyMsg(this)" title="Copy raw markdown to clipboard">Copy</button>`,
     isUser
       ? `<button class="mact edit-act" onclick="editLastUser()" style="display:none">Edit</button>`
       : `<button class="mact" onclick="copyMsgHtml(this)" title="Paste into Word or Outlook to preserve formatting (tables, bold, headings)">Copy for Word / Outlook</button>
          <button class="mact regen-act" onclick="regenerateLast()" title="Re-send the last message and get a new response" style="display:none">Regenerate</button>`
   ].join('')
+  // Errored assistant replies render through the shared statusBox so 4xx/5xx and
+  // terminal errors all look the same. Note format: "Error <code>: <label> — <hint>".
+  let bodyInner
+  if (errored && !isUser) {
+    const raw = String(text || ''); const dash = raw.indexOf(' — ')
+    const title = dash > -1 ? raw.slice(0, dash) : raw
+    const body  = dash > -1 ? raw.slice(dash + 3) : ''
+    bodyInner = statusBox('err', title, esc(body))
+  } else {
+    bodyInner = fmt(displayText)
+  }
 
   const div = document.createElement('div')
   div.className='msg-group'
@@ -3005,7 +3039,7 @@ function buildMsgEl(role, text, date, sources, fileNames) {
       <div class="msg-time">${time}</div>
     </div>
     ${fileChips}
-    <div class="msg-body">${fmt(displayText)}</div>
+    <div class="msg-body">${bodyInner}</div>
     ${srcHtml}
     <div class="msg-acts">${acts}</div>`
   return div
@@ -3339,10 +3373,10 @@ function renderSpSkillsList() {
     return
   }
   root.innerHTML = skillsCache.map(s => `
-    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;background:var(--bg3)">
-      <div style="flex:1;min-width:0;font-size:12px">
-        <div style="font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${esc(s.id)}.md &middot; ${s.bytes} B</div>
+    <div class="skill-row">
+      <div class="skill-row-main">
+        <div class="skill-row-title">${esc(s.title)}</div>
+        <div class="skill-row-meta">${esc(s.id)}.md &middot; ${s.bytes} B</div>
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
@@ -3963,6 +3997,12 @@ function maybeDemo() {
   try { document.body.classList.remove('not-connected') } catch {}
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
 
+  skillsCache = [
+    { id: 'pentest-report', title: 'Pentest Report Writer', bytes: 1840, mtime: Date.now() },
+    { id: 'secure-code-review', title: 'Secure Code Reviewer', bytes: 2312, mtime: Date.now() },
+    { id: 'exec-summary', title: 'Executive Summary', bytes: 964, mtime: Date.now() }
+  ]
+
   const now = Date.now(), hr = 3600000, day = 86400000
   const mid = new Date(); mid.setHours(0, 0, 0, 0); const m0 = mid.getTime()
 
@@ -3992,6 +4032,15 @@ function maybeDemo() {
     { role: 'assistant', content: 'Three action items: confirm in-scope IP ranges, get a test window sign-off, and set up a shared evidence folder before kickoff.' }
   ])
 
+  D.chats['demo_active'].skillId = 'pentest-report'
+  D.chats['demo_active'].docs = [{
+    id: 'demo_doc1', name: 'quarterly-report.pdf', size: 184320,
+    content: 'Q2 revenue rose 12% QoQ driven by cloud. Headcount flat. Two risks flagged: supply chain and FX exposure.',
+    chunks: [
+      { text: 'Q2 revenue rose 12% QoQ driven by cloud.', embHash: 'demo0' },
+      { text: 'Two risks flagged: supply chain and FX exposure.', embHash: 'demo1' }
+    ], status: 'ready', addedAt: now
+  }]
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
 
@@ -4016,11 +4065,47 @@ function maybeDemo() {
     + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">0:42</strong></div>',
     { icon: 'clock', cancel: 'void 0' }))
 
-  // (d) terminal (non-retryable) error — a plain assistant message, exactly how
-  // the real flow persists it (not a box).
-  grp('Error 500: Server error — the model service is temporarily unreachable. Please try again in a moment.')
+  // (d) terminal (non-retryable) error — a 4xx does NOT auto-retry (5xx now does),
+  // so this is the real "gave up" case. Rendered through the same statusBox.
+  appendMsg('ai', 'Error 401: Unauthorized — Your API key may be invalid or expired. Open Settings to reconnect.', null, null, null, true)
+
+  // Floating "Reset demo" button (demo only) — re-seeds everything.
+  if (!document.getElementById('demo-reset')) {
+    const rb = document.createElement('button')
+    rb.id = 'demo-reset'; rb.type = 'button'
+    rb.innerHTML = '\u21BA Reset demo'
+    rb.onclick = function () { maybeDemo() }
+    document.body.appendChild(rb)
+  }
 
   return true
+}
+
+// Compact mock responder for #demo: echoes the user turn and replies with a
+// random canned answer (some markdown) after a short typing delay. No API.
+const DEMO_REPLIES = [
+  'Sure — here is a quick take:\n\n- One point worth noting\n- A second consideration\n\nWant me to go deeper on any of these?',
+  'Good question. In short: **yes**, with a caveat — the trade-off is latency vs cost, so it depends on your workload.',
+  'Here is a small example:\n\n```js\nconst total = items.reduce((n, x) => n + x.value, 0)\n```\n\nLet me know if you want it in another language.',
+  'I would approach it in three steps:\n\n1. Clarify the requirement\n2. Draft a minimal version\n3. Iterate with feedback',
+  'That should work. One thing to watch: make sure the data classification matches the model tier you have selected.'
+]
+
+function demoSend(text, input) {
+  const chat = curChat(); if (!chat) return
+  if (!chat.messages.length) chat.title = text.slice(0, 42) + (text.length > 42 ? '...' : '')
+  chat.messages.push({ role: 'user', content: text, ts: Date.now() })
+  chat.updatedAt = Date.now()
+  input.value = ''; if (typeof autoResize === 'function') autoResize(input)
+  const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
+  appendMsg('user', text, null, null, [])
+  const typing = appendTyping()
+  setTimeout(() => {
+    try { typing.remove() } catch {}
+    const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
+    chat.messages.push({ role: 'assistant', content: reply, ts: Date.now() })
+    appendMsg('ai', reply, null, null, [])
+  }, 600)
 }
 
 // SECTION: 97-update-ui.js
