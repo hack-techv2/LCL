@@ -2,7 +2,7 @@
 // Auto-update — checks GitHub releases via the local server (server.txt does
 // the network + file work; this is the display + consent layer).
 // =============================================================================
-let lclUpdate = { checked:false, current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null }
+let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
 
 function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
@@ -11,40 +11,75 @@ async function checkForUpdate(manual){
   try{
     const r = await fetch('/api/update/check')
     const d = await r.json()
-    lclUpdate = { checked:true, current:d.current||'', latest:d.latest||'', tag:d.tag||'',
-                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null }
-  }catch(e){ lclUpdate = { checked:true, error:e.message } }
+    lclUpdate = { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'',
+                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null,
+                  ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'' }
+  }catch(e){ lclUpdate = { checked:true, channel:'stable', error:e.message } }
   renderUpdateBadge(); renderUpdateSettings()
   if (manual){
     if (lclUpdate.error) toast('Update check failed: '+lclUpdate.error,'err')
+    else if (lclUpdate.channel==='alpha') toast(lclUpdate.inSync ? ('Alpha: in sync ('+lclUpdate.hash+')') : ('Alpha: changes on @'+lclUpdate.ref+' — restart Node to apply'),'ok')
     else if (lclUpdate.newer) toast('Update available: '+lclUpdate.tag,'ok')
     else toast("You're on the latest version",'ok')
   }
 }
 
 function renderUpdateBadge(){
+  const va = document.getElementById('ver-alpha')
+  if (va) va.style.display = (lclUpdate.channel === 'alpha') ? 'inline-block' : 'none'
   const el = document.getElementById('footer-upd')
   if (!el) return
-  if (lclUpdate.newer){ el.style.display='inline-block'; el.setAttribute('data-tip','Update available: '+lclUpdate.tag) }
+  const show = lclUpdate.channel==='alpha' ? (lclUpdate.checked && !lclUpdate.error && !lclUpdate.inSync) : !!lclUpdate.newer
+  if (show){ el.style.display='inline-block'; el.setAttribute('data-tip', lclUpdate.channel==='alpha' ? ('Alpha changes on @'+(lclUpdate.ref||'alpha')+' — restart Node') : ('Update available: '+lclUpdate.tag)) }
   else el.style.display='none'
 }
 
 function renderUpdateSettings(){
-  const auto = document.getElementById('upd-auto')
-  if (auto) auto.checked = updateAutoOn()
-  const body = document.getElementById('sp-update-body')
-  const btn  = document.getElementById('sp-update-btn')
+  const body = document.getElementById('upd-body')
   if (!body) return
-  if (!lclUpdate.checked){ body.textContent='Not checked yet.'; if(btn)btn.style.display='none'; return }
-  if (lclUpdate.error){
-    body.innerHTML="Couldn't reach GitHub (<span style=\"color:var(--tx3)\">"+esc(lclUpdate.error)+"</span>). Check network access to api.github.com."
-    if(btn)btn.style.display='none'; return
+  const u = lclUpdate
+  const vb = document.getElementById('ver-badge')
+  const cur = u.current || (vb ? vb.textContent.replace(/^v/i,'') : '')
+  const pill = (cls,txt)=> '<span class="upd-pill '+cls+'">'+txt+'</span>'
+  const tile = (k,val,col)=> '<div class="upd-metric"><div class="upd-mk">'+k+'</div><div class="upd-mv"'+(col?(' style="color:'+col+'"'):'')+'>'+val+'</div></div>'
+  const top  = (lbl,p)=> '<div class="upd-top"><span style="font-size:12px;color:var(--tx2)">'+lbl+'</span>'+p+'</div>'
+  const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
+  const testerRow = ()=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Try alpha updates</label><span style="font-size:11px;color:var(--tx3)">tester</span></div>'
+  if (!u.checked){ body.innerHTML = top('Updates', pill('neutral','Not checked')) + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>'); return }
+  if (u.channel === 'alpha'){
+    if (u.error){
+      body.innerHTML = top('Channel', pill('err','Alpha · check failed'))
+        + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
+        + '<div class="upd-row"><span style="font-size:11px;color:var(--tx3)">tracking @'+esc(u.ref||'alpha')+'</span><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Retry</button><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></span></div>'
+      return
+    }
+    if (u.applied){
+      const ap = u.applied
+      const note = (ap.refreshNeeded?'Reload for new index':'') + (ap.refreshNeeded&&ap.restartNeeded?' · ':'') + (ap.restartNeeded?'restart Node for new server':'')
+      body.innerHTML = top('Channel', pill('ok','Alpha · updated'))
+        + '<div style="font-size:12px;color:var(--ok);margin-top:11px">Downloaded &amp; verified '+esc((ap.applied||[]).join(', ')||'(already current)')+'</div>'
+        + (note ? '<div style="font-size:11px;color:var(--pin);margin-top:6px">'+note+'</div>' : '')
+        + '<div class="upd-row">'+(ap.refreshNeeded?'<button class="upd-btn pri" onclick="location.reload()">Reload now</button>':'<span></span>')+'<button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
+      return
+    }
+    // Compact one-liner: Channel | Alpha · status · build/changed
+    const sPill = u.inSync ? pill('ok','Up to date') : pill('warn','Update available')
+    const buildBit = u.inSync
+      ? '<span class="upd-build">'+esc(u.hash||'—')+'</span>'
+      : '<span class="upd-build" title="'+esc((u.changed||[]).join(', '))+'">'+esc((u.changed||[]).join(', ')||'—')+'</span>'
+    body.innerHTML = top('Channel', '<span class="upd-line">'+pill('alpha','Alpha')+sPill+buildBit+'</span>')
+      + '<div class="upd-row"><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Check updates</button>'+(u.inSync?'':'<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>')+'</span><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
+    return
   }
-  let html = 'Installed: <span style="font-family:var(--mono);color:var(--tx)">v'+esc(lclUpdate.current)+'</span><br>'+
-    'Latest: <span style="font-family:var(--mono);color:'+(lclUpdate.newer?'var(--ok)':'var(--tx)')+'">'+(lclUpdate.latest?('v'+esc(lclUpdate.latest)):'—')+'</span>'
-  if (!lclUpdate.newer) html += '<br><span style="color:var(--tx3)">You are up to date.</span>'
-  body.innerHTML = html
-  if (btn) btn.style.display = lclUpdate.newer ? 'inline-flex' : 'none'
+  if (u.error){
+    body.innerHTML = top('Version', pill('err','Check failed'))
+      + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
+      + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Retry</button>')
+    return
+  }
+  body.innerHTML = top('Version', u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
+    + '<div class="upd-mets">'+tile('Installed', cur?('v'+esc(cur)):'—')+tile('Latest', u.latest?('v'+esc(u.latest)):'—', u.newer?'var(--ok)':'var(--tx)')+'</div>'
+    + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>') + (alphaUnlocked() ? testerRow() : '')
 }
 
 function openUpdateDialog(){
@@ -108,3 +143,53 @@ async function applyUpdate(){
 }
 
 function initUpdates(){ if (updateAutoOn()) checkForUpdate(false) }
+
+// Channel switch (alpha tester channel <-> stable). Persisted server-side.
+async function setChannel(ch){
+  try{
+    const r = await fetch('/api/update/channel',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channel:ch}) })
+    const d = await r.json()
+    if (ch==='stable' && d.restored) toast('Restored stable '+(d.restored.tag||'')+' — restart Node & refresh','ok')
+    else if (ch==='stable' && d.restoreError) toast('Switched to stable; restore failed: '+d.restoreError,'err')
+    else if (ch==='alpha') toast('Alpha on — restart Node to begin auto-updating','ok')
+  }catch(e){ toast('Channel switch failed: '+e.message,'err') }
+  await checkForUpdate(true)
+}
+
+// Alpha enrolment is gated behind the easter egg: 7 clicks on the version badge
+// unlock the "Try alpha updates" toggle inside Settings -> Updates.
+function alphaUnlocked(){ try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false } }
+function unlockAlpha(){ try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {}; if (typeof toast === 'function') toast('Tester options unlocked - Open Settings','ok'); if (typeof renderUpdateSettings === 'function') renderUpdateSettings() }
+
+// Front-end alpha apply: download + verify the alpha pair via the server, then
+// prompt reload (index) / restart (server). Boot-time auto-update still exists.
+async function applyAlphaNow(){
+  try{
+    toast('Downloading alpha update...','info')
+    const r = await fetch('/api/update/apply', { method:'POST' })
+    const d = await r.json()
+    if (d.error){ toast('Update failed: '+d.error,'err'); return }
+    const applied = (d.applied||[]).join(', ') || 'no changes'
+    if (d.restartNeeded){
+      toast('Applied ('+applied+'). Restarting Node…','ok')
+      try { await fetch('/api/update/restart', { method:'POST' }) } catch {}
+      waitForServerThenReload()
+      return
+    }
+    if (d.refreshNeeded){ toast('Applied ('+applied+'). Reloading…','ok'); setTimeout(()=>location.reload(), 700); return }
+    lclUpdate.applied = { applied:d.applied||[], restartNeeded:false, refreshNeeded:false }
+    lclUpdate.inSync = true; lclUpdate.changed = []
+    renderUpdateBadge(); renderUpdateSettings()
+    toast('Already current','ok')
+  }catch(e){ toast('Update failed: '+e.message,'err') }
+}
+
+// After a server restart request, poll /api/health until the new server answers,
+// then reload so the page picks up the new index.html.
+async function waitForServerThenReload(){
+  for (let i=0;i<60;i++){
+    await new Promise(r=>setTimeout(r,500))
+    try { const h = await fetch('/api/health',{cache:'no-store'}); if (h.ok){ location.reload(); return } } catch {}
+  }
+  toast('Server still restarting — reload when ready','info')
+}
