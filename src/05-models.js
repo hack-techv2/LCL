@@ -1,41 +1,71 @@
 // =============================================================================
-// Model catalogue — drives the Settings / Connect dropdowns.
-// Source: GovTech PlatformAI Models page. A "Custom…" option always remains so
-// any model not listed here can still be entered by hand.
+// Model catalogue — organised by GovTech PlatformAI data-classification tier.
+// The user picks a classification first; the Model / Embed dropdowns then show
+// only models cleared for that tier. A "Custom…" option always remains so any
+// model not listed here can still be entered by hand.
+//   cce = CCE/SN  (Confidential Cloud Eligible & Sensitive Normal)
+//   rsn = R/SN    (Restricted & Sensitive Normal and below)
 // =============================================================================
-const MODEL_GROUPS = [
-  { label: 'Claude (Anthropic)', ids: [
-    'cce.claude-opus-4-6','cce.claude-sonnet-4-6','cce.claude-opus-4-5','cce.claude-sonnet-4-5','cce.claude-3-5-sonnet',
-    'rsn.claude-opus-4-8','rsn.claude-opus-4-7','rsn.claude-opus-4-6','rsn.claude-opus-4-5','rsn.claude-opus-4-1',
-    'rsn.claude-sonnet-4-6','rsn.claude-sonnet-4-5','rsn.claude-sonnet-4-0','rsn.claude-haiku-4-5',
-    'rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-sonnet-4-6','rsn.vertex_ai.claude-sonnet-4-5',
-    'azure.claude-opus-4-8','azure.claude-opus-4-7','azure.claude-opus-4-6','azure.claude-opus-4-5',
-    'azure.claude-sonnet-4-6','azure.claude-sonnet-4-5','azure.claude-haiku-4-5',
-    'bedrock.claude-opus-4-8','bedrock.claude-opus-4-7','bedrock.claude-opus-4-6','bedrock.claude-opus-4-5',
-    'bedrock.claude-sonnet-4-6','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-0','bedrock.claude-haiku-4-5','bedrock.claude-3-5-sonnet',
-    'vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-6','vertex_ai.claude-opus-4-5','vertex_ai.claude-opus-4-1',
-    'vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-4-5','vertex_ai.claude-haiku-4-5'
-  ] },
-  { label: 'OpenAI', ids: [
-    'gpt-5.5','gpt-5.4-pro','gpt-5.4','gpt-5.3-codex','gpt-5.2-chat','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano',
-    'gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','gpt-4o','gpt-4o-pt','gpt-4o-mini','o3','o3-mini','o4-mini'
-  ] },
-  { label: 'Google Gemini', ids: [
-    'gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-3.1-flash-lite-preview','gemini-3-flash-preview',
-    'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-pt','gemini-2.5-flash-lite'
-  ] },
-]
+const CLS = {
+  cce: { short: 'CCE/SN', full: 'Confidential Cloud Eligible (Sensitive Normal)' },
+  rsn: { short: 'R/SN',  full: 'Restricted (Sensitive Normal)' },
+}
 
-const EMBED_GROUPS = [
-  { label: 'Embedding models', ids: [
-    'cohere.embed-english-v3','cohere.embed-multilingual-v3','cohere.embed-v4:0',
-    'text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002',
-    'gemini-embedding-001'
-  ] },
-]
+const MODEL_TIERS = {
+  cce: [
+    { label: 'Claude (Anthropic)', ids: [
+      'cce.claude-opus-4-6','cce.claude-sonnet-4-6','cce.claude-opus-4-5','cce.claude-sonnet-4-5','cce.claude-3-5-sonnet',
+      'vertex_ai.claude-opus-4-6','vertex_ai.claude-opus-4-5','vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-4-5',
+      'bedrock.claude-3-5-sonnet'
+    ] },
+    { label: 'OpenAI', ids: ['gpt-4o-pt'] },
+    { label: 'Google Gemini', ids: ['gemini-2.5-flash-pt'] },
+  ],
+  rsn: [
+    { label: 'Claude (Anthropic)', ids: [
+      'azure.claude-opus-4-8','azure.claude-opus-4-7','azure.claude-opus-4-6','azure.claude-opus-4-5','azure.claude-sonnet-4-6','azure.claude-sonnet-4-5','azure.claude-haiku-4-5',
+      'rsn.claude-opus-4-8','rsn.claude-opus-4-7','rsn.claude-opus-4-6','rsn.claude-opus-4-5','rsn.claude-opus-4-1','rsn.claude-sonnet-4-6','rsn.claude-sonnet-4-5','rsn.claude-sonnet-4-0','rsn.claude-haiku-4-5',
+      'rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-sonnet-4-6','rsn.vertex_ai.claude-sonnet-4-5',
+      'bedrock.claude-opus-4-8','bedrock.claude-opus-4-7','bedrock.claude-opus-4-6','bedrock.claude-opus-4-5','bedrock.claude-sonnet-4-6','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-0','bedrock.claude-haiku-4-5',
+      'vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-1','vertex_ai.claude-haiku-4-5'
+    ] },
+    { label: 'OpenAI', ids: [
+      'gpt-5.5','gpt-5.4-pro','gpt-5.4','gpt-5.3-codex','gpt-5.2-chat','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano',
+      'gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','gpt-4o','gpt-4o-mini','o3','o3-mini','o4-mini'
+    ] },
+    { label: 'Google Gemini', ids: [
+      'gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-3.1-flash-lite-preview','gemini-3-flash-preview',
+      'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite'
+    ] },
+  ],
+}
 
-// Populate a <select> from grouped model ids; selects `current` if present.
-// Always appends a "Custom…" option. Returns true if current matched a listed id.
+const EMBED_TIERS = {
+  cce: [ { label: 'Embedding models', ids: ['cohere.embed-english-v3','cohere.embed-multilingual-v3','gemini-embedding-001'] } ],
+  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0'] } ],
+}
+
+function tierGroups(kind, tier) {
+  const src = (kind === 'embed') ? EMBED_TIERS : MODEL_TIERS
+  return src[tier] || src.cce
+}
+function clsLabel(tier) { return (CLS[tier] || {}).short || '' }
+
+function inferTier(modelId) {
+  const id = (modelId || '').trim()
+  if (!id) return null
+  for (const t of ['cce', 'rsn']) {
+    if (MODEL_TIERS[t].some(g => g.ids.includes(id)) || EMBED_TIERS[t].some(g => g.ids.includes(id))) return t
+  }
+  return null
+}
+
+function clsSuffix(c) {
+  const t = (c && c.classification) || inferTier(c && c.model)
+  const l = clsLabel(t)
+  return l ? ' <span style="color:var(--tx3)">(' + l + ')</span>' : ''
+}
+
 function fillModelSelect(sel, groups, current) {
   sel.innerHTML = ''
   let found = false
@@ -56,9 +86,6 @@ function fillModelSelect(sel, groups, current) {
   return found
 }
 
-// Wire a model <select id="<inputId>-sel"> to its hidden text <input id="<inputId>">.
-// The input still holds the value (so existing save/connect logic is unchanged);
-// the select writes into it, and "Custom…" reveals the input for free-text entry.
 function wireModelField(inputId, groups) {
   const input = document.getElementById(inputId)
   const sel = document.getElementById(inputId + '-sel')
@@ -69,4 +96,50 @@ function wireModelField(inputId, groups) {
     if (sel.value === '__custom__') { input.style.display = ''; input.focus() }
     else { input.value = sel.value; input.style.display = 'none' }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Classification control (shared): pick a tier, then the model + embed lists
+// filter to it. scope 'sp' = Settings panel, 'cfg' = Connect modal.
+// ---------------------------------------------------------------------------
+let _clsState = { sp: 'cce', cfg: 'cce' }
+
+function ensureTierModel(inputId, groups) {
+  const input = document.getElementById(inputId)
+  if (!input) return
+  const ids = groups.flatMap(g => g.ids)
+  if (!ids.includes((input.value || '').trim())) input.value = ids[0] || ''
+}
+
+function applyClsUI(scope, tier) {
+  const seg = document.getElementById(scope === 'cfg' ? 'cls-seg-cfg' : 'cls-seg-sp')
+  if (seg) seg.querySelectorAll('.seg-btn').forEach(b => {
+    const on = b.dataset.cls === tier
+    b.classList.toggle('on-cce', on && tier === 'cce')
+    b.classList.toggle('on-rsn', on && tier === 'rsn')
+  })
+  if (scope === 'cfg') {
+    wireModelField('cfg-mdl', tierGroups('model', tier))
+  } else {
+    wireModelField('s-mdl', tierGroups('model', tier))
+    wireModelField('s-embm', tierGroups('embed', tier))
+  }
+}
+
+function initClassification(scope, tier) {
+  tier = (tier === 'cce' || tier === 'rsn') ? tier : 'cce'
+  _clsState[scope] = tier
+  applyClsUI(scope, tier)
+}
+
+function setClassification(tier, scope) {
+  tier = (tier === 'cce' || tier === 'rsn') ? tier : 'cce'
+  _clsState[scope] = tier
+  if (scope === 'cfg') {
+    ensureTierModel('cfg-mdl', tierGroups('model', tier))
+  } else {
+    ensureTierModel('s-mdl', tierGroups('model', tier))
+    ensureTierModel('s-embm', tierGroups('embed', tier))
+  }
+  applyClsUI(scope, tier)
 }
