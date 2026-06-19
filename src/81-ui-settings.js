@@ -85,6 +85,7 @@ function renderSpSkillsList() {
 }
 
 async function reloadSkillsFromUI() {
+  if (demoBlock()) return
   try {
     const r = await fetch('/skills/reload', { method: 'POST' })
     if (!r.ok) throw new Error('HTTP ' + r.status)
@@ -99,6 +100,7 @@ async function reloadSkillsFromUI() {
 }
 
 async function uploadSkillFile(fileList) {
+  if (demoBlock()) return
   if (!fileList || !fileList.length) return
   const file = fileList[0]
   if (!file.name.toLowerCase().endsWith('.md')) {
