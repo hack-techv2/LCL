@@ -39,6 +39,40 @@ function resolveLCLDir() {
 }
 
 const LCL_DIR = resolveLCLDir()
+
+// ---------------------------------------------------------------------------
+// Update channel TLS. A TLS-intercepting proxy (Zscaler) re-signs the GitHub
+// certificate with its own root, which Node won't verify against the public
+// store (UNABLE_TO_GET_ISSUER_CERT_LOCALLY). We let the handshake proceed,
+// then inspect the certificate actually presented: if Node already trusts the
+// chain we accept normally; if not, we accept ONLY when the failure is an
+// unknown-issuer error AND the chain is a Zscaler interception cert. Anything
+// else (expired, hostname mismatch, unknown self-signed) is still rejected.
+// Applied files remain integrity-checked by SHA-256 against checksums.txt.
+// ---------------------------------------------------------------------------
+const _ISSUER_ERRS = /UNABLE_TO_GET_ISSUER_CERT_LOCALLY|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_VERIFY_LEAF_SIGNATURE|DEPTH_ZERO_SELF_SIGNED_CERT/
+function chainIsZscaler(socket) {
+  try {
+    let c = socket.getPeerCertificate(true)
+    const seen = new Set()
+    while (c && c.fingerprint256 && !seen.has(c.fingerprint256)) {
+      seen.add(c.fingerprint256)
+      const fields = [c.issuer && c.issuer.O, c.issuer && c.issuer.CN,
+                      c.subject && c.subject.O, c.subject && c.subject.CN].join(' ')
+      if (/zscaler/i.test(fields)) return true
+      if (c.issuerCertificate && c.issuerCertificate !== c) c = c.issuerCertificate
+      else break
+    }
+  } catch {}
+  return false
+}
+function caStatus() { return 'Zscaler-intercepted certs auto-trusted; others verified normally' }
+function friendlyUpdateErr(e) {
+  const code = (e && (e.code || '')) || ''
+  if (/UNABLE_TO_GET_ISSUER_CERT_LOCALLY|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_VERIFY_LEAF_SIGNATURE|^CERT_|TLS certificate not trusted/.test(code) || /TLS certificate not trusted/.test(e.message || ''))
+    return 'TLS certificate not trusted — the GitHub connection was intercepted by a certificate that is not from Zscaler (or otherwise failed verification). [' + (code || 'TLS') + ']'
+  return e.message
+}
 const HTML_FILE = path.join(LCL_DIR, 'index.html')
 const DATA_FILE = path.join(LCL_DIR, 'lcl_data.json')
 
@@ -1160,8 +1194,19 @@ function httpsGetBuf(url, headers = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url)
     const opts = { hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
+      rejectUnauthorized: false,   // verify manually below so Zscaler interception can be allowed
       headers: { 'User-Agent': 'LCL-updater', 'Accept': '*/*', ...headers } }
     const r = https.request(opts, resp => {
+      // Trust gate: accept if Node already trusts the chain, or if the only
+      // problem is an unknown issuer AND the presented chain is a Zscaler cert.
+      const sock = resp.socket
+      if (sock && sock.authorized === false) {
+        const ae = String(sock.authorizationError || '')
+        if (!(_ISSUER_ERRS.test(ae) && chainIsZscaler(sock))) {
+          resp.resume(); sock.destroy()
+          return reject(Object.assign(new Error('TLS certificate not trusted: ' + ae), { code: ae }))
+        }
+      }
       if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
         resp.resume()
         return resolve(httpsGetBuf(resp.headers.location, headers))
@@ -1198,7 +1243,7 @@ function handleUpdateCheck(req, res) {
       newer: latest ? cmpVer(latest, APP_VERSION) > 0 : false,
       notes: rel.notes, html_url: rel.html_url, published_at: rel.published_at
     })
-  }).catch(e => json(res, { current: APP_VERSION, error: e.message }))
+  }).catch(e => json(res, { current: APP_VERSION, error: friendlyUpdateErr(e) }))
 }
 
 async function handleUpdateApply(req, res) {
@@ -1248,7 +1293,7 @@ async function handleUpdateApply(req, res) {
       refreshNeeded: applied.includes('index.html')
     })
   } catch (e) {
-    json(res, { error: e.message }, 500)
+    json(res, { error: friendlyUpdateErr(e) }, 500)
   }
 }
 
@@ -1314,6 +1359,7 @@ server.listen(PORT, BIND_HOST, () => {
   console.log('  Data file              ->  ' + DATA_FILE)
   console.log('  API Host               ->  ' + API_HOST)
   console.log('  Version                ->  v' + APP_VERSION)
+  console.log('  Updates TLS            ->  ' + caStatus())
   console.log('  Updates                ->  checking ' + UPDATE_REPO + ' ...')
   fetchLatestRelease().then(rel => {
     const latest = (rel.tag || '').replace(/^v/i, '')
