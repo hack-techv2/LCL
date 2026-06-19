@@ -13,8 +13,8 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
   const retryAt = Date.now() + delayMs
 
-  const statusLabels = { 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
-  const statusLabel = statusLabels[status] || ('HTTP ' + status)
+  const statusLabels = { 500: 'Server error', 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
+  const statusLabel = statusLabels[status] || 'Server error'   // any other 5xx: show the number, still retry
   const hint = status === 504
     ? 'The AI took too long to respond. If it keeps failing, try a shorter request.'
     : 'The AI service is temporarily unavailable.'
