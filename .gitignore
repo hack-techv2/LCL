@@ -1,0 +1,12 @@
+# Internal docs — not for publication
+llms.txt
+PROJECT_BRIEF.md
+UPGRADE_PLAN_file-editing.md
+
+# Runtime data & caches — never commit (hold API keys / chat history
+# if Node is ever run from this folder)
+lcl_data.json
+embed_cache.bin
+
+# Build packaging artifact (produced by build.js)
+LCL.zip
