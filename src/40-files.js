@@ -18,6 +18,7 @@ function toggleDP() {
           + '<div style="margin-bottom:4px;font-size:11px;color:var(--tx3)">API Key</div>'
           + '<input type="password" id="embed-key-input" placeholder="Paste embedding API key" style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:6px 9px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px;box-sizing:border-box">'
           + '<div style="margin-bottom:4px;font-size:11px;color:var(--tx3)">Model ID</div>'
+          + '<select id="embed-model-input-sel" class="model-sel" style="margin-bottom:8px"></select>'
           + '<input type="text" id="embed-model-input" placeholder="cohere.embed-english-v3" value="'+(existingModel||'cohere.embed-english-v3')+'" style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:6px 9px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px;box-sizing:border-box">'
           + '<div style="display:flex;gap:6px">'
           + '<button onclick="saveEmbedKey()" style="padding:5px 12px;background:var(--ac);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Save</button>'
@@ -25,6 +26,7 @@ function toggleDP() {
           + '</div>'
           + '<div id="embed-test-result" style="margin-top:6px;font-size:11px"></div>'
         desc.insertAdjacentElement('afterend', banner)
+        if (typeof wireModelField === 'function') wireModelField('embed-model-input', EMBED_GROUPS)
       }
     }
   }
