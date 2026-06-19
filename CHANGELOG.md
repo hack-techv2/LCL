@@ -110,6 +110,23 @@ Dev / infra
 - GitHub MCP gained github_update_ref (move a tag) and github_upload_release_asset.
 - v0.67d GitHub release published (with index.html + server.txt attached as assets).
 
+Refactor (maintainability / extensibility)
+- Split the 72 KB src/head.html into head.html (0.7 KB) + styles.css (44 KB) +
+  body.html (27 KB); build.js inlines the CSS at a placeholder. Removes the file
+  that kept getting truncated on edit.
+- Split 70-render.js -> 70-render (core) / 71-render-chatlist / 72-render-message
+  / 73-render-docpanel; split 95-update.js -> 95-update (core) / 97-update-ui /
+  98-update-channel. Every JS module is now <= ~11 KB.
+- New 54-chat-statusbox.js: one shared statusBox() builds the error / 5xx-retry /
+  429 rate-limit panels (previously duplicated in 3 places, incl. demo).
+- Error titles made consistent: "Error 429: Rate limit reached" and the terminal
+  error now reads "Error <code>: <label>" like the 5xx box.
+- build.js undefined-function scan now strips comments first, so example calls in
+  comments no longer cause false build failures.
+- #demo upgraded: seeds multiple chats (pinned / today / yesterday / older) to
+  exercise chat-list grouping + switching, plus all message/error output states;
+  persist() is a no-op under #demo so it never writes to lcl_data.json.
+
 NOTE: this batch currently lives on the `alpha` branch only. Promote to stable by
 pushing the build to `main` and refreshing the v0.67d release.
 
