@@ -26,7 +26,7 @@ function toggleDP() {
           + '</div>'
           + '<div id="embed-test-result" style="margin-top:6px;font-size:11px"></div>'
         desc.insertAdjacentElement('afterend', banner)
-        if (typeof wireModelField === 'function') wireModelField('embed-model-input', EMBED_GROUPS)
+        if (typeof wireModelField === 'function') wireModelField('embed-model-input', tierGroups('embed', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce'))
       }
     }
   }
