@@ -36,8 +36,6 @@ Browser (index.html)  ──>  Node proxy (server.txt)  ──>  GovTech Platfor
 | `server.txt` | The Node proxy. Run this. |
 | `src/` | Source modules (`head.html`, JS modules, `tail.html`) assembled by `build.js`. |
 | `build.js` | Concatenates `src/` into `index.html` and runs verification checks. |
-| `PROJECT_BRIEF.md` | Context brief for picking the project back up. |
-| `UPGRADE_PLAN_file-editing.md` | Design notes for the experimental file-editing feature (not yet built). |
 | `CHANGELOG.md` | Version history. |
 | `LCL_Setup_Guide.html` | End-user setup guide. |
 
@@ -89,6 +87,3 @@ optionally package changed files into a password-protected `LCL.zip`.
 ## Credits
 
 Local Comet LLM (LCL) — CSA / ASG. Contributors: Melvin Yung, Ko Zheng Teng.
-
-> Internal tool for Singapore Government use. Review for sensitive content
-> before making any repository public.
