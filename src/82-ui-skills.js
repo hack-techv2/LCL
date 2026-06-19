@@ -56,9 +56,15 @@ function closeSkillEdit() {
 }
 
 async function saveSkillEdit() {
-  if (demoBlock()) return
   if (!_editingSkillId) return
   const body = document.getElementById('skill-edit-body').value
+  if (typeof demoOn === 'function' && demoOn()) {
+    const ex = skillsCache.find(s => s.id === _editingSkillId)
+    if (ex) { ex.body = body; ex.bytes = body.length; ex.title = demoSkillTitle(body, _editingSkillId); ex.mtime = Date.now() }
+    else { skillsCache.push({ id: _editingSkillId, title: demoSkillTitle(body, _editingSkillId), bytes: body.length, mtime: Date.now(), body }) }
+    renderSpSkillsList(); renderSkillPicker(); closeSkillEdit(); toast('Saved', 'ok')
+    return
+  }
   try {
     const r = await fetch('/skills/' + encodeURIComponent(_editingSkillId), {
       method: 'PUT',
@@ -80,7 +86,6 @@ async function saveSkillEdit() {
 }
 
 async function renameSkill(oldId) {
-  if (demoBlock()) return
   const newId = prompt('Rename "' + oldId + '" to (lowercase letters, digits, dashes, max 64):', oldId)
   if (newId == null) return
   const slug = newId.trim()
@@ -88,6 +93,14 @@ async function renameSkill(oldId) {
   if (slug === oldId) return
   if (skillsCache.some(s => s.id === slug)) {
     toast('A skill named "' + slug + '" already exists', 'err')
+    return
+  }
+  if (typeof demoOn === 'function' && demoOn()) {
+    const sk = skillsCache.find(s => s.id === oldId); if (sk) sk.id = slug
+    let touched = 0
+    for (const cid of Object.keys(D.chats)) { if (D.chats[cid].skillId === oldId) { D.chats[cid].skillId = slug; touched++ } }
+    renderSpSkillsList(); renderSkillPicker(); renderSkillChip()
+    toast('Renamed (' + touched + ' chat' + (touched === 1 ? '' : 's') + ' updated)', 'ok')
     return
   }
   try {
@@ -118,12 +131,19 @@ async function renameSkill(oldId) {
 }
 
 async function deleteSkillUI(id) {
-  if (demoBlock()) return
   const referencing = Object.values(D.chats).filter(c => c.skillId === id)
   const msg = referencing.length
     ? 'Delete skill "' + id + '"?\n\n' + referencing.length + ' chat(s) currently use it and will be reset to "None".'
     : 'Delete skill "' + id + '"?'
   if (!confirm(msg)) return
+  if (typeof demoOn === 'function' && demoOn()) {
+    const i = skillsCache.findIndex(s => s.id === id); if (i > -1) skillsCache.splice(i, 1)
+    let touched = 0
+    for (const cid of Object.keys(D.chats)) { if (D.chats[cid].skillId === id) { D.chats[cid].skillId = null; touched++ } }
+    renderSpSkillsList(); renderSkillPicker(); renderSkillChip()
+    toast('Deleted ' + id, 'ok')
+    return
+  }
   try {
     const r = await fetch('/skills/' + encodeURIComponent(id), { method: 'DELETE' })
     if (!r.ok && r.status !== 404) {
