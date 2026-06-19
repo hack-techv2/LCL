@@ -95,6 +95,12 @@ function maybeDemo() {
   try { document.body.classList.remove('not-connected') } catch {}
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
 
+  skillsCache = [
+    { id: 'pentest-report', title: 'Pentest Report Writer', bytes: 1840, mtime: Date.now() },
+    { id: 'secure-code-review', title: 'Secure Code Reviewer', bytes: 2312, mtime: Date.now() },
+    { id: 'exec-summary', title: 'Executive Summary', bytes: 964, mtime: Date.now() }
+  ]
+
   const now = Date.now(), hr = 3600000, day = 86400000
   const mid = new Date(); mid.setHours(0, 0, 0, 0); const m0 = mid.getTime()
 
@@ -124,6 +130,15 @@ function maybeDemo() {
     { role: 'assistant', content: 'Three action items: confirm in-scope IP ranges, get a test window sign-off, and set up a shared evidence folder before kickoff.' }
   ])
 
+  D.chats['demo_active'].skillId = 'pentest-report'
+  D.chats['demo_active'].docs = [{
+    id: 'demo_doc1', name: 'quarterly-report.pdf', size: 184320,
+    content: 'Q2 revenue rose 12% QoQ driven by cloud. Headcount flat. Two risks flagged: supply chain and FX exposure.',
+    chunks: [
+      { text: 'Q2 revenue rose 12% QoQ driven by cloud.', embHash: 'demo0' },
+      { text: 'Two risks flagged: supply chain and FX exposure.', embHash: 'demo1' }
+    ], status: 'ready', addedAt: now
+  }]
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
 
@@ -148,9 +163,46 @@ function maybeDemo() {
     + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">0:42</strong></div>',
     { icon: 'clock', cancel: 'void 0' }))
 
-  // (d) terminal (non-retryable) error — a plain assistant message, exactly how
-  // the real flow persists it (not a box).
-  grp('Error 500: Server error — the model service is temporarily unreachable. Please try again in a moment.')
+  // (d) terminal (non-retryable) error — a 4xx does NOT auto-retry (5xx now does),
+  // so this is the real "gave up" case. Rendered through the same statusBox.
+  appendMsg('ai', 'Error 401: Unauthorized — Your API key may be invalid or expired. Open Settings to reconnect.', null, null, null, true)
+
+  // Floating "Reset demo" button (demo only) — re-seeds everything.
+  if (!document.getElementById('demo-reset')) {
+    const rb = document.createElement('button')
+    rb.id = 'demo-reset'; rb.type = 'button'
+    rb.innerHTML = '\u21BA Reset demo'
+    rb.onclick = function () { maybeDemo() }
+    document.body.appendChild(rb)
+  }
 
   return true
 }
+
+// Compact mock responder for #demo: echoes the user turn and replies with a
+// random canned answer (some markdown) after a short typing delay. No API.
+const DEMO_REPLIES = [
+  'Sure — here is a quick take:\n\n- One point worth noting\n- A second consideration\n\nWant me to go deeper on any of these?',
+  'Good question. In short: **yes**, with a caveat — the trade-off is latency vs cost, so it depends on your workload.',
+  'Here is a small example:\n\n```js\nconst total = items.reduce((n, x) => n + x.value, 0)\n```\n\nLet me know if you want it in another language.',
+  'I would approach it in three steps:\n\n1. Clarify the requirement\n2. Draft a minimal version\n3. Iterate with feedback',
+  'That should work. One thing to watch: make sure the data classification matches the model tier you have selected.'
+]
+
+function demoSend(text, input) {
+  const chat = curChat(); if (!chat) return
+  if (!chat.messages.length) chat.title = text.slice(0, 42) + (text.length > 42 ? '...' : '')
+  chat.messages.push({ role: 'user', content: text, ts: Date.now() })
+  chat.updatedAt = Date.now()
+  input.value = ''; if (typeof autoResize === 'function') autoResize(input)
+  const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
+  appendMsg('user', text, null, null, [])
+  const typing = appendTyping()
+  setTimeout(() => {
+    try { typing.remove() } catch {}
+    const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
+    chat.messages.push({ role: 'assistant', content: reply, ts: Date.now() })
+    appendMsg('ai', reply, null, null, [])
+  }, 600)
+}
+
