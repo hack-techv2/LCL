@@ -113,7 +113,7 @@ function maybeDemo() {
     { role: 'user', content: 'hello how are you' },
     { role: 'assistant', content: DEMO_AI_MARKDOWN },
     { role: 'user', content: 'Please summarise the attached report.\n<file name="quarterly-report.pdf">Q2 revenue rose 12% QoQ driven by cloud. Headcount flat. Two risks flagged: supply chain and FX exposure.</file>', fileNames: ['quarterly-report.pdf'] },
-    { role: 'assistant', content: 'Based on the attached document, Q2 revenue grew **12% quarter-on-quarter**, led by cloud. Headcount was flat, and two risks were flagged: supply chain and FX exposure.', sources: ['quarterly-report.pdf #3', 'quarterly-report.pdf #7', 'notes.md #1'] },
+    { role: 'assistant', content: 'Based on the attached document, Q2 revenue grew **12% quarter-on-quarter**, led by cloud. Headcount was flat, and two risks were flagged: supply chain and FX exposure.', sources: ['quarterly-report.pdf'] },
     { role: 'user', content: 'Can you walk me through the trade-offs?\n\nI care about latency, cost, and data classification. We are on Comet, behind Zscaler, and most of our traffic is Sensitive Normal with the occasional Confidential Cloud Eligible workload. Keep it concise.' },
     { role: 'assistant', content: DEMO_AI_CODE }
   ])
@@ -145,30 +145,33 @@ function maybeDemo() {
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
 
-  // --- Transient UI states (DOM-only, on the active chat view) --------------
-  const inner = document.querySelector('#messages .msgs-inner')
-  if (!inner) return true
-  const hdr = '<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">cce.claude-opus-4-6</div><div class="msg-time">now</div></div>'
-  const grp = (bodyHtml) => { const d = document.createElement('div'); d.className = 'msg-group'; d.innerHTML = hdr + '<div class="msg-body">' + bodyHtml + '</div>'; inner.appendChild(d) }
-
+  // --- Transient UI states — rendered exactly like the real handlers (real
+  // header + time via appendTyping/appendMsg; box bodies copied verbatim from
+  // handle5xxRetry / handleRateLimitWait). Nothing here is fabricated.
   // (a) loading / typing indicator
-  grp('<div class="typing"><span></span><span></span><span></span></div>')
+  if (typeof appendTyping === 'function') appendTyping()
 
-  // (b) 5xx auto-retry box (shared statusBox helper)
-  grp(statusBox('err', 'Error 502: Bad gateway',
-    '<div style="margin-bottom:4px">The PlatformAI gateway returned a temporary error.</div>'
+  const statusBubble = (boxHtml) => {
+    const b = appendMsg('ai', '', null, null, null)
+    const body = b.querySelector('.msg-body'); if (body) body.innerHTML = boxHtml
+    const acts = b.querySelector('.msg-acts'); if (acts) acts.style.display = 'none'
+  }
+
+  // (b) 5xx auto-retry box (verbatim from handle5xxRetry)
+  statusBubble(statusBox('err', 'Error 502: Bad gateway',
+    '<div style="margin-bottom:4px">The AI service is temporarily unavailable.</div>'
     + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">10s</strong>&nbsp;<span style="font-size:11px;opacity:.7">(attempt 1 of 3)</span></div>',
-    { icon: 'err', cancel: 'void 0' }))
+    { icon: 'err', cancel: 'cancelRateLimitRetry()' }))
 
-  // (c) 429 rate-limit box
-  grp(statusBox('warn', 'Error 429: Rate limit reached',
-    '<div>Resets at:&nbsp; <strong style="color:var(--tx);font-family:var(--mono)">02:45 AM</strong></div>'
-    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">0:42</strong></div>',
-    { icon: 'clock', cancel: 'void 0' }))
+  // (c) 429 rate-limit box (verbatim from handleRateLimitWait)
+  statusBubble(statusBox('warn', 'Error 429: Rate limit reached',
+    '<div>Resets at:&nbsp; <strong style="color:var(--tx);font-family:var(--mono)">Fri, 20 Jun 2026, 03:55:00 AM (Asia/Singapore)</strong></div>'
+    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">00:42</strong></div>',
+    { icon: 'clock', cancel: 'cancelRateLimitRetry()' }))
 
-  // (d) terminal (non-retryable) error — a 4xx does NOT auto-retry (5xx now does),
-  // so this is the real "gave up" case. Rendered through the same statusBox.
-  appendMsg('ai', 'Error 401: Unauthorized — Your API key may be invalid or expired. Open Settings to reconnect.', null, null, null, true)
+  // (d) terminal (non-retryable) 4xx — exactly what the JS emits: 'Error <code>: '
+  // + the cleaned upstream message (no extra hint). 4xx does not auto-retry.
+  appendMsg('ai', 'Error 401: Invalid API key.', null, null, null, true)
 
   // Floating "Reset demo" button (demo only) — re-seeds everything.
   if (!document.getElementById('demo-reset')) {
@@ -209,14 +212,12 @@ function demoSend(text, input) {
   }, 600)
 }
 
-// Shared guard for demo: blocks server-mutating skill actions (save/rename/
-// delete/upload) with a friendly toast so nothing hits disk under #demo.
-function demoBlock() {
-  if (typeof demoOn === 'function' && demoOn()) {
-    if (typeof toast === 'function') toast('Disabled in #demo', 'info')
-    return true
-  }
-  return false
+// Derive a skill title from its body (first markdown H1) or its id slug. Used by
+// the in-memory skill CRUD under #demo so saving/uploading behaves like normal.
+function demoSkillTitle(body, id) {
+  const h1 = (String(body || '').match(/^#\s+(.+)$/m) || [])[1]
+  if (h1) return h1.trim().slice(0, 60)
+  return String(id || '').split('-').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ')
 }
 
 // Demo limits — keep the in-memory demo lightweight. Files (embed docs +
