@@ -41,6 +41,7 @@ function eggClick(e) {
   eggTimer = setTimeout(() => { eggClicks = 0 }, 2000)
   if (eggClicks >= 7) {
     eggClicks = 0
+    if (typeof unlockAlpha === 'function') unlockAlpha()
     launchComet(e.clientX, e.clientY)
   }
 }
@@ -151,6 +152,10 @@ function initComposerPlaceholder() {
   let pi = 0, ci = 0, erasing = false
   const tick = () => {
     if (el === document.activeElement || el.value) { setTimeout(tick, 700); return }
+    // Only show the rotating example prompts on an empty/new chat. In an existing
+    // conversation just keep the plain placeholder.
+    const c = (typeof curChat === 'function') ? curChat() : null
+    if (c && c.messages && c.messages.length) { el.setAttribute('placeholder', base); ci = 0; erasing = false; setTimeout(tick, 1200); return }
     const w = phrases[pi]
     if (!erasing) {
       ci++; el.setAttribute('placeholder', w.slice(0, ci))
