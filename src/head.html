@@ -26,21 +26,21 @@
   --display: 'Space Grotesk', 'Inter', sans-serif;
 }
 [data-theme="dark"], :root {
-  --bg:     #0c0e11;
-  --bg2:    #14161b;
-  --bg3:    #1c1f26;
-  --bg4:    #262a33;
-  --bdr:    #31353f;
-  --bdr2:   #434853;
-  --tx:     #f0f3f8;
-  --tx2:    #aeb6c4;
-  --tx3:    #79808d;
+  --bg:     #080a0e;
+  --bg2:    #161922;
+  --bg3:    #1f232e;
+  --bg4:    #2a3040;
+  --bdr:    #353b49;
+  --bdr2:   #4a5263;
+  --tx:     #f6f9fd;
+  --tx2:    #c8d1de;
+  --tx3:    #8a93a4;
   --acbg:   #2e1500;
   --pinbg:  #2a2000;
   --redbg:  #2a0f0f;
   --info:   #7dd3fc;
   --infobg: #0c2330;
-  --ok:     #34d399;
+  --ok:     #4ade9f;
   --okbg:   #0d2320;
   --pre-bg: #06080d;
   --code-c: #7dd3b0;
@@ -170,8 +170,10 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .chat-item.pinned .ca-btn.pin-btn{color:var(--pin)}
 
 /* Sidebar bottom */
-.sb-bot{border-top:1px solid var(--bdr);padding:10px}
-.sb-btn{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);cursor:pointer;color:var(--tx2);font-size:13px;transition:all .15s;width:100%;background:none;border:none;font-family:var(--sans);text-align:left}
+.sb-bot{border-top:1px solid var(--bdr);padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sb-btn{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 10px;border-radius:var(--r);cursor:pointer;color:var(--tx2);font-size:13px;transition:all .15s;width:100%;background:var(--bg3);border:1px solid var(--bdr2);font-family:var(--sans);text-align:center}
+.sb-btn:hover{background:var(--bg4);color:var(--tx);border-color:var(--ac)}
+.sb-btn-lbl{line-height:1}
 .sb-btn:hover{background:var(--bg3);color:var(--tx)}
 
 /* ---- Main ---- */
@@ -183,8 +185,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .tb-brand-icon{width:32px;height:32px;background:var(--ac);border-radius:8px;display:flex;align-items:center;justify-content:center;padding:3px;flex-shrink:0}
 .tb-brand-icon svg{width:100%;height:100%}
 .tb-brand-text{display:flex;flex-direction:column;gap:1px}
-.tb-brand-name{font-size:13px;font-weight:600;color:var(--tx);line-height:1.3;letter-spacing:-.3px;font-family:var(--display)}
-.tb-brand-tag{font-weight:400;color:var(--tx2);font-size:12px}
+.tb-brand-name{font-size:19px;font-weight:600;color:var(--tx);line-height:1.2;letter-spacing:-.3px;font-family:var(--display)}
+.tb-brand-tag{font-weight:400;color:var(--tx2);font-size:19px}
 .tb-brand-sub{font-size:10px;color:var(--tx3);font-family:var(--mono);line-height:1.3}
 .tb-right{display:flex;align-items:center;gap:7px;flex-shrink:0;overflow:visible;position:relative}
 .tb-btn{padding:5px 11px;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--tx2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:var(--sans);white-space:nowrap}
@@ -255,15 +257,15 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .hint-card-sub{font-size:11px;color:var(--tx3);line-height:1.3}
 
 /* Message groups */
-.msg-group{padding:11px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.msg-group{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)}
 .msg-group:last-child{border-bottom:none}
-.msg-hdr{display:flex;align-items:center;gap:9px;margin-bottom:9px}
-.msg-av{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;font-family:var(--mono)}
+.msg-hdr{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.msg-av{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;font-family:var(--mono)}
 .msg-av.user{background:var(--bg4);border:1px solid var(--bdr2);color:var(--tx2)}
 .msg-av.ai{background:var(--ac);color:#fff}
 .msg-role{font-size:13px;font-weight:500}
 .msg-time{font-size:11px;color:var(--tx3);font-family:var(--mono)}
-.msg-body{font-size:14px;line-height:1.55;color:var(--tx);padding-left:0;white-space:pre-wrap;word-break:break-word}
+.msg-body{font-size:14px;line-height:1.5;color:var(--tx);padding-left:0;white-space:normal;word-break:break-word}
 .msg-body strong{font-weight:600}
 .msg-body em{font-style:italic;color:var(--tx2)}
 .msg-body code{background:var(--bg4);border:1px solid var(--bdr2);border-radius:4px;padding:1px 6px;font-family:var(--mono);font-size:12px;color:#7dd3b0}
@@ -286,9 +288,9 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .msg-body th,.msg-body td{border:1px solid var(--bdr2);padding:6px 10px;text-align:left}
 .msg-body th{background:var(--bg3);font-weight:600}
 .msg-body del{color:var(--tx3);text-decoration:line-through}
-.msg-acts{display:flex;gap:3px;margin-top:8px;padding-left:0;opacity:0;transition:opacity .12s}
+.msg-acts{display:flex;gap:3px;margin-top:0;margin-left:-6px;padding-left:0;opacity:0;transition:opacity .12s}
 .msg-group:hover .msg-acts{opacity:1}
-.mact{font-size:11px;font-family:var(--mono);color:var(--tx3);background:none;border:none;cursor:pointer;padding:3px 7px;border-radius:4px;transition:all .12s}
+.mact{font-size:11px;font-family:var(--mono);color:var(--tx3);background:none;border:none;cursor:pointer;padding:1px 6px;border-radius:4px;transition:all .12s}
 .mact:hover{background:var(--bg3);color:var(--tx)}
 
 /* Attached file chips shown on user messages */
@@ -304,7 +306,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .rag-tag{font-size:10px;font-family:var(--mono);background:var(--infobg);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);color:var(--info);padding:2px 8px;border-radius:var(--r-pill)}
 
 /* Typing */
-.typing{display:flex;gap:4px;align-items:center;padding:2px 0}
+.typing{display:flex;gap:4px;align-items:center;padding:10px 0 4px}
 .typing span{width:6px;height:6px;background:var(--ac);border-radius:50%;animation:td .9s infinite;opacity:.5}
 .typing span:nth-child(2){animation-delay:.18s}
 .typing span:nth-child(3){animation-delay:.36s}
@@ -370,9 +372,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sp-box::-webkit-scrollbar-track{background:var(--bg3);border-radius:4px;margin:8px}
 .sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:4px;border:1px solid var(--bg3)}
 .sp-box::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
-/* Soft fade hint at the bottom edge so users see content is cut off */
-#sp::after{content:"";position:fixed;left:50%;transform:translateX(-50%);bottom:max(8vh,40px);width:480px;height:32px;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--bg2));border-radius:0 0 16px 16px;z-index:151}
-#sp.hidden::after{display:none}
+/* (bottom-fade hint removed - tabbed settings fits without scrolling) */
 .sp-title{font-size:17px;font-weight:600;margin-bottom:22px;letter-spacing:-.2px}
 .sp-sec{margin-bottom:22px}
 .sp-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);margin-bottom:10px}
@@ -419,7 +419,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sl input[type=range]::-moz-range-track{background:transparent;height:4px}
 .sl input[type=range]:hover::-webkit-slider-thumb{background:var(--ac2);box-shadow:0 0 0 1px var(--ac2), 0 1px 4px rgba(0,0,0,.4)}
 .sl input[type=range]:hover::-moz-range-thumb{background:var(--ac2)}
-.sp-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+.sp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:6px}
+.ver-alpha{font-size:8px;font-weight:700;letter-spacing:.1em;color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:20px;padding:1px 7px;line-height:1.5}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
 .btn-sv{padding:8px 16px;background:var(--ac);border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:background .12s}
@@ -483,8 +484,8 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 
 
 /* Toast */
-#toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:10px;padding:10px 16px;font-size:13px;color:var(--tx);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:300;opacity:0;transform:translateY(6px);transition:all .18s;pointer-events:none}
-#toast.show{opacity:1;transform:none}
+#toast{position:fixed;bottom:20px;left:50%;background:var(--bg2);border:1px solid var(--bdr2);border-radius:10px;padding:10px 16px;font-size:13px;color:var(--tx);text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:300;opacity:0;transform:translate(-50%,6px);transition:all .18s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)}
 #toast.ok{border-color:rgba(232,97,10,.4);color:var(--ac)}
 #toast.err{border-color:rgba(231,76,60,.4);color:var(--red)}
 #toast.info{border-color:rgba(240,165,0,.3);color:var(--pin)}
@@ -522,7 +523,7 @@ body.sb-collapsed .chat-avatar{display:flex}
 body.sb-collapsed .chat-item.pinned{border-color:var(--pin)}
 body.sb-collapsed .chat-item.pinned .chat-avatar{color:var(--pin)}
 body.sb-collapsed .chat-item.active{border-color:var(--ac)}
-body.sb-collapsed .sb-bot{margin-top:auto;padding:9px 0;display:flex;justify-content:center}
+body.sb-collapsed .sb-bot{margin-top:auto;padding:9px 0;display:flex;flex-direction:column;align-items:center;gap:6px}
 body.sb-collapsed .sb-btn{width:38px;height:38px;padding:0;gap:0;justify-content:center;font-size:0}
 body.sb-collapsed .sb-btn svg{width:16px;height:16px}
 body.sb-collapsed .app-footer{justify-content:center;padding:10px 0}
@@ -540,6 +541,49 @@ select.model-sel{width:100%;background:var(--bg3);border:1px solid var(--bdr);bo
 select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sp-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:5}
 .sp-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
+.sp-tabs{display:flex;gap:2px;border-bottom:1px solid var(--bdr);margin-bottom:18px}
+.sp-tab{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--tx3);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 14px;cursor:pointer;transition:color .12s}
+.sp-tab:hover{color:var(--tx2)}
+.sp-tab.on{color:var(--tx);border-bottom-color:var(--ac)}
+.sp-pane{display:none}
+.sp-pane.on{display:block}
+.seg-cls{display:flex;gap:6px}
+.seg-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;font-size:13px;font-weight:600;padding:8px 6px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx3);cursor:pointer;transition:all .12s;font-family:var(--sans)}
+.seg-code{font-size:13px;font-weight:600}
+.seg-full{font-size:10px;font-weight:400;opacity:.85;line-height:1.2}
+.seg-btn:hover{color:var(--tx2)}
+.seg-btn.on-cce{background:rgba(240,165,0,.16);border-color:rgba(240,165,0,.6);color:#ffc24d}
+.seg-btn.on-rsn{background:rgba(96,165,225,.16);border-color:rgba(96,165,225,.6);color:#a9d2f6}
+/* Light mode: dark text on the tint reads far better than bright amber/blue */
+[data-theme="light"] .seg-btn.on-cce{background:rgba(240,165,0,.20);border-color:rgba(200,130,0,.75);color:#7a4a00}
+[data-theme="light"] .seg-btn.on-rsn{background:rgba(56,130,200,.16);border-color:rgba(40,110,190,.7);color:#1b4d80}
+.seg-btn.on-cce .seg-full,.seg-btn.on-rsn .seg-full{opacity:1}
+.sp-contrib{font-size:11px;color:var(--tx3);margin-right:auto}
+.upd-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:13px}
+.upd-top{display:flex;align-items:center;justify-content:space-between}
+.upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
+.upd-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;margin-right:6px}
+.upd-pill.ok{background:rgba(52,211,153,.15);color:var(--ok)}
+.upd-pill.warn{background:rgba(240,165,0,.15);color:var(--pin)}
+.upd-pill.err{background:rgba(231,76,60,.15);color:var(--red)}
+.upd-pill.neutral{background:var(--bg4);color:var(--tx3)}
+.upd-pill.alpha{background:rgba(231,76,60,.15);color:var(--red)}
+.upd-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.upd-build{font-family:var(--mono);font-size:11px;color:var(--tx3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
+.upd-metric{background:var(--bg2);border-radius:9px;padding:10px 12px}
+.upd-mk{font-size:11px;color:var(--tx3);margin-bottom:2px}
+.upd-mv{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--tx)}
+.upd-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px solid var(--bdr2)}
+.upd-auto{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--tx2);cursor:pointer;user-select:none}
+.upd-auto input{display:none}
+.upd-sw{position:relative;width:32px;height:17px;border-radius:10px;background:var(--bdr2);flex:0 0 auto;transition:background .15s}
+.upd-auto input:checked+.upd-sw{background:var(--ac)}
+.upd-sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s}
+.upd-auto input:checked+.upd-sw::after{left:17px}
+.upd-btn{font-size:12px;font-weight:500;padding:7px 14px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--tx2);cursor:pointer;transition:all .12s}
+.upd-btn:hover{background:var(--bg4);color:var(--tx)}
+.upd-btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
 </style>
 </head>
 <body>
@@ -557,6 +601,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <div class="modal-sub">// GovTech Models API - v0.67d Alpha</div>
     <div class="field"><label>GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
+    <div class="field"><label>Data classification</label>
+      <div class="seg-cls" id="cls-seg-cfg"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','cfg')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','cfg')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
     <div class="field"><label>Model Name</label>
       <select id="cfg-mdl-sel" class="model-sel"></select><input type="text" id="cfg-mdl" value="cce.claude-opus-4-6" placeholder="custom model id"></div>
     <button class="btn-p" id="connect-btn" onclick="connect()">Connect</button>
@@ -570,17 +616,17 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
   <div class="sp-box">
     <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
-    <div class="sp-sec">
+    <div class="sp-tabs"><button type="button" class="sp-tab on" data-tab="models" onclick="spTab('models')">Models</button><button type="button" class="sp-tab" data-tab="settings" onclick="spTab('settings')">Settings</button></div>
+    <div class="sp-pane on" data-pane="models"><div class="sp-sec">
       <div class="sp-lbl">Connection</div>
+      <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
       <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
     <div class="sp-sec">
-      <div class="sp-lbl">Defaults</div>
-      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
-      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
-        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
-      </div>
+      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
+      <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
+      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
@@ -593,13 +639,16 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         </div>
       </div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
-      <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
-      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Connection</div>
+    <div class="sp-pane" data-pane="settings"><div class="sp-sec">
+      <div class="sp-lbl">Defaults</div>
+      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
+      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
+        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
+      </div>
+    </div>
+    <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
+      <div class="sp-lbl">Account</div>
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
       </div>
@@ -608,23 +657,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         Disconnect
       </button>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Updates</div>
-      <div id="sp-update-body" style="font-size:12px;color:var(--tx2);line-height:1.7">Not checked yet.</div>
-      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn-s" onclick="checkForUpdate(true)">Check now</button>
-        <button class="btn-s" id="sp-update-btn" onclick="openUpdateDialog()" style="display:none;border-color:rgba(232,97,10,.4);color:var(--ac)">Update…</button>
-        <label style="font-size:11px;color:var(--tx3);display:inline-flex;align-items:center;gap:5px;margin-left:auto"><input type="checkbox" id="upd-auto" checked onchange="setUpdateAuto(this.checked)">check on launch</label>
-      </div>
-    </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Contributors</div>
-      <div style="font-size:12px;color:var(--tx2);line-height:1.8">
-        <div>Melvin Yung &nbsp;<span style="color:var(--tx3);font-family:var(--mono);font-size:11px">CSA / Regulations</span></div>
-        <div>Ko Zheng Teng &nbsp;<span style="color:var(--tx3);font-family:var(--mono);font-size:11px">CSA / ASG</span></div>
-      </div>
     </div>
     <div class="sp-foot">
+      <div class="sp-contrib">Contributors &middot; Melvin Yung &middot; Ko Zheng Teng</div>
       <button class="btn-s" onclick="closeSP()">Cancel</button>
       <button class="btn-sv" onclick="saveSP()">Save</button>
     </div>
@@ -676,7 +711,6 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 <div id="drop-overlay"><div class="drop-msg">Drop files to attach</div></div>
 <div id="connect-banner" class="hidden">
   <div class="cb-inner">
-    <div class="cb-icon" id="cb-icon"></div>
     <div class="cb-text">
       <div class="cb-title">Not connected</div>
       <div class="cb-sub">Get your API key from <a href="https://platform.ai.tech.gov.sg" target="_blank" style="color:var(--ac);text-decoration:none">platform.ai.tech.gov.sg</a> to start chatting</div>
@@ -696,13 +730,12 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
   <div class="chat-list" id="chat-list"></div>
   <div class="sb-skills" id="sb-skills"></div>
   <div class="sb-bot">
-    <button class="sb-btn" onclick="openSP()" data-tip-right="Settings">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg>
-      Settings
-    </button>
-
+    <button class="sb-btn" onclick="openSP()" data-tip="Settings">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg><span class="sb-btn-lbl">Settings</span></button>
+    <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span></span></div>
 </div>
 
 <!-- Main -->
@@ -727,7 +760,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <svg id="icon-moon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z"/></svg>
         <svg id="icon-sun" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:none"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.061-1.06a.75.75 0 010-1.061zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM0 8a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H.75A.75.75 0 010 8zm13 0a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 0113 8zM2.343 13.657a.75.75 0 010-1.06l1.061-1.061a.75.75 0 011.06 1.06l-1.06 1.061a.75.75 0 01-1.061 0zm9.193-9.193a.75.75 0 010-1.06l1.06-1.061a.75.75 0 111.061 1.06l-1.06 1.061a.75.75 0 01-1.061 0z"/></svg>
       </button>
-      <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom-left="Upload files for RAG — requires an embedding API key">Embed (0)</button>
+      <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom="Upload files for RAG — requires an embedding API key">Embed (0)</button>
     </div>
   </div>
 
