@@ -138,11 +138,15 @@ Refactor (maintainability / extensibility)
   (embed step mocked); floating "Reset demo" button. Nothing touches disk — persist
   is a no-op and the embed API is mocked, so lcl_data.json / embed_cache.bin are
   never written under #demo.
-- #demo skills now carry seeded bodies so Edit opens the content offline; the
-  skills manager got an X-close + consistent .skill-row styling; mutating actions
-  (save/rename/delete/upload) are no-ops with a toast under #demo.
+- #demo skills fully work in-memory: seeded with bodies, and Edit / Save /
+  Rename / Delete / New / Upload all operate on the in-session skill list (no
+  server, no disk). The manager got an X-close + consistent .skill-row styling.
 - #demo limits: file uploads + embeds capped at 1 MB/file and 3 files (docs or
-  attachments); skills are read-only (capped at the seeded set).
+  attachments).
+- #demo content mirrors the real code exactly — error boxes (502/429/401) use
+  the same titles/body text/timestamps the live handlers emit (via appendTyping/
+  appendMsg), RAG tags show doc names (not invented chunk ids), and the embed
+  toast matches. No fabricated UI strings.
 
 NOTE: this batch currently lives on the `alpha` branch only. Promote to stable by
 pushing the build to `main` and refreshing the v0.67d release.
