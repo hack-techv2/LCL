@@ -81,6 +81,7 @@
 <!-- Skills manager (independent of Settings; works without connection) -->
 <div id="skills-mgr" class="hidden" onclick="if(event.target===this)closeSkillsManager()">
   <div class="sp-box">
+    <button class="sp-close" onclick="closeSkillsManager()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Manage Skills</div>
     <div class="sp-sec">
       <div id="sp-skills-list" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;border:1px solid var(--bdr);border-radius:6px;padding:6px;margin-bottom:8px"></div>
