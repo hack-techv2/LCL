@@ -96,9 +96,12 @@ function maybeDemo() {
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
 
   skillsCache = [
-    { id: 'pentest-report', title: 'Pentest Report Writer', bytes: 1840, mtime: Date.now() },
-    { id: 'secure-code-review', title: 'Secure Code Reviewer', bytes: 2312, mtime: Date.now() },
-    { id: 'exec-summary', title: 'Executive Summary', bytes: 964, mtime: Date.now() }
+    { id: 'pentest-report', title: 'Pentest Report Writer', bytes: 1840, mtime: Date.now(),
+      body: '# Pentest Report Writer\n\nYou write clear penetration-test reports. For each finding include: title, severity (CVSS), affected asset, description, evidence, and remediation. Keep an executive summary at the top in plain language.' },
+    { id: 'secure-code-review', title: 'Secure Code Reviewer', bytes: 2312, mtime: Date.now(),
+      body: '# Secure Code Reviewer\n\nReview code for security issues (injection, authn/z, secrets, unsafe deserialisation, SSRF). Cite the line, explain the risk, and suggest a concrete fix. Flag false positives honestly.' },
+    { id: 'exec-summary', title: 'Executive Summary', bytes: 964, mtime: Date.now(),
+      body: '# Executive Summary\n\nSummarise technical content for a non-technical executive in <= 5 bullet points: what, impact, risk, recommendation, next step. No jargon.' }
   ]
 
   const now = Date.now(), hr = 3600000, day = 86400000
@@ -204,5 +207,38 @@ function demoSend(text, input) {
     chat.messages.push({ role: 'assistant', content: reply, ts: Date.now() })
     appendMsg('ai', reply, null, null, [])
   }, 600)
+}
+
+// Shared guard for demo: blocks server-mutating skill actions (save/rename/
+// delete/upload) with a friendly toast so nothing hits disk under #demo.
+function demoBlock() {
+  if (typeof demoOn === 'function' && demoOn()) {
+    if (typeof toast === 'function') toast('Disabled in #demo', 'info')
+    return true
+  }
+  return false
+}
+
+// Demo limits — keep the in-memory demo lightweight. Files (embed docs +
+// per-message attachments) are capped by size AND count; skills are read-only
+// in demo (creation/upload blocked above), so they're capped at the seeded set.
+const DEMO_MAX_FILE_BYTES = 1024 * 1024   // 1 MB per file
+const DEMO_MAX_DOCS = 3                    // max embedded docs per chat
+const DEMO_MAX_ATTACH = 3                  // max per-message attachments
+function demoCapFiles(files, target) {
+  const okSize = files.filter(f => {
+    if (f.size > DEMO_MAX_FILE_BYTES) {
+      if (typeof toast === 'function') toast(f.name + ' skipped — demo limit is 1 MB per file', 'err')
+      return false
+    }
+    return true
+  })
+  const cur = (target === 'docs') ? ((curChat() && curChat().docs || []).length) : (attachments.length)
+  const cap = (target === 'docs') ? DEMO_MAX_DOCS : DEMO_MAX_ATTACH
+  const room = Math.max(0, cap - cur)
+  if (okSize.length > room && typeof toast === 'function') {
+    toast('Demo limit: max ' + cap + (target === 'docs' ? ' embedded files' : ' attachments'), 'info')
+  }
+  return okSize.slice(0, room)
 }
 
