@@ -154,6 +154,9 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 .chat-avatar{display:none;align-items:center;justify-content:center;width:100%;height:100%;font-size:13px;font-weight:600;color:var(--tx2);font-family:var(--display)}
 body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .chat-title{font-size:13px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.chat-title-inner{display:inline-block;will-change:transform}
+@keyframes lcl-marq{0%,8%{transform:translateX(0)}48%,58%{transform:translateX(var(--mq,0))}96%,100%{transform:translateX(0)}}
+.chat-title-inner.mq{animation:lcl-marq var(--mqd,5s) linear infinite}
 .chat-item.active .chat-title{color:var(--tx)}
 .chat-meta{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:1px}
 
@@ -459,6 +462,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .footer-name{font-size:11px;font-weight:600;color:var(--tx2);line-height:1.3}
 .footer-meta{font-size:10px;color:var(--tx3);font-family:var(--mono);line-height:1.3}
 .footer-ver{font-size:9px;font-family:var(--mono);color:var(--ac);background:var(--acbg);border:1px solid rgba(232,97,10,.25);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap}
+.footer-upd{font-size:10px;font-family:var(--mono);color:var(--ok);background:var(--okbg);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);border-radius:4px;padding:1px 6px;flex-shrink:0;cursor:pointer;white-space:nowrap;line-height:1}
+body.sb-collapsed .footer-upd{display:none !important}
 
 
 /* Connect banner - shown when not authenticated */
@@ -532,6 +537,10 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
    left edge so it extends rightward into #main, never clipped over the sidebar */
 .sb-toggle[data-tip-bottom]:hover::after{left:0;right:auto;transform:none}
 .sb-toggle[data-tip-bottom]:hover::before{left:10px;right:auto;transform:none}
+select.model-sel{width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer;margin-bottom:6px}
+select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+.sp-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:5}
+.sp-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
 </style>
 </head>
 <body>
@@ -550,7 +559,7 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
     <div class="field"><label>GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
     <div class="field"><label>Model Name</label>
-      <input type="text" id="cfg-mdl" value="cce.claude-opus-4-6"></div>
+      <select id="cfg-mdl-sel" class="model-sel"></select><input type="text" id="cfg-mdl" value="cce.claude-opus-4-6" placeholder="custom model id"></div>
     <button class="btn-p" id="connect-btn" onclick="connect()">Connect</button>
     <div class="modal-connect-hint">Your API key is stored locally in this browser session only.<br>No data leaves your machine except API calls to api.ai.tech.gov.sg.</div>
     <div class="modal-err" id="modal-err"></div>
@@ -560,11 +569,12 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
 <!-- Settings panel -->
 <div id="sp" class="hidden">
   <div class="sp-box">
+    <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
     <div class="sp-sec">
       <div class="sp-lbl">Connection</div>
       <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
-      <div class="sf"><label>Model Name</label><input type="text" id="s-mdl"></div>
+      <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">Defaults</div>
@@ -587,7 +597,7 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
     <div class="sp-sec">
       <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
-      <div class="sf"><label>Embed Model</label><input type="text" id="s-embm"></div>
+      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">Connection</div>
@@ -598,6 +608,15 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
+    </div>
+    <div class="sp-sec">
+      <div class="sp-lbl">Updates</div>
+      <div id="sp-update-body" style="font-size:12px;color:var(--tx2);line-height:1.7">Not checked yet.</div>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn-s" onclick="checkForUpdate(true)">Check now</button>
+        <button class="btn-s" id="sp-update-btn" onclick="openUpdateDialog()" style="display:none;border-color:rgba(232,97,10,.4);color:var(--ac)">Update…</button>
+        <label style="font-size:11px;color:var(--tx3);display:inline-flex;align-items:center;gap:5px;margin-left:auto"><input type="checkbox" id="upd-auto" checked onchange="setUpdateAuto(this.checked)">check on launch</label>
+      </div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">Contributors</div>
@@ -679,12 +698,12 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
   <div class="sb-skills" id="sb-skills"></div>
   <div class="sb-bot">
     <button class="sb-btn" onclick="openSP()" data-tip-right="Settings">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path d="M8 1a.75.75 0 01.75.75v1.096a5.5 5.5 0 012.89 1.197l.775-.775a.75.75 0 111.06 1.06l-.774.775A5.5 5.5 0 0114.154 7.25H15.25a.75.75 0 010 1.5h-1.096a5.5 5.5 0 01-1.197 2.89l.775.775a.75.75 0 11-1.06 1.06l-.775-.774A5.5 5.5 0 018.75 14.154V15.25a.75.75 0 01-1.5 0v-1.096a5.5 5.5 0 01-2.89-1.197l-.775.775a.75.75 0 01-1.06-1.06l.774-.775A5.5 5.5 0 011.846 8.75H.75a.75.75 0 010-1.5h1.096a5.5 5.5 0 011.197-2.89l-.775-.775a.75.75 0 011.06-1.06l.775.774A5.5 5.5 0 017.25 1.846V.75A.75.75 0 018 1z"/></svg>
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg>
       Settings
     </button>
 
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span></div>
 </div>
 
 <!-- Main -->
@@ -793,6 +812,80 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
 </div>
 
 <script>
+
+// SECTION: 05-models.js
+// =============================================================================
+// Model catalogue — drives the Settings / Connect dropdowns.
+// Source: GovTech PlatformAI Models page. A "Custom…" option always remains so
+// any model not listed here can still be entered by hand.
+// =============================================================================
+const MODEL_GROUPS = [
+  { label: 'Claude (Anthropic)', ids: [
+    'cce.claude-opus-4-6','cce.claude-sonnet-4-6','cce.claude-opus-4-5','cce.claude-sonnet-4-5','cce.claude-3-5-sonnet',
+    'rsn.claude-opus-4-8','rsn.claude-opus-4-7','rsn.claude-opus-4-6','rsn.claude-opus-4-5','rsn.claude-opus-4-1',
+    'rsn.claude-sonnet-4-6','rsn.claude-sonnet-4-5','rsn.claude-sonnet-4-0','rsn.claude-haiku-4-5',
+    'rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-sonnet-4-6','rsn.vertex_ai.claude-sonnet-4-5',
+    'azure.claude-opus-4-8','azure.claude-opus-4-7','azure.claude-opus-4-6','azure.claude-opus-4-5',
+    'azure.claude-sonnet-4-6','azure.claude-sonnet-4-5','azure.claude-haiku-4-5',
+    'bedrock.claude-opus-4-8','bedrock.claude-opus-4-7','bedrock.claude-opus-4-6','bedrock.claude-opus-4-5',
+    'bedrock.claude-sonnet-4-6','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-0','bedrock.claude-haiku-4-5','bedrock.claude-3-5-sonnet',
+    'vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-6','vertex_ai.claude-opus-4-5','vertex_ai.claude-opus-4-1',
+    'vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-4-5','vertex_ai.claude-haiku-4-5'
+  ] },
+  { label: 'OpenAI', ids: [
+    'gpt-5.5','gpt-5.4-pro','gpt-5.4','gpt-5.3-codex','gpt-5.2-chat','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano',
+    'gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','gpt-4o','gpt-4o-pt','gpt-4o-mini','o3','o3-mini','o4-mini'
+  ] },
+  { label: 'Google Gemini', ids: [
+    'gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-3.1-flash-lite-preview','gemini-3-flash-preview',
+    'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-pt','gemini-2.5-flash-lite'
+  ] },
+]
+
+const EMBED_GROUPS = [
+  { label: 'Embedding models', ids: [
+    'cohere.embed-english-v3','cohere.embed-multilingual-v3','cohere.embed-v4:0',
+    'text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002',
+    'gemini-embedding-001'
+  ] },
+]
+
+// Populate a <select> from grouped model ids; selects `current` if present.
+// Always appends a "Custom…" option. Returns true if current matched a listed id.
+function fillModelSelect(sel, groups, current) {
+  sel.innerHTML = ''
+  let found = false
+  for (const g of groups) {
+    const og = document.createElement('optgroup'); og.label = g.label
+    for (const id of g.ids) {
+      const o = document.createElement('option'); o.value = id; o.textContent = id
+      if (id === current) { o.selected = true; found = true }
+      og.appendChild(o)
+    }
+    sel.appendChild(og)
+  }
+  const c = document.createElement('option')
+  c.value = '__custom__'
+  c.textContent = (!found && current) ? ('Custom: ' + current) : 'Custom…'
+  if (!found) c.selected = true
+  sel.appendChild(c)
+  return found
+}
+
+// Wire a model <select id="<inputId>-sel"> to its hidden text <input id="<inputId>">.
+// The input still holds the value (so existing save/connect logic is unchanged);
+// the select writes into it, and "Custom…" reveals the input for free-text entry.
+function wireModelField(inputId, groups) {
+  const input = document.getElementById(inputId)
+  const sel = document.getElementById(inputId + '-sel')
+  if (!input || !sel) return
+  const found = fillModelSelect(sel, groups, (input.value || '').trim())
+  input.style.display = found ? 'none' : ''
+  sel.onchange = () => {
+    if (sel.value === '__custom__') { input.style.display = ''; input.focus() }
+    else { input.value = sel.value; input.style.display = 'none' }
+  }
+}
 
 // SECTION: 10-state.js
 // =============================================================================
@@ -1049,6 +1142,13 @@ async function evictDocFromCache(doc) {
   }
 }
 
+// Ask the server to prune vectors no longer referenced by any doc (called after
+// a doc is removed). More thorough than per-hash eviction: clears orphans too.
+async function gcEmbedCache() {
+  try { const r = await fetch('/api/embed-gc', { method: 'POST' }); return await r.json() }
+  catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
+}
+
 // SECTION: 20-auth.js
 // =============================================================================
 // Init & persistence
@@ -1198,6 +1298,7 @@ function connectedLabel() {
 }
 
 function openConnect() {
+  if (typeof wireModelField === 'function') wireModelField('cfg-mdl', MODEL_GROUPS)
   document.getElementById('modal-bd').classList.remove('hidden')
   setTimeout(() => document.getElementById('cfg-key').focus(), 50)
 }
@@ -1321,6 +1422,7 @@ function toggleDP() {
           + '<div style="margin-bottom:4px;font-size:11px;color:var(--tx3)">API Key</div>'
           + '<input type="password" id="embed-key-input" placeholder="Paste embedding API key" style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:6px 9px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px;box-sizing:border-box">'
           + '<div style="margin-bottom:4px;font-size:11px;color:var(--tx3)">Model ID</div>'
+          + '<select id="embed-model-input-sel" class="model-sel" style="margin-bottom:8px"></select>'
           + '<input type="text" id="embed-model-input" placeholder="cohere.embed-english-v3" value="'+(existingModel||'cohere.embed-english-v3')+'" style="width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:4px;padding:6px 9px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px;box-sizing:border-box">'
           + '<div style="display:flex;gap:6px">'
           + '<button onclick="saveEmbedKey()" style="padding:5px 12px;background:var(--ac);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Save</button>'
@@ -1328,6 +1430,7 @@ function toggleDP() {
           + '</div>'
           + '<div id="embed-test-result" style="margin-top:6px;font-size:11px"></div>'
         desc.insertAdjacentElement('afterend', banner)
+        if (typeof wireModelField === 'function') wireModelField('embed-model-input', EMBED_GROUPS)
       }
     }
   }
@@ -1764,9 +1867,9 @@ async function removeDoc(id, event) {
   const idx = chat.docs.findIndex(d => d.id === id)
   if (idx === -1) return
   const doc = chat.docs[idx]
-  try { await evictDocFromCache(doc) } catch (e) { console.warn('[removeDoc]', e.message) }
   chat.docs.splice(idx, 1)
-  await persist()
+  await persist()                                  // server now has the updated doc list
+  try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc]', e.message) }  // prune vectors no longer referenced
   renderDocPanel(); updateDocsBtn()
   toast('Removed ' + doc.name, 'ok')
 }
@@ -2577,6 +2680,30 @@ function renderChatList() {
   }
 
   el.innerHTML = html
+  setupChatTitleScroll()
+}
+
+// Continuously scroll (ping-pong) an overflowing chat name while its row is
+// hovered; names that already fit don't move. Re-bound after every render.
+function setupChatTitleScroll() {
+  document.querySelectorAll('#chat-list .chat-item').forEach(item => {
+    const box = item.querySelector('.chat-title')
+    const inner = item.querySelector('.chat-title-inner')
+    if (!box || !inner) return
+    item.onmouseenter = () => {
+      if (!box.clientWidth) return
+      const over = inner.scrollWidth - box.clientWidth
+      if (over > 4) {
+        inner.style.setProperty('--mq', '-' + over + 'px')
+        inner.style.setProperty('--mqd', Math.max(3, over / 22) + 's')
+        inner.classList.add('mq')
+      }
+    }
+    item.onmouseleave = () => {
+      inner.classList.remove('mq')
+      inner.style.removeProperty('--mq')
+    }
+  })
 }
 
 function chatItemHTML(c) {
@@ -2585,7 +2712,7 @@ function chatItemHTML(c) {
     <div class="chat-item-inner">
       <div class="chat-pin-dot"></div>
       <div class="chat-item-text" title="${esc(c.title)}">
-        <div class="chat-title">${esc(c.title)}</div>
+        <div class="chat-title"><span class="chat-title-inner">${esc(c.title)}</span></div>
         <div class="chat-meta">${c.messages.length} msg${c.messages.length!==1?'s':''} * ${fmtDate(c.updatedAt)}</div>
       </div>
     </div>
@@ -2672,7 +2799,7 @@ function appendMsg(role, text, date, sources, fileNames) {
 function buildMsgEl(role, text, date, sources, fileNames) {
   const isUser = role==='user'
   const time   = (date||new Date()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-  const label  = isUser?'You':(creds?.model?.split('.')?.pop()||'LCL')
+  const label  = isUser?'You':(creds?.model||'LCL')
   const srcHtml= (sources&&sources.length)?`<div class="rag-row">${sources.map(s=>`<span class="rag-tag">${s}</span>`).join('')}</div>`:''
   // strip injected file content blocks from display - only show the user's actual typed text
   let displayText = text
@@ -2755,7 +2882,7 @@ function appendTyping() {
   let inner = document.querySelector('.msgs-inner')
   if (!inner) { inner=document.createElement('div'); inner.className='msgs-inner'; document.getElementById('messages').appendChild(inner) }
   const div=document.createElement('div'); div.className='msg-group'
-  div.innerHTML=`<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">${creds?.model?.split('.')?.pop()||'LCL'}</div></div><div class="msg-body"><div class="typing"><span></span><span></span><span></span></div></div>`
+  div.innerHTML=`<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">${creds?.model||'LCL'}</div></div><div class="msg-body"><div class="typing"><span></span><span></span><span></span></div></div>`
   inner.appendChild(div); document.getElementById('messages').scrollTop=document.getElementById('messages').scrollHeight
   return div
 }
@@ -3020,7 +3147,9 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-tok'))
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
+  if (typeof wireModelField === 'function') { wireModelField('s-mdl', MODEL_GROUPS); wireModelField('s-embm', EMBED_GROUPS) }
   document.getElementById('sp').classList.remove('hidden')
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
 // Skills manager (independent of Settings; accessible without connection)
@@ -3145,6 +3274,18 @@ function cancelNewSkill() {
 function confirmNewSkill() {
   handleNewSkillKey({ key: 'Enter', preventDefault: () => {} })
 }
+
+
+// Esc closes the topmost open overlay (settings / skills / update dialog) so the
+// user doesn't have to scroll to the footer buttons. Tag: lcl-esc-overlays
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return
+  const open = id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden') ? el : null }
+  if (open('skill-edit-bd')) { closeSkillEdit(); return }
+  if (document.getElementById('update-bd')) { closeUpdateDialog(); return }
+  if (open('skills-mgr')) { closeSkillsManager(); return }
+  if (open('sp')) { closeSP(); return }
+})
 
 // SECTION: 82-ui-skills.js
 function handleNewSkillKey(e) {
@@ -3515,6 +3656,118 @@ function initComposerPlaceholder() {
   el.addEventListener('blur', () => { if (!el.value) { ci = 0; erasing = false } })
   setTimeout(tick, 1500)
 }
+
+// SECTION: 95-update.js
+// =============================================================================
+// Auto-update — checks GitHub releases via the local server (server.txt does
+// the network + file work; this is the display + consent layer).
+// =============================================================================
+let lclUpdate = { checked:false, current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null }
+
+function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
+function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
+
+async function checkForUpdate(manual){
+  try{
+    const r = await fetch('/api/update/check')
+    const d = await r.json()
+    lclUpdate = { checked:true, current:d.current||'', latest:d.latest||'', tag:d.tag||'',
+                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null }
+  }catch(e){ lclUpdate = { checked:true, error:e.message } }
+  renderUpdateBadge(); renderUpdateSettings()
+  if (manual){
+    if (lclUpdate.error) toast('Update check failed: '+lclUpdate.error,'err')
+    else if (lclUpdate.newer) toast('Update available: '+lclUpdate.tag,'ok')
+    else toast("You're on the latest version",'ok')
+  }
+}
+
+function renderUpdateBadge(){
+  const el = document.getElementById('footer-upd')
+  if (!el) return
+  if (lclUpdate.newer){ el.style.display='inline-block'; el.setAttribute('data-tip','Update available: '+lclUpdate.tag) }
+  else el.style.display='none'
+}
+
+function renderUpdateSettings(){
+  const auto = document.getElementById('upd-auto')
+  if (auto) auto.checked = updateAutoOn()
+  const body = document.getElementById('sp-update-body')
+  const btn  = document.getElementById('sp-update-btn')
+  if (!body) return
+  if (!lclUpdate.checked){ body.textContent='Not checked yet.'; if(btn)btn.style.display='none'; return }
+  if (lclUpdate.error){
+    body.innerHTML="Couldn't reach GitHub (<span style=\"color:var(--tx3)\">"+esc(lclUpdate.error)+"</span>). Check network access to api.github.com."
+    if(btn)btn.style.display='none'; return
+  }
+  let html = 'Installed: <span style="font-family:var(--mono);color:var(--tx)">v'+esc(lclUpdate.current)+'</span><br>'+
+    'Latest: <span style="font-family:var(--mono);color:'+(lclUpdate.newer?'var(--ok)':'var(--tx)')+'">'+(lclUpdate.latest?('v'+esc(lclUpdate.latest)):'—')+'</span>'
+  if (!lclUpdate.newer) html += '<br><span style="color:var(--tx3)">You are up to date.</span>'
+  body.innerHTML = html
+  if (btn) btn.style.display = lclUpdate.newer ? 'inline-flex' : 'none'
+}
+
+function openUpdateDialog(){
+  if (!lclUpdate.newer){ toast('No update available','info'); return }
+  closeUpdateDialog()
+  const bd = document.createElement('div')
+  bd.id='update-bd'
+  bd.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:250;backdrop-filter:blur(6px)'
+  bd.innerHTML =
+    '<div style="width:440px;max-width:92vw;background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;overflow:hidden;box-shadow:0 30px 80px var(--modal-shadow)">'+
+      '<div style="display:flex;align-items:center;gap:9px;padding:16px 18px;border-bottom:1px solid var(--bdr)">'+
+        '<svg width="18" height="18" viewBox="0 0 16 16" fill="var(--ok)"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 3.5l3.5 3.5h-2V11h-3V7H4L8 3.5z"/></svg>'+
+        '<div style="font-size:15px;font-weight:600;font-family:var(--display)">Update available — '+esc(lclUpdate.tag)+'</div>'+
+      '</div>'+
+      '<div style="padding:14px 18px;max-height:38vh;overflow-y:auto"><div style="font-size:11px;color:var(--tx3);margin-bottom:6px">What is new</div>'+
+        '<div class="msg-body" style="font-size:13px;padding-left:0">'+fmt(lclUpdate.notes || '_No release notes provided._')+'</div></div>'+
+      '<div style="display:flex;align-items:flex-start;gap:7px;padding:0 18px 12px;font-size:11px;color:var(--tx2);line-height:1.5">'+
+        '<span style="color:var(--ok);flex-shrink:0">✓</span>'+
+        '<span>Each file is downloaded to a temp copy and checksum-verified before it replaces anything. The app updates on refresh; the server needs a Node restart.</span></div>'+
+      '<div id="update-result" style="padding:0 18px;font-size:12px"></div>'+
+      '<div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--bdr);background:var(--bg3)">'+
+        '<button class="btn-s" onclick="closeUpdateDialog()">Later</button>'+
+        '<button class="btn-sv" id="update-apply-btn" onclick="applyUpdate()">Download &amp; apply</button>'+
+      '</div></div>'
+  document.body.appendChild(bd)
+  bd.addEventListener('click', e=>{ if(e.target===bd) closeUpdateDialog() })
+}
+
+function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
+
+async function applyUpdate(){
+  const btn = document.getElementById('update-apply-btn')
+  const out = document.getElementById('update-result')
+  if (btn){ btn.disabled=true; btn.textContent='Working…' }
+  if (out) out.innerHTML='<div style="color:var(--tx3);padding:6px 0">Downloading and verifying…</div>'
+  try{
+    const r = await fetch('/api/update/apply',{ method:'POST' })
+    const d = await r.json()
+    if (d.error){
+      if (out) out.innerHTML='<div style="color:var(--red);padding:6px 0">'+esc(d.error)+'</div>'
+      if (btn){ btn.disabled=false; btn.textContent='Retry' }
+      return
+    }
+    let msg='<div style="color:var(--ok);padding:6px 0">Updated to '+esc(d.tag)+'.'
+    if (d.applied && d.applied.length) msg+=' ('+esc(d.applied.join(', '))+')'
+    if (d.unchanged && d.unchanged.length && !(d.applied&&d.applied.length)) msg+=' Already current.'
+    msg+='</div>'
+    if (d.restartNeeded) msg+='<div style="color:var(--pin);padding:2px 0">Restart Node (Ctrl+C, re-run) to load the new server.</div>'
+    if (out) out.innerHTML=msg
+    if (btn) btn.style.display='none'
+    if (d.refreshNeeded){
+      const rb=document.createElement('button'); rb.className='btn-sv'; rb.style.marginTop='6px'
+      rb.textContent='Reload now'; rb.onclick=()=>location.reload()
+      if (out) out.appendChild(rb)
+    }
+    lclUpdate.newer=false; renderUpdateBadge(); renderUpdateSettings()
+  }catch(e){
+    if (out) out.innerHTML='<div style="color:var(--red);padding:6px 0">'+esc(e.message)+'</div>'
+    if (btn){ btn.disabled=false; btn.textContent='Retry' }
+  }
+}
+
+function initUpdates(){ if (updateAutoOn()) checkForUpdate(false) }
 // Boot
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
@@ -3526,6 +3779,7 @@ initDragDrop()
 initEgg()
 initComposerPlaceholder()
 init()
+initUpdates()
 </script>
 </body>
 </html>
