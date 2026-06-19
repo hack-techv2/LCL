@@ -39,6 +39,8 @@ async function loadData() {
 }
 
 async function persist() {
+  // Demo mode (#demo) seeds throwaway chats — never write them to lcl_data.json.
+  if (typeof demoOn === 'function' && demoOn()) return
   try {
     await fetch('/api/data', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(D) })
   } catch {}
