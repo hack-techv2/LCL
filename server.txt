@@ -66,12 +66,29 @@ function chainIsZscaler(socket) {
   } catch {}
   return false
 }
+// True if a socket's cert is untrusted AND not a Zscaler-intercepted chain.
+// Lets PlatformAI calls succeed behind Zscaler while still rejecting genuinely
+// untrusted certs. Used by the main proxy request handlers below.
+function tlsGateFails(sock) {
+  if (!sock || sock.authorized !== false) return false
+  const ae = String(sock.authorizationError || '')
+  return !(_ISSUER_ERRS.test(ae) && chainIsZscaler(sock))
+}
+
 function caStatus() { return 'Zscaler-intercepted certs auto-trusted; others verified normally' }
 function friendlyUpdateErr(e) {
   const code = (e && (e.code || '')) || ''
   if (/UNABLE_TO_GET_ISSUER_CERT_LOCALLY|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_VERIFY_LEAF_SIGNATURE|^CERT_|TLS certificate not trusted/.test(code) || /TLS certificate not trusted/.test(e.message || ''))
     return 'TLS certificate not trusted — the GitHub connection was intercepted by a certificate that is not from Zscaler (or otherwise failed verification). [' + (code || 'TLS') + ']'
   return e.message
+}
+// Log the full update error to the Node console; return only a short hint
+// (the HTTP code, if any) to the front end so the UI stays terse.
+function updateClientErr(ctx, e) {
+  const full = friendlyUpdateErr(e)
+  console.warn('[update] ' + ctx + ': ' + full)
+  const m = String(full).match(/HTTP (\d{3})/)
+  return m ? ('HTTP ' + m[1]) : 'update check failed'
 }
 const HTML_FILE = path.join(LCL_DIR, 'index.html')
 const DATA_FILE = path.join(LCL_DIR, 'lcl_data.json')
@@ -342,6 +359,7 @@ function setLastRateLimit(apiKey, rl) {
 // Keep-alive pool so we don't pay a fresh TLS handshake on every call.
 // Fresh sockets into a warming upstream are the common cause of 502/empty body.
 const upstreamAgent = new https.Agent({
+  rejectUnauthorized: false,   // handshake proceeds; trust is verified in tlsGateFails (allows Zscaler interception)
   keepAlive: true,
   keepAliveMsecs: 30_000,
   maxSockets: 8,
@@ -394,6 +412,12 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   }
 
   const req = https.request(opts, upstreamRes => {
+    if (tlsGateFails(upstreamRes.socket)) {
+      const ae = String(upstreamRes.socket.authorizationError || 'TLS not trusted')
+      upstreamRes.resume(); try { upstreamRes.socket.destroy() } catch {}
+      console.log('[api] TLS rejected =', ae)
+      return done(Object.assign(new Error('TLS certificate not trusted: ' + ae), { code: ae }))
+    }
     let body = ''
 
     console.log('[api] response status  =', upstreamRes.statusCode)
@@ -538,7 +562,7 @@ function handleSaveConfig(req, res) {
 // trickle in continuously. Auto-title and any other non-streamed callers
 // still go through the buffered callGccJson path.
 // ---------------------------------------------------------------------------
-function callGccStreaming(pathName, apiKey, payload, res) {
+function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   const bodyStr = JSON.stringify(payload)
   const opts = {
     hostname: API_HOST, port: 443, path: pathName, method: 'POST',
@@ -562,6 +586,14 @@ function callGccStreaming(pathName, apiKey, payload, res) {
   console.log('========================================')
 
   const upReq = https.request(opts, upRes => {
+    if (tlsGateFails(upRes.socket)) {
+      const ae = String(upRes.socket.authorizationError || 'TLS not trusted')
+      upRes.resume(); try { upRes.socket.destroy() } catch {}
+      console.log('[stream] TLS rejected =', ae)
+      if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: 'TLS certificate not trusted (' + ae + ')' }))
+      return
+    }
     console.log('[stream] response status  =', upRes.statusCode)
     const rl = extractRateLimit(upRes.headers)
     if (rl) {
@@ -582,7 +614,7 @@ function callGccStreaming(pathName, apiKey, payload, res) {
         }
         let parsed
         try { parsed = JSON.parse(body) }
-        catch { parsed = { error: body || ('HTTP ' + upRes.statusCode), status: upRes.statusCode } }
+        catch { parsed = { error: { message: 'Upstream returned HTTP ' + upRes.statusCode + ' (non-JSON response)' }, status: upRes.statusCode } }
         if (rl) parsed._rateLimit = rl
         res.end(JSON.stringify(parsed))
       })
@@ -603,10 +635,12 @@ function callGccStreaming(pathName, apiKey, payload, res) {
     })
   })
 
-  // 90s inactivity timeout for the initial connection. With streaming working
-  // this should almost never fire.
-  upReq.setTimeout(90_000, () => {
-    console.log('[stream] inactivity timeout (90s)')
+  // Inactivity timeout (no NEW bytes for this long) escalates per client retry
+  // attempt (10s -> 20s -> 60s), passed in via streamTimeoutMs. The socket timer
+  // resets on every token, so it only fires on a genuine stall. Clamped 5s-120s.
+  const inactivityMs = Math.min(120000, Math.max(5000, Number(timeoutMs) || 60000))
+  upReq.setTimeout(inactivityMs, () => {
+    console.log('[stream] inactivity timeout (' + Math.round(inactivityMs / 1000) + 's)')
     upReq.destroy(new Error('Upstream inactivity timeout'))
   })
 
@@ -656,7 +690,7 @@ function handleChat(req, res) {
 
     // Streaming path for live token-by-token rendering
     if (finalPayload.stream === true) {
-      return callGccStreaming(CHAT_PATH, apiKey, finalPayload, res)
+      return callGccStreaming(CHAT_PATH, apiKey, finalPayload, res, body.streamTimeoutMs)
     }
 
     // Buffered path for short utility calls (auto-title, embed test, etc.)
@@ -1021,6 +1055,9 @@ function handleSaveData(req, res) {
     if (!body.settings && appData.settings) {
       body.settings = appData.settings
     }
+    if (body.updateChannel === undefined && appData.updateChannel !== undefined) {
+      body.updateChannel = appData.updateChannel
+    }
     // Strip full embedding vectors — only embHash is needed on disk
     if (body && body.chats) {
       for (const chat of Object.values(body.chats)) {
@@ -1236,33 +1273,33 @@ async function fetchLatestRelease() {
 function sha256Buf(buf) { return crypto.createHash('sha256').update(buf).digest('hex') }
 
 function handleUpdateCheck(req, res) {
+  if (readChannel() === 'alpha') {
+    alphaStatus()
+      .then(st => json(res, Object.assign({ channel: 'alpha', current: APP_VERSION }, st)))
+      .catch(e => json(res, { channel: 'alpha', current: APP_VERSION, error: updateClientErr('alpha check', e) }))
+    return
+  }
   fetchLatestRelease().then(rel => {
     const latest = (rel.tag || '').replace(/^v/i, '')
     json(res, {
-      current: APP_VERSION, latest, tag: rel.tag,
+      channel: 'stable', current: APP_VERSION, latest, tag: rel.tag,
       newer: latest ? cmpVer(latest, APP_VERSION) > 0 : false,
       notes: rel.notes, html_url: rel.html_url, published_at: rel.published_at
     })
-  }).catch(e => json(res, { current: APP_VERSION, error: friendlyUpdateErr(e) }))
+  }).catch(e => json(res, { channel: 'stable', current: APP_VERSION, error: updateClientErr('stable check', e) }))
 }
 
 async function handleUpdateApply(req, res) {
   try {
-    const rel = await fetchLatestRelease()
-    const tag = rel.tag
-    if (!tag) return json(res, { error: 'No release tag found' }, 400)
-    const rawBase = 'https://raw.githubusercontent.com/' + UPDATE_REPO + '/' + tag
-
-    const csRes = await httpsGetBuf(rawBase + '/checksums.txt')
+    const ch = readChannel()
+    const ref = ch === 'alpha' ? ALPHA_REF : (await fetchLatestRelease()).tag
+    if (!ref) return json(res, { error: 'No release tag found' }, 400)
+    const csRes = await ghFetchFile(ref, 'checksums.txt')
     if (csRes.statusCode !== 200) {
-      return json(res, { error: 'No checksums.txt in release ' + tag + ' - refusing to apply unverified files.' }, 400)
+      console.warn('[update] apply: checksums for ' + ref + ' HTTP ' + csRes.statusCode + (csRes.msg ? ' - ' + csRes.msg : ''))
+      return json(res, { error: 'HTTP ' + csRes.statusCode }, 400)
     }
-    const expected = {}
-    for (const line of csRes.buf.toString('utf8').split(/\r?\n/)) {
-      const m = line.trim().match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/)
-      if (m) expected[m[2].trim()] = m[1].toLowerCase()
-    }
-
+    const expected = parseChecksums(csRes.buf.toString('utf8'))
     // Download + verify ALL changed files first; apply nothing unless every one passes.
     const verified = {}, unchanged = []
     for (const fname of UPDATE_FILES) {
@@ -1272,29 +1309,184 @@ async function handleUpdateApply(req, res) {
       let cur = null
       try { cur = sha256Buf(fs.readFileSync(dest)) } catch {}
       if (cur === want) { unchanged.push(fname); continue }
-      const dl = await httpsGetBuf(rawBase + '/' + fname)
+      const dl = await ghFetchFile(ref, fname)
       if (dl.statusCode !== 200) throw new Error('Download failed for ' + fname + ' (HTTP ' + dl.statusCode + ')')
       if (sha256Buf(dl.buf) !== want) throw new Error('Checksum mismatch for ' + fname + ' - download rejected.')
       verified[fname] = dl.buf
     }
-
+    // Integrity gate is the SHA-256 above; server.txt was already syntax-checked
+    // by build.js before upload, so no redundant runtime check here.
     const applied = []
     for (const fname of Object.keys(verified)) {
       const dest = path.join(LCL_DIR, fname)
       const tmp = dest + '.tmp'
       fs.writeFileSync(tmp, verified[fname])
-      fs.renameSync(tmp, dest)   // atomic swap on the same volume
+      fs.renameSync(tmp, dest)
       applied.push(fname)
     }
-
+    _alphaCache = { ts: 0, data: null }
     json(res, {
-      ok: true, tag, applied, unchanged,
+      ok: true, channel: ch, ref, applied, unchanged,
       restartNeeded: applied.includes('server.txt'),
       refreshNeeded: applied.includes('index.html')
     })
   } catch (e) {
-    json(res, { error: friendlyUpdateErr(e) }, 500)
+    json(res, { error: updateClientErr('apply', e) }, 500)
   }
+}
+// ---------------------------------------------------------------------------
+// Update channels. 'stable' = GitHub releases (version-based, manual apply in
+// the UI). 'alpha' = a tester channel tracking the 'alpha' branch BY FILE HASH,
+// auto-applied at Node startup (both files together) before serving, re-exec'ing
+// into the new server.txt. The choice is persisted server-side so Node knows it
+// at boot. The SHA-256 checksum is the integrity gate; a re-exec guard prevents loops.
+// ---------------------------------------------------------------------------
+const ALPHA_REF = process.env.LCL_ALPHA_REF || 'alpha'
+// Channel is stored in lcl_data.json (single data file) as appData.updateChannel.
+function readChannel() {
+  return (appData && appData.updateChannel === 'alpha') ? 'alpha' : 'stable'
+}
+function writeChannel(c) {
+  if (!appData) return false
+  appData.updateChannel = c === 'alpha' ? 'alpha' : 'stable'
+  saveData(appData)
+  _alphaCache = { ts: 0, data: null }
+  return true
+}
+function parseChecksums(txt) {
+  const m = {}
+  for (const line of txt.split(/\r?\n/)) {
+    const x = line.trim().match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/)
+    if (x) m[x[2].trim()] = x[1].toLowerCase()
+  }
+  return m
+}
+async function ghFetchFile(ref, name) {
+  // Fetch a repo file as base64 JSON from api.github.com. NOT the raw media type
+  // (it 302-redirects to raw.githubusercontent.com, which is 403-blocked on the
+  // gov network), and always fresh (no CDN cache). Unauthenticated API is capped
+  // at 60 req/hr per IP -> a terse 403 on the front end, full detail to console.
+  const url = 'https://api.github.com/repos/' + UPDATE_REPO + '/contents/' + name + '?ref=' + encodeURIComponent(ref)
+  const r = await httpsGetBuf(url, { 'Accept': 'application/vnd.github+json' })
+  if (r.statusCode !== 200) {
+    let msg = ''
+    try { msg = JSON.parse(r.buf.toString('utf8')).message || '' } catch {}
+    return { statusCode: r.statusCode, buf: Buffer.alloc(0), msg }
+  }
+  try {
+    const j = JSON.parse(r.buf.toString('utf8'))
+    if (j && j.encoding === 'base64' && typeof j.content === 'string') return { statusCode: 200, buf: Buffer.from(j.content, 'base64') }
+    return { statusCode: 502, buf: Buffer.alloc(0) }
+  } catch { return { statusCode: 502, buf: Buffer.alloc(0) } }
+}
+let _alphaCache = { ts: 0, data: null }
+async function alphaStatus() {
+  if (_alphaCache.data && Date.now() - _alphaCache.ts < 30000) return _alphaCache.data
+  const cs = await ghFetchFile(ALPHA_REF, 'checksums.txt')
+  if (cs.statusCode !== 200) throw new Error('@' + ALPHA_REF + ' checksums: HTTP ' + cs.statusCode + (cs.msg ? ' - ' + cs.msg : ''))
+  const exp = parseChecksums(cs.buf.toString('utf8'))
+  const changed = []
+  for (const f of UPDATE_FILES) {
+    const want = exp[f]; if (!want) continue
+    let cur = null; try { cur = sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) } catch {}
+    if (cur !== want) changed.push(f)
+  }
+  _alphaCache = { ts: Date.now(), data: { ref: ALPHA_REF, inSync: changed.length === 0, changed, hash: (exp['index.html'] || '').slice(0, 7) } }
+  return _alphaCache.data
+}
+// All update log lines share one aligned label/column for a consistent console.
+function ulog(m) { console.log('  ' + 'Updates'.padEnd(23) + '->  ' + m) }
+async function alphaBootstrap() {
+  ulog('alpha: checking @' + ALPHA_REF + ' ...')
+  const cs = await ghFetchFile(ALPHA_REF, 'checksums.txt')
+  if (cs.statusCode !== 200) { ulog('@' + ALPHA_REF + ' checksums HTTP ' + cs.statusCode + (cs.msg ? ' (' + cs.msg + ')' : '')); return }
+  const exp = parseChecksums(cs.buf.toString('utf8'))
+  // Per-file hash compare — log clearly which file differs.
+  const changed = []
+  for (const f of UPDATE_FILES) {
+    if (!exp[f]) { ulog('no checksum for ' + f + ' on @' + ALPHA_REF + ' - skipping'); return }
+    let cur = null; try { cur = sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) } catch {}
+    const diff = cur !== exp[f]
+    if (diff) changed.push(f)
+    ulog(f.padEnd(11) + (diff ? 'changed    ' + (cur ? cur.slice(0, 7) : 'missing') + ' -> ' + exp[f].slice(0, 7)
+                              : 'up to date ' + exp[f].slice(0, 7)))
+  }
+  if (!changed.length) { ulog('alpha: in sync, nothing to do'); return }
+  // Download + verify ONLY the changed file(s) (the SHA-256 is the integrity gate;
+  // build.js already syntax-checked before upload).
+  const bufs = {}
+  for (const f of changed) {
+    const dl = await ghFetchFile(ALPHA_REF, f)
+    if (dl.statusCode !== 200) throw new Error('download ' + f + ' HTTP ' + dl.statusCode)
+    if (sha256Buf(dl.buf) !== exp[f]) throw new Error('checksum mismatch ' + f)
+    bufs[f] = dl.buf
+    ulog('downloaded ' + f.padEnd(11) + exp[f].slice(0, 7))
+  }
+  for (const f of changed) {
+    const dest = path.join(LCL_DIR, f), tmp = dest + '.tmp'
+    fs.writeFileSync(tmp, bufs[f]); fs.renameSync(tmp, dest)
+  }
+  ulog('applied     ' + changed.join(', '))
+  if (changed.includes('server.txt')) {
+    if (process.env.LCL_ALPHA_BOOTED === '1') { ulog('server.txt changed again - restart Node to load'); return }
+    ulog('re-exec into new server.txt ...')
+    const r = require('child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: Object.assign({}, process.env, { LCL_ALPHA_BOOTED: '1' }) })
+    if (r.error) { ulog('applied; auto-restart blocked (' + r.error.code + ') - restart Node manually'); return }
+    process.exit(r.status == null ? 0 : r.status)
+  }
+  ulog('index.html updated - hard-refresh the browser (no Node restart needed)')
+}
+async function restoreStable() {
+  const rel = await fetchLatestRelease()
+  const tag = rel.tag; if (!tag) throw new Error('no release tag')
+  const cs = await ghFetchFile(tag, 'checksums.txt')
+  if (cs.statusCode !== 200) throw new Error('no checksums in ' + tag)
+  const exp = parseChecksums(cs.buf.toString('utf8'))
+  const bufs = {}
+  for (const f of UPDATE_FILES) {
+    const want = exp[f]; if (!want) throw new Error('no checksum for ' + f)
+    const dl = await ghFetchFile(tag, f)
+    if (dl.statusCode !== 200) throw new Error('download ' + f + ' HTTP ' + dl.statusCode)
+    if (sha256Buf(dl.buf) !== want) throw new Error('checksum mismatch ' + f)
+    bufs[f] = dl.buf
+  }
+  const applied = []
+  for (const f of UPDATE_FILES) {
+    const dest = path.join(LCL_DIR, f), tmp = dest + '.tmp'
+    fs.writeFileSync(tmp, bufs[f]); fs.renameSync(tmp, dest); applied.push(f)
+  }
+  return { tag, applied }
+}
+function handleUpdateChannel(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: 'bad request body' }, 400)
+    const ch = (body && body.channel === 'alpha') ? 'alpha' : 'stable'
+    writeChannel(ch)
+    if (ch === 'stable') {
+      restoreStable().then(r => json(res, { ok: true, channel: 'stable', restored: r, restartNeeded: true }))
+        .catch(e => json(res, { ok: true, channel: 'stable', restoreError: friendlyUpdateErr(e) }))
+      return
+    }
+    json(res, { ok: true, channel: 'alpha', restartNeeded: true })
+  })
+}
+
+function handleUpdateRestart(req, res) {
+  json(res, { ok: true, restarting: true })
+  // Flush the response, then release the port and re-exec into the (already-applied)
+  // server.txt in the same terminal. The browser polls /api/health and reloads.
+  setTimeout(() => {
+    try {
+      ulog('front-end requested restart - re-exec into server.txt ...')
+      try { server.close() } catch {}
+      for (const sock of openSockets) { try { sock.destroy() } catch {} }
+      const r = require('child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: Object.assign({}, process.env, { LCL_ALPHA_BOOTED: '1' }) })
+      if (r.error) { ulog('restart spawn failed (' + r.error.code + ') - restart Node manually'); process.exit(1) }
+      process.exit(r.status == null ? 0 : r.status)
+    } catch (e) {
+      ulog('restart failed (' + (e.code || e.message) + ') - restart Node manually')
+    }
+  }, 350)
 }
 
 const server = http.createServer((req, res) => {
@@ -1335,6 +1527,9 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET'  && p === '/api/update/check') return handleUpdateCheck(req, res)
   if (req.method === 'POST' && p === '/api/update/apply') return handleUpdateApply(req, res)
+  if (req.method === 'POST' && p === '/api/update/channel') return handleUpdateChannel(req, res)
+  if (req.method === 'POST' && p === '/api/update/restart') return handleUpdateRestart(req, res)
+  if (req.method === 'GET'  && p === '/api/health')        return json(res, { ok: true, version: APP_VERSION })
 
   if (req.method === 'GET'  && p === '/skills') return handleSkillsList(req, res)
   if (req.method === 'POST' && p === '/skills/reload') return handleSkillsList(req, res)
@@ -1351,7 +1546,11 @@ const server = http.createServer((req, res) => {
   return serveStatic(req, res)
 })
 
-server.listen(PORT, BIND_HOST, () => {
+// Track live sockets so a restart can free the port promptly.
+const openSockets = new Set()
+server.on('connection', sock => { openSockets.add(sock); sock.on('close', () => openSockets.delete(sock)) })
+
+function startupLog() {
   console.log('')
   console.log('  LCL - Local Comet LLM  ->  http://' + BIND_HOST + ':' + PORT)
   console.log('  Bound interface        ->  ' + BIND_HOST + ' (loopback only - not reachable from LAN)')
@@ -1360,16 +1559,28 @@ server.listen(PORT, BIND_HOST, () => {
   console.log('  API Host               ->  ' + API_HOST)
   console.log('  Version                ->  v' + APP_VERSION)
   console.log('  Updates TLS            ->  ' + caStatus())
-  console.log('  Updates                ->  checking ' + UPDATE_REPO + ' ...')
-  fetchLatestRelease().then(rel => {
-    const latest = (rel.tag || '').replace(/^v/i, '')
-    if (latest && cmpVer(latest, APP_VERSION) > 0)
-      console.log('  Updates                ->  v' + latest + ' available  (open Settings in LCL to update)')
-    else if (latest)
-      console.log('  Updates                ->  up to date (latest v' + latest + ')')
-    else
-      console.log('  Updates                ->  no releases found yet')
-  }).catch(e => console.log('  Updates                ->  check failed (' + e.message + ')'))
+  console.log('  Channel                ->  ' + readChannel())
+  if (readChannel() === 'stable') {
+    console.log('  Updates                ->  checking ' + UPDATE_REPO + ' ...')
+    fetchLatestRelease().then(rel => {
+      const latest = (rel.tag || '').replace(/^v/i, '')
+      if (latest && cmpVer(latest, APP_VERSION) > 0)
+        console.log('  Updates                ->  v' + latest + ' available  (open Settings in LCL to update)')
+      else if (latest)
+        console.log('  Updates                ->  up to date (latest v' + latest + ')')
+      else
+        console.log('  Updates                ->  no releases found yet')
+    }).catch(e => console.log('  Updates                ->  check failed (' + e.message + ')'))
+  }
   console.log('  Node version           ->  ' + process.version)
   console.log('')
-})
+}
+
+async function boot() {
+  if (readChannel() === 'alpha') {
+    try { await alphaBootstrap() }
+    catch (e) { console.log('  Alpha update           ->  skipped (' + e.message + ')') }
+  }
+  server.listen(PORT, BIND_HOST, startupLog)
+}
+boot()
