@@ -1,0 +1,258 @@
+<body>
+
+<!-- Setup modal -->
+<div id="modal-bd" class="hidden">
+  <div class="modal">
+    <button class="modal-close" onclick="closeConnect()" title="Close">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
+    </button>
+    <div class="modal-hd">
+      <div class="modal-logo" style="padding:2px"><svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg></div>
+      <div class="modal-name">Local Comet LLM (LCL)</div>
+    </div>
+    <div class="modal-sub">// GovTech Models API - v0.67d Alpha</div>
+    <div class="field"><label>GovTech Models API Key</label>
+      <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
+    <div class="field"><label>Data classification</label>
+      <div class="seg-cls" id="cls-seg-cfg"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','cfg')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','cfg')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
+    <div class="field"><label>Model Name</label>
+      <select id="cfg-mdl-sel" class="model-sel"></select><input type="text" id="cfg-mdl" value="cce.claude-opus-4-6" placeholder="custom model id"></div>
+    <button class="btn-p" id="connect-btn" onclick="connect()">Connect</button>
+    <div class="modal-connect-hint">Your API key is stored locally in this browser session only.<br>No data leaves your machine except API calls to api.ai.tech.gov.sg.</div>
+    <div class="modal-err" id="modal-err"></div>
+  </div>
+</div>
+
+<!-- Settings panel -->
+<div id="sp" class="hidden">
+  <div class="sp-box">
+    <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
+    <div class="sp-title">Settings</div>
+    <div class="sp-tabs"><button type="button" class="sp-tab on" data-tab="models" onclick="spTab('models')">Models</button><button type="button" class="sp-tab" data-tab="settings" onclick="spTab('settings')">Settings</button></div>
+    <div class="sp-pane on" data-pane="models"><div class="sp-sec">
+      <div class="sp-lbl">Connection</div>
+      <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
+      <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
+      <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
+    </div>
+    <div class="sp-sec">
+      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
+      <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
+      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
+    </div>
+    <div class="sp-sec">
+      <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
+      <div class="sp-grid">
+        <div class="sf"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label>
+          <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="document.getElementById('s-chunk-v').textContent=this.value;refreshSliderFill(this)"><span id="s-chunk-v">800</span></div>
+        </div>
+        <div class="sf"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label>
+          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="document.getElementById('s-topk-v').textContent=this.value;refreshSliderFill(this)"><span id="s-topk-v">5</span></div>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="sp-pane" data-pane="settings"><div class="sp-sec">
+      <div class="sp-lbl">Defaults</div>
+      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
+      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
+        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
+      </div>
+    </div>
+    <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
+      <div class="sp-lbl">Account</div>
+      <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
+        Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
+      </div>
+      <button class="btn-s" onclick="closeSP(); disconnect()" style="width:100%;border-color:rgba(231,76,60,.35);color:var(--red);display:flex;align-items:center;justify-content:center;gap:6px">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
+        Disconnect
+      </button>
+    </div>
+    </div>
+    <div class="sp-foot">
+      <div class="sp-contrib">Contributors &middot; Melvin Yung &middot; Ko Zheng Teng</div>
+      <button class="btn-s" onclick="closeSP()">Cancel</button>
+      <button class="btn-sv" onclick="saveSP()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Skills manager (independent of Settings; works without connection) -->
+<div id="skills-mgr" class="hidden" onclick="if(event.target===this)closeSkillsManager()">
+  <div class="sp-box">
+    <div class="sp-title">Manage Skills</div>
+    <div class="sp-sec">
+      <div id="sp-skills-list" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;border:1px solid var(--bdr);border-radius:6px;padding:6px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:6px">
+        <button class="tb-btn" onclick="newSkill()">+ New skill</button>
+        <button class="tb-btn" onclick="reloadSkillsFromUI()">Reload from disk</button>
+        <label class="tb-btn" style="cursor:pointer">
+          Upload .md
+          <input type="file" id="sp-skill-upload" accept=".md" style="display:none" onchange="uploadSkillFile(this.files)">
+        </label>
+      </div>
+    </div>
+    <div class="sp-foot">
+      <button class="btn-s" onclick="closeSkillsManager()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="skill-edit-bd" class="hidden" onclick="if(event.target===this)closeSkillEdit()">
+  <div style="background:var(--bg2);border:1px solid var(--bdr2);border-radius:12px;width:640px;max-height:80vh;display:flex;flex-direction:column;padding:20px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px">Edit skill: <span id="skill-edit-id" style="font-family:var(--mono);color:var(--ac)"></span></div>
+    <textarea id="skill-edit-body" style="flex:1;min-height:300px;background:var(--pre-bg);color:var(--tx);border:1px solid var(--bdr);border-radius:6px;padding:10px;font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+      <button class="btn-s" onclick="closeSkillEdit()">Cancel</button>
+      <button class="btn-sv" onclick="saveSkillEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Search overlay -->
+<div id="search-bd" class="hidden" onclick="if(event.target===this)closeSearch()">
+  <div class="search-box">
+    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats..." oninput="runSearch()" onkeydown="handleSearchKey(event)">
+    <div id="search-results" class="search-results"></div>
+    <div class="search-foot">Enter to open  *  Esc to close</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="drop-overlay"><div class="drop-msg">Drop files to attach</div></div>
+<div id="connect-banner" class="hidden">
+  <div class="cb-inner">
+    <div class="cb-text">
+      <div class="cb-title">Not connected</div>
+      <div class="cb-sub">Get your API key from <a href="https://platform.ai.tech.gov.sg" target="_blank" style="color:var(--ac);text-decoration:none">platform.ai.tech.gov.sg</a> to start chatting</div>
+    </div>
+    <button class="cb-btn" onclick="openConnect()">Connect</button>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<div id="sb">
+  <div class="sb-header">
+    <button class="new-chat-btn" onclick="newChat()" data-tip-bottom="New chat">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 01.75.75v6.25h6.25a.75.75 0 010 1.5H8.75v6.25a.75.75 0 01-1.5 0V8.75H1a.75.75 0 010-1.5h6.25V1A.75.75 0 018 .25z"/></svg>
+      New chat
+    </button>
+  </div>
+  <div class="chat-list" id="chat-list"></div>
+  <div class="sb-skills" id="sb-skills"></div>
+  <div class="sb-bot">
+    <button class="sb-btn" onclick="openSP()" data-tip="Settings">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg><span class="sb-btn-lbl">Settings</span></button>
+    <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
+  </div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span></span></div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="topbar">
+    <button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()" data-tip-bottom="Collapse sidebar" aria-label="Toggle sidebar">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><line x1="6" y1="2.75" x2="6" y2="13.25"/></svg>
+    </button>
+    <div class="tb-brand">
+      <div class="tb-brand-icon" id="tb-brand-icon"></div>
+      <div class="tb-brand-text">
+        <div class="tb-brand-name">Local Comet LLM <span class="tb-brand-tag">(LCL)</span></div>
+        <div class="tb-brand-sub" id="tb-chat-title"></div>
+      </div>
+    </div>
+    <div class="tb-right" id="tb-right">
+      <span class="health" id="health-pill" data-tip-bottom="Connection health"><span class="dot"></span><span id="health-txt">Idle</span></span>
+      <button class="tb-btn" id="search-btn" onclick="openSearch()" data-tip-bottom="Search all chats">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;margin-right:3px"><path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/></svg>Search
+      </button>
+      <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" data-tip-bottom="Toggle light / dark">
+        <svg id="icon-moon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z"/></svg>
+        <svg id="icon-sun" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:none"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.061-1.06a.75.75 0 010-1.061zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM0 8a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H.75A.75.75 0 010 8zm13 0a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 0113 8zM2.343 13.657a.75.75 0 010-1.06l1.061-1.061a.75.75 0 011.06 1.06l-1.06 1.061a.75.75 0 01-1.061 0zm9.193-9.193a.75.75 0 010-1.06l1.06-1.061a.75.75 0 111.061 1.06l-1.06 1.061a.75.75 0 01-1.061 0z"/></svg>
+      </button>
+      <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom="Upload files for RAG — requires an embedding API key">Embed (0)</button>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;overflow:hidden">
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <div id="messages">
+        <div id="empty">
+          <div class="empty-logo" style="padding:6px"><svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg></div>
+          <div class="empty-title">Local Comet LLM (LCL)</div>
+          <div class="empty-sub">Your AI chatbot, running locally on Comet.<br>Click <strong style="color:var(--ac)">Connect</strong> below to get started.</div>
+          <div class="hint-cards">
+            <button class="hint-card" onclick="useHint('Summarise this document for me: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5A1.5 1.5 0 015.5 0h4.1a1.5 1.5 0 011.06.44l1.9 1.9A1.5 1.5 0 0113 3.41V14.5A1.5 1.5 0 0111.5 16h-6A1.5 1.5 0 014 14.5v-13zM6 6.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h2a.5.5 0 000-1H6z"/></svg><span class="hint-card-title">Summarise a document</span><span class="hint-card-sub">Paste or attach a file</span></button>
+            <button class="hint-card" onclick="useHint('Help me write a pentest report. ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .6l5.4 2.1v4.2c0 3.4-2.3 6.5-5.4 7.4C4.9 13.4 2.6 10.3 2.6 6.9V2.7L8 .6z"/></svg><span class="hint-card-title">Write a pentest report</span><span class="hint-card-sub">Draft findings &amp; structure</span></button>
+            <button class="hint-card" onclick="useHint('Explain this concept to me step by step: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4.5 4.5 0 00-2.7 8.1c.4.3.6.8.6 1.3v.6h4.2v-.6c0-.5.2-1 .6-1.3A4.5 4.5 0 008 1zM6 13h4v.4A1.6 1.6 0 018.4 15h-.8A1.6 1.6 0 016 13.4V13z"/></svg><span class="hint-card-title">Explain a concept</span><span class="hint-card-sub">Step-by-step breakdown</span></button>
+          </div>
+        </div>
+      </div>
+      <!-- File preview panel (used only for files attached to a chat
+           message — embed uploads skip this and confirm directly). -->
+      <div id="file-preview" class="hidden">
+        <div class="fp-header">
+          <div class="fp-header-title">Review text before sending in chat</div>
+          <div class="fp-header-sub">This text will be attached to your next message as context. Edit if needed, then click Confirm.</div>
+        </div>
+        <div class="fp-tabs" id="fp-tabs"></div>
+        <div class="fp-body">
+          <div class="fp-label"><span id="fp-filename"></span><span id="fp-charcount"></span></div>
+          <textarea class="fp-textarea" id="fp-textarea" spellcheck="false"></textarea>
+        </div>
+        <div class="fp-foot">
+          <div class="fp-hint" id="fp-hint"></div>
+          <button class="btn-s" onclick="cancelFilePreview()">Cancel</button>
+          <button class="btn-sv" onclick="confirmFilePreview()">Confirm &amp; attach</button>
+        </div>
+      </div>
+
+      <div id="input-wrap">
+        <div class="input-inner">
+          <div class="skill-chip" id="skill-chip"></div>
+          <div class="chips" id="chips"></div>
+          <div class="input-box">
+            <textarea id="msg-in" placeholder="Message LCL..." rows="1"
+              onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+            <div class="in-row">
+              <label class="ib" data-tip="Attach file to this message">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 1.5A4.5 4.5 0 0113 6v6.5a3 3 0 01-6 0V5a1.5 1.5 0 013 0v7.5a.5.5 0 01-1 0V5a.5.5 0 00-1 0v7.5a2 2 0 004 0V6a3.5 3.5 0 00-7 0v7.5a5 5 0 0010 0V6a6.5 6.5 0 00-13 0v6.5a.5.5 0 01-1 0V6A7.5 7.5 0 018.5 1.5z"/></svg>
+                <input type="file" id="file-in" multiple
+                  accept=".txt,.md,.pdf,.docx,.xlsx,.xls,.csv,.json,.js,.py,.ps1,.sh,.xml,.yaml,.yml,.log"
+                  onchange="handleAttach(this.files)">
+              </label>
+              <button class="ib send" id="send-btn" onclick="send()" disabled data-tip="Send (Enter)">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a.75.75 0 01.75.75v9.69l3.22-3.22a.75.75 0 111.06 1.06l-4.5 4.5a.75.75 0 01-1.06 0l-4.5-4.5a.75.75 0 111.06-1.06L7.25 11.94V2.25A.75.75 0 018 1.5z" transform="rotate(180 8 8)"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="input-hint">Enter to send  *  Shift+Enter for newline</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Doc panel -->
+    <div id="doc-panel" class="hidden">
+      <div class="dp-hd">
+        <div class="dp-title">Chat Embeddings</div>
+        <button class="dp-close" onclick="toggleDP()" title="Close panel">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
+        </button>
+      </div>
+      <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
+        Upload files here to enable RAG. Text is extracted and embedded locally — the AI will search them when you chat.
+      </div>
+      <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
+        + Upload file
+        <input type="file" style="display:none" multiple
+          accept=".txt,.md,.pdf,.docx,.xlsx,.xls,.csv,.json,.js,.py,.ps1,.sh,.xml,.yaml,.yml,.log"
+          onchange="uploadDocs(this.files)">
+      </label>
+      <div class="dp-body" id="dp-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
