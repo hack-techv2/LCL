@@ -34,9 +34,18 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-tok'))
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
-  if (typeof wireModelField === 'function') { wireModelField('s-mdl', MODEL_GROUPS); wireModelField('s-embm', EMBED_GROUPS) }
+  if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
   document.getElementById('sp').classList.remove('hidden')
+  let _spTab = 'models'; try { _spTab = localStorage.getItem('lcl_sp_tab') || 'models' } catch {}
+  if (typeof spTab === 'function') spTab(['models','settings'].includes(_spTab) ? _spTab : 'models')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+}
+
+// Switch the Settings panel tab (Model / Embed / Settings); remembers last choice.
+function spTab(name){
+  document.querySelectorAll('#sp .sp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name))
+  document.querySelectorAll('#sp .sp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name))
+  try { localStorage.setItem('lcl_sp_tab', name) } catch {}
 }
 
 // Skills manager (independent of Settings; accessible without connection)
@@ -59,7 +68,7 @@ function renderSpSkillsList() {
   const root = document.getElementById('sp-skills-list')
   if (!root) return
   if (!skillsCache.length) {
-    root.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:6px">No skills yet. Upload a .md file or drop one into LCL_DIR/skills/.</div>'
+    root.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:6px">No skills yet. Upload a .md file or drop one into LCL/skills.</div>'
     return
   }
   root.innerHTML = skillsCache.map(s => `
