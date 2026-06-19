@@ -29,6 +29,14 @@ function handleNewSkillKey(e) {
 }
 
 async function editSkill(id) {
+  if (typeof demoOn === 'function' && demoOn()) {
+    const sk = skillsCache.find(s => s.id === id) || {}
+    _editingSkillId = id
+    document.getElementById('skill-edit-id').textContent = id
+    document.getElementById('skill-edit-body').value = sk.body || ''
+    document.getElementById('skill-edit-bd').classList.remove('hidden')
+    return
+  }
   try {
     const r = await fetch('/skills/' + encodeURIComponent(id))
     if (!r.ok) throw new Error('HTTP ' + r.status)
@@ -48,6 +56,7 @@ function closeSkillEdit() {
 }
 
 async function saveSkillEdit() {
+  if (demoBlock()) return
   if (!_editingSkillId) return
   const body = document.getElementById('skill-edit-body').value
   try {
@@ -71,6 +80,7 @@ async function saveSkillEdit() {
 }
 
 async function renameSkill(oldId) {
+  if (demoBlock()) return
   const newId = prompt('Rename "' + oldId + '" to (lowercase letters, digits, dashes, max 64):', oldId)
   if (newId == null) return
   const slug = newId.trim()
@@ -108,6 +118,7 @@ async function renameSkill(oldId) {
 }
 
 async function deleteSkillUI(id) {
+  if (demoBlock()) return
   const referencing = Object.values(D.chats).filter(c => c.skillId === id)
   const msg = referencing.length
     ? 'Delete skill "' + id + '"?\n\n' + referencing.length + ' chat(s) currently use it and will be reset to "None".'
