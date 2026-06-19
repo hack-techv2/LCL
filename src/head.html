@@ -153,6 +153,9 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 .chat-avatar{display:none;align-items:center;justify-content:center;width:100%;height:100%;font-size:13px;font-weight:600;color:var(--tx2);font-family:var(--display)}
 body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .chat-title{font-size:13px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.chat-title-inner{display:inline-block;will-change:transform}
+@keyframes lcl-marq{0%,8%{transform:translateX(0)}48%,58%{transform:translateX(var(--mq,0))}96%,100%{transform:translateX(0)}}
+.chat-title-inner.mq{animation:lcl-marq var(--mqd,5s) linear infinite}
 .chat-item.active .chat-title{color:var(--tx)}
 .chat-meta{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:1px}
 
@@ -458,6 +461,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .footer-name{font-size:11px;font-weight:600;color:var(--tx2);line-height:1.3}
 .footer-meta{font-size:10px;color:var(--tx3);font-family:var(--mono);line-height:1.3}
 .footer-ver{font-size:9px;font-family:var(--mono);color:var(--ac);background:var(--acbg);border:1px solid rgba(232,97,10,.25);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap}
+.footer-upd{font-size:10px;font-family:var(--mono);color:var(--ok);background:var(--okbg);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);border-radius:4px;padding:1px 6px;flex-shrink:0;cursor:pointer;white-space:nowrap;line-height:1}
+body.sb-collapsed .footer-upd{display:none !important}
 
 
 /* Connect banner - shown when not authenticated */
@@ -531,6 +536,10 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
    left edge so it extends rightward into #main, never clipped over the sidebar */
 .sb-toggle[data-tip-bottom]:hover::after{left:0;right:auto;transform:none}
 .sb-toggle[data-tip-bottom]:hover::before{left:10px;right:auto;transform:none}
+select.model-sel{width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer;margin-bottom:6px}
+select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+.sp-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:5}
+.sp-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
 </style>
 </head>
 <body>
@@ -549,7 +558,7 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
     <div class="field"><label>GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
     <div class="field"><label>Model Name</label>
-      <input type="text" id="cfg-mdl" value="cce.claude-opus-4-6"></div>
+      <select id="cfg-mdl-sel" class="model-sel"></select><input type="text" id="cfg-mdl" value="cce.claude-opus-4-6" placeholder="custom model id"></div>
     <button class="btn-p" id="connect-btn" onclick="connect()">Connect</button>
     <div class="modal-connect-hint">Your API key is stored locally in this browser session only.<br>No data leaves your machine except API calls to api.ai.tech.gov.sg.</div>
     <div class="modal-err" id="modal-err"></div>
@@ -559,11 +568,12 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
 <!-- Settings panel -->
 <div id="sp" class="hidden">
   <div class="sp-box">
+    <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
     <div class="sp-sec">
       <div class="sp-lbl">Connection</div>
       <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
-      <div class="sf"><label>Model Name</label><input type="text" id="s-mdl"></div>
+      <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">Defaults</div>
@@ -586,7 +596,7 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
     <div class="sp-sec">
       <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
-      <div class="sf"><label>Embed Model</label><input type="text" id="s-embm"></div>
+      <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">Connection</div>
@@ -597,6 +607,15 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
+    </div>
+    <div class="sp-sec">
+      <div class="sp-lbl">Updates</div>
+      <div id="sp-update-body" style="font-size:12px;color:var(--tx2);line-height:1.7">Not checked yet.</div>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn-s" onclick="checkForUpdate(true)">Check now</button>
+        <button class="btn-s" id="sp-update-btn" onclick="openUpdateDialog()" style="display:none;border-color:rgba(232,97,10,.4);color:var(--ac)">Update…</button>
+        <label style="font-size:11px;color:var(--tx3);display:inline-flex;align-items:center;gap:5px;margin-left:auto"><input type="checkbox" id="upd-auto" checked onchange="setUpdateAuto(this.checked)">check on launch</label>
+      </div>
     </div>
     <div class="sp-sec">
       <div class="sp-lbl">Contributors</div>
@@ -678,12 +697,12 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
   <div class="sb-skills" id="sb-skills"></div>
   <div class="sb-bot">
     <button class="sb-btn" onclick="openSP()" data-tip-right="Settings">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z"/><path d="M8 1a.75.75 0 01.75.75v1.096a5.5 5.5 0 012.89 1.197l.775-.775a.75.75 0 111.06 1.06l-.774.775A5.5 5.5 0 0114.154 7.25H15.25a.75.75 0 010 1.5h-1.096a5.5 5.5 0 01-1.197 2.89l.775.775a.75.75 0 11-1.06 1.06l-.775-.774A5.5 5.5 0 018.75 14.154V15.25a.75.75 0 01-1.5 0v-1.096a5.5 5.5 0 01-2.89-1.197l-.775.775a.75.75 0 01-1.06-1.06l.774-.775A5.5 5.5 0 011.846 8.75H.75a.75.75 0 010-1.5h1.096a5.5 5.5 0 011.197-2.89l-.775-.775a.75.75 0 011.06-1.06l.775.774A5.5 5.5 0 017.25 1.846V.75A.75.75 0 018 1z"/></svg>
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg>
       Settings
     </button>
 
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span></div>
 </div>
 
 <!-- Main -->
