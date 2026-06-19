@@ -4,6 +4,116 @@ LCL CHANGELOG  —  v0.67d
 Released: 17 Jun 2026
 
 
+Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
+---------------------------------------------------------------------
+
+Auto-update & channels
+- Auto-update engine: footer version badge + a Settings -> Updates card.
+  Stable channel checks GitHub releases (version-based) and applies on consent.
+- Alpha tester channel (opt-in): 7 clicks on the version badge (easter egg)
+  unlocks a "Try alpha updates" toggle in Settings -> Updates. Alpha tracks the
+  `alpha` branch BY FILE HASH. Node auto-updates index.html + server.txt together
+  at boot (download -> SHA-256 verify -> atomic .tmp+rename swap -> re-exec into
+  the new server). A red ALPHA pill shows under
+  the version badge when active. Front-end "Check updates" / "Update & restart";
+  "Switch to stable" restores the release build.
+- Re-exec degrades gracefully when child-process spawn is blocked (locked-down
+  machines): files are applied on the verified checksum; restart Node manually.
+  The runtime node --check was REMOVED as redundant — build.js already syntax-
+  checks server.txt before upload and the SHA-256 proves the downloaded bytes
+  match, so the hashsum is the integrity gate (the runtime check false-tripped on
+  some Node versions).
+- Front-end "Update & restart" now actually restarts Node: it applies the changed
+  file(s), POSTs /api/update/restart (server flushes the response, frees the port,
+  and re-execs into the new server.txt in the same terminal), then the browser polls
+  the new /api/health endpoint and auto-reloads. index-only changes just reload.
+- Upstream 5xx / proxy errors no longer leak the raw HTML error page into the chat:
+  the server returns a clean JSON error for non-JSON upstream bodies (the full body is
+  still logged to the Node console), and the client shows a clean status label with the
+  existing 502/503/504 auto-retry; any error text is HTML-stripped before display.
+- Chat retry/timeout schedule unified to 10s -> 20s -> 60s (was a flat 90s inactivity
+  + 5/10/20 backoff). Per-attempt streaming inactivity cutoff escalates 10/20/60 (sent
+  from the client as streamTimeoutMs; the socket timer resets on each token so it only
+  fires on a genuine stall), and the 502/503/504 retry backoff is also 10/20/60. 429
+  keeps its quota-reset wait. Fast internal retries (connect key-check, background
+  saves/embeds) intentionally stay sub-second.
+- Update downloads go through the api.github.com Contents API (base64), NOT
+  raw.githubusercontent.com (403-blocked on the gov network) nor the raw media
+  type (which 302-redirects to that blocked host). Unauthenticated API = 60/hr:
+  mitigated with a 30s status cache; the UI shows a terse HTTP code while the
+  full reason logs to the Node console.
+- Update channel persisted in lcl_data.json (single data file); the old
+  standalone update_channel sidecar was migrated away and removed.
+
+TLS (Zscaler)
+- Update fetch AND the PlatformAI chat/embed calls now trust a Zscaler-
+  intercepted certificate chain (accept only a Zscaler chain on an unknown-issuer
+  error; reject anything else). Fixes UNABLE_TO_GET_ISSUER_CERT_LOCALLY behind
+  Zscaler, both for updates and normal use.
+
+Settings
+- Tabbed Settings: Models | Settings. The old Model + Embed tabs were merged into
+  one "Models" tab (chat key/model, embed key/model, RAG settings). X close button
+  + Esc-to-close. Updates card redesigned (status pill + tiles).
+
+Data classification
+- Classification-first model selection: pick R/SN or CCE/SN and the chat + embed
+  model lists filter to that tier (lists sourced from the PlatformAI Models
+  panel). Shared control in Settings and the Connect modal. Stored as
+  creds.classification and shown after the model name in chat, e.g.
+  "cce.claude-opus-4-6 (CCE/SN)".
+
+Models
+- Chat + embed model dropdowns (provider optgroups) with a Custom fallback.
+  Gemini embed batch limit corrected. Embed-cache (embed_cache.bin) is
+  garbage-collected when a document is removed.
+
+UI polish
+- Top-header brand enlarged to ~60% of the logo; "(LCL)" matched in size.
+- Toasts centered (bottom-center). Topbar "New chat" subtitle removed for new
+  chats. Settings footer contributors vertically centered with Cancel/Save.
+  Removed a stray fixed bottom-fade. Embed tooltip centered. AI reply header
+  shows the full prefixed model id. Compact message density (6 / 4 / 3).
+- Message spacing: dropped `white-space:pre-wrap` on .msg-body (marked already
+  emits block tags + <br>; pre-wrap was rendering marked's trailing newline as a
+  phantom blank line, so the Copy/Edit row floated too far below the text).
+  .msg-acts margin reset to 0 — Copy/Edit now sits tight under the message.
+- Error / rate-limit retry boxes get a 14px top gap so they no longer crowd the
+  model header.
+- Alpha Updates card streamlined to a single line: Channel | Alpha · status ·
+  build-hash (or changed files), replacing the two large metric tiles.
+- Data-classification segmented buttons now show the full name under the code:
+  "CCE/SN — Confidential Cloud Eligible (Sensitive Normal)" and
+  "R/SN — Restricted (Sensitive Normal)".
+- Alpha channel pill rendered in red; Copy/Edit row aligned to the message start.
+- Sidebar: skill selector on top, then Settings + Manage skills as a 2-column row
+  (the old "Manage skills..." list-footer link removed). Their tooltips moved to
+  the top so they don't collide side-by-side.
+- Example hint-cards on the empty screen now show only on first run (no chat
+  history yet), not for returning users starting a new chat.
+- Removed the empty orange-square icon from the "Not connected" banner.
+- Classification buttons: theme-aware contrast (bright text on dark, dark text on
+  light) so CCE/RSN are legible in both modes; active subtitle no longer dimmed.
+- Sidebar Settings/Skills buttons: labels wrapped in spans (no stray whitespace
+  text node) so the icon+word are truly centred; Skills icon re-centred in its box.
+- Composer placeholder: the rotating example prompts ("Review some code…") now show
+  only on an empty/new chat; existing chats keep the plain "Message LCL…".
+- Skills empty-state message now reads "drop one into LCL/skills" (was LCL_DIR/skills/).
+
+Dev / infra
+- `#demo` no-API debug mode: seeds sample messages + a typing
+  indicator + an error/retry box so the chat layout can be inspected visually
+  (via Claude in Chrome) without connecting or hitting the API. Isolated in
+  src/96-demo.js with a one-line guard at the top of init().
+  PRE-PROMOTION TO-DO: strip src/96-demo.js + the maybeDemo() guard before
+  promoting alpha -> stable.
+- GitHub MCP gained github_update_ref (move a tag) and github_upload_release_asset.
+- v0.67d GitHub release published (with index.html + server.txt attached as assets).
+
+NOTE: this batch currently lives on the `alpha` branch only. Promote to stable by
+pushing the build to `main` and refreshing the v0.67d release.
+
+
 Additional v0.67d updates (19 Jun 2026, release batch)
 ---------------------------------------------------------
 
@@ -468,17 +578,4 @@ User-facing (what ships):
   index.html   — generated artifact. SSE streaming consumer, markdown
                  renderer (marked + DOMPurify), custom sliders,
                  embed/attach UX split, wider Max Tokens input,
-                 scroll affordance, rate-limit countdown + auto-retry
-  server.txt   — streaming proxy (callGccStreaming), raised upstream
-                 timeouts (90s / 120s), client-disconnect handling
-  LCL_Setup_Guide.pdf — needs version banner restamp v0.67c → v0.67d
-                 and a new changelog block listing the 7 UI features
-                 + 4 server changes above
-
-Dev-only (not shipped to users):
-  build.js     — Node concatenator for the modular source
-  src/         — 12 source files (head.html, 10 JS modules,
-                 tail.html) that build.js assembles into index.html
-  changelog.txt — this file
-  index_pre_modular.bak — backup of the pre-modular index.html for
-                 reference; safe to delete after v0.67d ships
+                 scroll aff
