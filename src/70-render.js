@@ -41,6 +41,30 @@ function renderChatList() {
   }
 
   el.innerHTML = html
+  setupChatTitleScroll()
+}
+
+// Continuously scroll (ping-pong) an overflowing chat name while its row is
+// hovered; names that already fit don't move. Re-bound after every render.
+function setupChatTitleScroll() {
+  document.querySelectorAll('#chat-list .chat-item').forEach(item => {
+    const box = item.querySelector('.chat-title')
+    const inner = item.querySelector('.chat-title-inner')
+    if (!box || !inner) return
+    item.onmouseenter = () => {
+      if (!box.clientWidth) return
+      const over = inner.scrollWidth - box.clientWidth
+      if (over > 4) {
+        inner.style.setProperty('--mq', '-' + over + 'px')
+        inner.style.setProperty('--mqd', Math.max(3, over / 22) + 's')
+        inner.classList.add('mq')
+      }
+    }
+    item.onmouseleave = () => {
+      inner.classList.remove('mq')
+      inner.style.removeProperty('--mq')
+    }
+  })
 }
 
 function chatItemHTML(c) {
@@ -49,7 +73,7 @@ function chatItemHTML(c) {
     <div class="chat-item-inner">
       <div class="chat-pin-dot"></div>
       <div class="chat-item-text" title="${esc(c.title)}">
-        <div class="chat-title">${esc(c.title)}</div>
+        <div class="chat-title"><span class="chat-title-inner">${esc(c.title)}</span></div>
         <div class="chat-meta">${c.messages.length} msg${c.messages.length!==1?'s':''} * ${fmtDate(c.updatedAt)}</div>
       </div>
     </div>
@@ -136,7 +160,7 @@ function appendMsg(role, text, date, sources, fileNames) {
 function buildMsgEl(role, text, date, sources, fileNames) {
   const isUser = role==='user'
   const time   = (date||new Date()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-  const label  = isUser?'You':(creds?.model?.split('.')?.pop()||'LCL')
+  const label  = isUser?'You':(creds?.model||'LCL')
   const srcHtml= (sources&&sources.length)?`<div class="rag-row">${sources.map(s=>`<span class="rag-tag">${s}</span>`).join('')}</div>`:''
   // strip injected file content blocks from display - only show the user's actual typed text
   let displayText = text
@@ -219,7 +243,7 @@ function appendTyping() {
   let inner = document.querySelector('.msgs-inner')
   if (!inner) { inner=document.createElement('div'); inner.className='msgs-inner'; document.getElementById('messages').appendChild(inner) }
   const div=document.createElement('div'); div.className='msg-group'
-  div.innerHTML=`<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">${creds?.model?.split('.')?.pop()||'LCL'}</div></div><div class="msg-body"><div class="typing"><span></span><span></span><span></span></div></div>`
+  div.innerHTML=`<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">${creds?.model||'LCL'}</div></div><div class="msg-body"><div class="typing"><span></span><span></span><span></span></div></div>`
   inner.appendChild(div); document.getElementById('messages').scrollTop=document.getElementById('messages').scrollHeight
   return div
 }
@@ -269,3 +293,4 @@ function connectedLabel() {
     ? 'Connected · chat + embed'
     : 'Connected · chat only'
 }
+
