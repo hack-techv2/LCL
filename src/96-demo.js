@@ -1,15 +1,27 @@
 // =============================================================================
-// Demo mode (#demo) — renders the chat UI with seeded sample content WITHOUT
-// connecting or calling the API. Exercises every output path: user messages
-// (plain, multi-paragraph, with attachments), AI markdown (headings, lists,
-// tables, code, blockquote, links, hr), RAG source tags, and the transient
-// states (loading dots, 5xx retry box, 429 rate-limit box, generic error).
-// Purely for visual / layout debugging. STRIP this module + the maybeDemo()
-// guard in init() before promoting alpha -> stable.
+// Demo mode (#demo) — renders the UI with seeded sample content WITHOUT
+// connecting or calling the API. Exercises every output + interaction path so
+// the app can be eyeballed and dynamically tested via Claude in Chrome.
+// Open  http://localhost:3000/#demo  (a full reload, not just adding the hash).
+//
+// TEST / USE CASES COVERED
+//   Chat list .... Pinned section, Today / Yesterday / Older date grouping,
+//                  active-chat highlight, message counts, switching chats.
+//   User msgs .... plain, multi-paragraph, with-attachment (expandable chip).
+//   AI markdown .. headings, bold/italic/strike, inline code, links, blockquote,
+//                  ordered/unordered/nested lists, table, hr, fenced code blocks.
+//   AI extras .... RAG source tags; classification suffix in the welcome line.
+//   Transient .... loading dots, 5xx retry box, 429 rate-limit box.
+//   Terminal ..... non-retryable error as a plain assistant message (how the
+//                  app actually persists it).
+//   Composer ..... plain "Message LCL…" placeholder in an existing chat.
+//   Settings ..... data-classification picker (light/dark contrast), Updates.
+//
+// Safe: persist() is a no-op while #demo is active, so nothing is written to
+// lcl_data.json. STRIP src/96-demo.js + the maybeDemo() guard in init() before
+// promoting alpha -> stable.
 // =============================================================================
 function demoOn() {
-  // Hash-only trigger: the #demo fragment is never sent to the server, so it
-  // sidesteps the static-route query-string 404. Open http://localhost:3000/#demo
   try { return (location.hash || '').toLowerCase() === '#demo' } catch { return false }
 }
 
@@ -51,7 +63,7 @@ const DEMO_AI_MARKDOWN = [
 ].join('\n')
 
 const DEMO_AI_CODE = [
-  "Here are the same idea in three languages:",
+  'Here are the same idea in three languages:',
   '',
   '```python',
   'def greet(name):',
@@ -65,12 +77,17 @@ const DEMO_AI_CODE = [
   'And a longer paragraph to check wrapping and line-height across multiple lines of prose so the spacing between the body text and the action row can be eyeballed at a realistic length.'
 ].join('\n')
 
+// Build a seeded chat. ts is the created/updated time and drives date grouping.
+function demoChat(id, title, ts, pinned, messages) {
+  messages.forEach((m, i) => { if (m.ts == null) m.ts = ts - (messages.length - i) * 60000 })
+  return { id, title, pinned: !!pinned, createdAt: ts, updatedAt: ts, docs: [], messages }
+}
+
 // Called at the top of init(); returns true if it took over the boot so init()
-// skips all network work (no /api/config, /api/data, /api/skills calls).
+// skips all network work.
 function maybeDemo() {
   if (!demoOn()) return false
 
-  // Fake a connection so rendering treats us as connected; nothing hits network.
   creds = { apiKey: 'demo', model: 'cce.claude-opus-4-6', maxTokens: 8192,
             systemPrompt: '', chunkSize: 800, topK: 5,
             embedApiKey: '', embedModelId: '', classification: 'cce' }
@@ -78,38 +95,39 @@ function maybeDemo() {
   try { document.body.classList.remove('not-connected') } catch {}
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
 
-  const now = Date.now()
-  const id = 'demo_chat'
+  const now = Date.now(), hr = 3600000, day = 86400000
+  const mid = new Date(); mid.setHours(0, 0, 0, 0); const m0 = mid.getTime()
+
   D.chats = {}
-  D.chats[id] = {
-    id, title: 'Demo - all output cases', pinned: false,
-    createdAt: now, updatedAt: now, docs: [],
-    messages: [
-      // 1) plain user message
-      { role: 'user', content: 'hello how are you', ts: now - 600000 },
-      // 2) rich AI markdown (headings, lists, table, code, blockquote, hr, link)
-      { role: 'assistant', content: DEMO_AI_MARKDOWN, ts: now - 590000 },
-      // 3) user message WITH an attachment (expandable file chip)
-      { role: 'user',
-        content: 'Please summarise the attached report.\n<file name="quarterly-report.pdf">Q2 revenue rose 12% QoQ driven by cloud. Headcount flat. Two risks flagged: supply chain and FX exposure.</file>',
-        fileNames: ['quarterly-report.pdf'], ts: now - 580000 },
-      // 4) AI reply WITH RAG source tags
-      { role: 'assistant',
-        content: 'Based on the attached document, Q2 revenue grew **12% quarter-on-quarter**, led by cloud. Headcount was flat, and two risks were flagged: supply chain and FX exposure.',
-        sources: ['quarterly-report.pdf #3', 'quarterly-report.pdf #7', 'notes.md #1'],
-        ts: now - 570000 },
-      // 5) long multi-paragraph user message
-      { role: 'user',
-        content: 'Can you walk me through the trade-offs?\n\nI care about latency, cost, and data classification. We are on Comet, behind Zscaler, and most of our traffic is Sensitive Normal with the occasional Confidential Cloud Eligible workload. Keep it concise.',
-        ts: now - 560000 },
-      // 6) AI reply with multiple code blocks + long prose
-      { role: 'assistant', content: DEMO_AI_CODE, ts: now - 550000 }
-    ]
-  }
-  chatId = id
+  // Active (today) — the rich output showcase.
+  D.chats['demo_active'] = demoChat('demo_active', 'Demo - all output cases', now - 5 * 60000, false, [
+    { role: 'user', content: 'hello how are you' },
+    { role: 'assistant', content: DEMO_AI_MARKDOWN },
+    { role: 'user', content: 'Please summarise the attached report.\n<file name="quarterly-report.pdf">Q2 revenue rose 12% QoQ driven by cloud. Headcount flat. Two risks flagged: supply chain and FX exposure.</file>', fileNames: ['quarterly-report.pdf'] },
+    { role: 'assistant', content: 'Based on the attached document, Q2 revenue grew **12% quarter-on-quarter**, led by cloud. Headcount was flat, and two risks were flagged: supply chain and FX exposure.', sources: ['quarterly-report.pdf #3', 'quarterly-report.pdf #7', 'notes.md #1'] },
+    { role: 'user', content: 'Can you walk me through the trade-offs?\n\nI care about latency, cost, and data classification. We are on Comet, behind Zscaler, and most of our traffic is Sensitive Normal with the occasional Confidential Cloud Eligible workload. Keep it concise.' },
+    { role: 'assistant', content: DEMO_AI_CODE }
+  ])
+  // Pinned — appears in the Pinned section regardless of date.
+  D.chats['demo_pinned'] = demoChat('demo_pinned', 'Overlord TTP - payload notes', m0 - 2 * day + 14 * hr, true, [
+    { role: 'user', content: 'Draft a short note on staged vs stageless payloads.' },
+    { role: 'assistant', content: 'Staged payloads fetch the bulk of their code at runtime (smaller initial footprint, needs callback); stageless bundle everything up front (larger, but self-contained and more reliable on egress-restricted hosts).' }
+  ])
+  // Yesterday.
+  D.chats['demo_yest'] = demoChat('demo_yest', 'EMC firmware analysis', m0 - 12 * hr, false, [
+    { role: 'user', content: 'What should I look for in an MQTT broker config review?' },
+    { role: 'assistant', content: 'Check for anonymous access, TLS enforcement, ACL scoping per topic, and whether credentials are reused across devices.' }
+  ])
+  // Older (≈12 days ago).
+  D.chats['demo_old'] = demoChat('demo_old', 'PUB pentest scoping call', m0 - 12 * day - 12 * hr, false, [
+    { role: 'user', content: 'Summarise the scoping call action items.' },
+    { role: 'assistant', content: 'Three action items: confirm in-scope IP ranges, get a test window sign-off, and set up a shared evidence folder before kickoff.' }
+  ])
+
+  chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
 
-  // --- Transient UI states (not part of message history) -------------------
+  // --- Transient UI states (DOM-only, on the active chat view) --------------
   const inner = document.querySelector('#messages .msgs-inner')
   if (!inner) return true
   const hdr = '<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">cce.claude-opus-4-6</div><div class="msg-time">now</div></div>'
@@ -118,36 +136,21 @@ function maybeDemo() {
   // (a) loading / typing indicator
   grp('<div class="typing"><span></span><span></span><span></span></div>')
 
-  // (b) 5xx error + auto-retry box
-  grp(
-    '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">'
-    + '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">'
-    + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>'
-    + 'Error 502: Bad gateway</div>'
-    + '<div style="font-size:12px;color:var(--tx2);line-height:1.7"><div style="margin-bottom:4px">The PlatformAI gateway returned a temporary error.</div>'
-    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">10s</strong>&nbsp;<span style="font-size:11px;opacity:.7">(attempt 1 of 3)</span></div></div>'
-    + '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px">Cancel retry</button></div></div>'
-  )
+  // (b) 5xx auto-retry box (shared statusBox helper)
+  grp(statusBox('err', 'Error 502: Bad gateway',
+    '<div style="margin-bottom:4px">The PlatformAI gateway returned a temporary error.</div>'
+    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">10s</strong>&nbsp;<span style="font-size:11px;opacity:.7">(attempt 1 of 3)</span></div>',
+    { icon: 'err', cancel: 'void 0' }))
 
   // (c) 429 rate-limit box
-  grp(
-    '<div style="background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:14px 16px;margin-top:14px;">'
-    + '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--pin);margin-bottom:8px;font-size:13px">'
-    + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 01.5.5v4.5l3 1.5a.5.5 0 01-.4.9l-3.3-1.65A.5.5 0 017.5 8.5V4a.5.5 0 01.5-.5z"/><path d="M8 16A8 8 0 108 0a8 8 0 000 16zM1 8a7 7 0 1114 0A7 7 0 011 8z"/></svg>'
-    + 'Rate limit reached</div>'
-    + '<div style="font-size:12px;color:var(--tx2);line-height:1.7"><div>Resets at:&nbsp; <strong style="color:var(--tx);font-family:var(--mono)">02:45 AM</strong></div>'
-    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">0:42</strong></div></div>'
-    + '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px">Cancel retry</button></div></div>'
-  )
+  grp(statusBox('warn', 'Error 429: Rate limit reached',
+    '<div>Resets at:&nbsp; <strong style="color:var(--tx);font-family:var(--mono)">02:45 AM</strong></div>'
+    + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">0:42</strong></div>',
+    { icon: 'clock', cancel: 'void 0' }))
 
-  // (d) generic terminal error (no retry)
-  grp(
-    '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">'
-    + '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">'
-    + '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>'
-    + 'Request failed</div>'
-    + '<div style="font-size:12px;color:var(--tx2);line-height:1.7">Upstream returned HTTP 500 after 3 attempts. Please try again.</div></div>'
-  )
+  // (d) terminal (non-retryable) error — a plain assistant message, exactly how
+  // the real flow persists it (not a box).
+  grp('Error 500: Server error — the model service is temporarily unreachable. Please try again in a moment.')
 
   return true
 }
