@@ -2,6 +2,8 @@
 // Init & persistence
 // =============================================================================
 async function init() {
+  // Demo mode (?demo=1) seeds sample content and skips all network work.
+  if (typeof maybeDemo === 'function' && maybeDemo()) return
   await loadData()
   // Try to auto-connect from saved settings
   try {
@@ -13,7 +15,7 @@ async function init() {
               : (D.settings?.apiKey && D.settings?.modelId) ? D.settings
               : null
       if (s) {
-        creds = { apiKey: s.apiKey, model: s.modelId || s.model, maxTokens: s.maxTokens||8192, systemPrompt: s.systemPrompt||'', chunkSize: s.chunkSize||800, topK: s.topK||5, embedApiKey: s.embedApiKey||'', embedModelId: s.embedModelId||'' }
+        creds = { apiKey: s.apiKey, model: s.modelId || s.model, maxTokens: s.maxTokens||8192, systemPrompt: s.systemPrompt||'', chunkSize: s.chunkSize||800, topK: s.topK||5, embedApiKey: s.embedApiKey||'', embedModelId: s.embedModelId||'', classification: s.classification||'' }
         setHealth('ok', connectedLabel())
         document.body.classList.remove('not-connected')
         document.getElementById('connect-banner')?.classList.add('hidden')
@@ -99,9 +101,9 @@ async function connect() {
   // Preserve any already-saved embed settings when (re)connecting
   const prevEmbedApiKey  = creds?.embedApiKey  || D.settings?.embedApiKey  || ''
   const prevEmbedModelId = creds?.embedModelId || D.settings?.embedModelId || ''
-  creds = { apiKey, model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId }
+  creds = { apiKey, model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') }
   // Write settings into D directly — persist() will carry them to disk on every save
-  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey, embedModelId: creds.embedModelId }
+  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey, embedModelId: creds.embedModelId, classification: creds.classification }
   // Also save via /api/config for immediate server-side update
   try {
     await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
@@ -146,7 +148,7 @@ function connectedLabel() {
 }
 
 function openConnect() {
-  if (typeof wireModelField === 'function') wireModelField('cfg-mdl', MODEL_GROUPS)
+  if (typeof initClassification === 'function') initClassification('cfg', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce')
   document.getElementById('modal-bd').classList.remove('hidden')
   setTimeout(() => document.getElementById('cfg-key').focus(), 50)
 }
