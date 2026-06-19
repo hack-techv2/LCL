@@ -55,7 +55,7 @@ function renderSkillPicker() {
     }
   }
 
-  html += '<div class="sb-skills-foot"><button class="sb-skills-manage" onclick="openSkillsManager()">Manage skills...</button></div>'
+  // "Manage skills" now lives in the 2-column sb-bot row next to Settings.
   root.innerHTML = html
 }
 
