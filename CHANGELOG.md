@@ -126,6 +126,18 @@ Refactor (maintainability / extensibility)
 - #demo upgraded: seeds multiple chats (pinned / today / yesterday / older) to
   exercise chat-list grouping + switching, plus all message/error output states;
   persist() is a no-op under #demo so it never writes to lcl_data.json.
+- Errored assistant replies now render through the shared statusBox too, so 500 /
+  terminal errors look identical to the 502/429 boxes (no more plain-text 500).
+- Error handling generalised: ANY 5xx now auto-retries (was only 502/503/504); the
+  label falls back to "Server error" so unlisted codes still show the number + retry.
+- Skills: manager modal gets an X-close to match Settings; skill rows use a
+  consistent .skill-row style; sidebar skill hints use a native title attribute
+  (fixes a stray horizontal scrollbar / grey bar on hover).
+- #demo: seeds fake skills (+ an active skill + skill chip) and a sample embedded
+  doc; typing now returns a random canned reply; file upload + embed work offline
+  (embed step mocked); floating "Reset demo" button. Nothing touches disk — persist
+  is a no-op and the embed API is mocked, so lcl_data.json / embed_cache.bin are
+  never written under #demo.
 
 NOTE: this batch currently lives on the `alpha` branch only. Promote to stable by
 pushing the build to `main` and refreshing the v0.67d release.
