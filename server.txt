@@ -1,0 +1,1147 @@
+const http = require('http')
+const https = require('https')
+const fs = require('fs')
+const path = require('path')
+const os = require('os')
+const crypto = require('crypto')
+
+const PORT = 3000
+const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
+const API_HOST = 'api.ai.tech.gov.sg'
+const CHAT_PATH = '/platform/models/chat/completions'
+const EMBED_PATH = '/platform/models/embeddings'
+
+// ---------------------------------------------------------------------------
+// Change 1: M365 PATH FIX
+// Use 'OneDrive - SG Govt M365' as the first candidate instead of process.env.OneDrive
+// ---------------------------------------------------------------------------
+function resolveLCLDir() {
+  const home = process.env.USERPROFILE || process.env.HOME || os.homedir()
+  const candidates = [
+    path.join(home, 'OneDrive - SG Govt M365', 'Desktop', 'LCL'),
+    path.join(home, 'Desktop', 'LCL'),
+    __dirname
+  ].filter(Boolean)
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p
+    } catch {}
+  }
+  return __dirname
+}
+
+const LCL_DIR = resolveLCLDir()
+const HTML_FILE = path.join(LCL_DIR, 'index.html')
+const DATA_FILE = path.join(LCL_DIR, 'lcl_data.json')
+
+// ---------------------------------------------------------------------------
+// Binary embed cache — Float16, 2 bytes per float, keyed by SHA1 hash
+// ---------------------------------------------------------------------------
+const EMBED_CACHE_FILE = path.join(LCL_DIR, 'embed_cache.bin')
+const MAGIC = 0x4C434C43
+const embedCache = {}
+
+function encodeFloat16(val) {
+  if (isNaN(val))  return 0x7e00
+  if (val === 0)   return 0
+  const f32  = new Float32Array([val])
+  const u32  = new Uint32Array(f32.buffer)[0]
+  const sign = (u32 >> 31) & 0x1
+  let   exp  = ((u32 >> 23) & 0xff) - 127 + 15
+  let   mant = (u32 >> 13) & 0x3ff
+  if (exp <= 0)  return (sign << 15)
+  if (exp >= 31) return (sign << 15) | (0x1f << 10)
+  return (sign << 15) | (exp << 10) | mant
+}
+
+function decodeFloat16(h) {
+  const sign = (h >> 15) & 0x1
+  const exp  = (h >> 10) & 0x1f
+  const mant =  h        & 0x3ff
+  let val
+  if      (exp === 0)  val = mant / 1024 * Math.pow(2, -14)
+  else if (exp === 31) val = mant ? NaN : Infinity
+  else                 val = (1 + mant / 1024) * Math.pow(2, exp - 15)
+  return sign ? -val : val
+}
+
+function loadEmbedCache() {
+  try {
+    if (!fs.existsSync(EMBED_CACHE_FILE)) return {}
+    const buf = fs.readFileSync(EMBED_CACHE_FILE)
+    if (buf.length < 8) return {}
+    const magic = buf.readUInt32BE(0)
+    if (magic !== MAGIC) {
+      console.warn('[embed-cache] unrecognised magic — delete embed_cache.bin to suppress this warning')
+      return {}
+    }
+    const count  = buf.readUInt32LE(4)
+    const result = {}
+    let   offset = 8
+    for (let i = 0; i < count; i++) {
+      if (offset + 4 > buf.length) break
+      const hashLen = buf.readUInt32LE(offset); offset += 4
+      if (offset + hashLen > buf.length) break
+      const hash = buf.toString('utf8', offset, offset + hashLen); offset += hashLen
+      if (offset + 4 > buf.length) break
+      const dims    = buf.readUInt32LE(offset); offset += 4
+      const byteLen = dims * 2
+      if (offset + byteLen > buf.length) break
+      const f32 = new Float32Array(dims)
+      for (let j = 0; j < dims; j++) {
+        f32[j] = decodeFloat16(buf.readUInt16LE(offset + j * 2))
+      }
+      result[hash] = f32
+      offset += byteLen
+    }
+    console.log('[embed-cache] loaded', Object.keys(result).length, 'entries from binary cache (float16)')
+    return result
+  } catch (e) {
+    console.error('[embed-cache] load error:', e.message)
+    return {}
+  }
+}
+
+function saveEmbedCache() {
+  try {
+    const entries = Object.entries(embedCache)
+    if (entries.length === 0) {
+      const buf = Buffer.allocUnsafe(8)
+      buf.writeUInt32BE(MAGIC, 0)
+      buf.writeUInt32LE(0, 4)
+      fs.writeFileSync(EMBED_CACHE_FILE, buf)
+      return
+    }
+    let totalSize = 8
+    for (const [hash, vec] of entries) {
+      totalSize += 4 + Buffer.byteLength(hash, 'utf8') + 4 + vec.length * 2
+    }
+    const buf    = Buffer.allocUnsafe(totalSize)
+    let   offset = 0
+    buf.writeUInt32BE(MAGIC, offset); offset += 4
+    buf.writeUInt32LE(entries.length, offset); offset += 4
+    for (const [hash, vec] of entries) {
+      const hashBuf = Buffer.from(hash, 'utf8')
+      buf.writeUInt32LE(hashBuf.length, offset); offset += 4
+      hashBuf.copy(buf, offset); offset += hashBuf.length
+      buf.writeUInt32LE(vec.length, offset); offset += 4
+      for (let j = 0; j < vec.length; j++) {
+        buf.writeUInt16LE(encodeFloat16(vec[j]), offset); offset += 2
+      }
+    }
+    fs.writeFileSync(EMBED_CACHE_FILE, buf)
+  } catch (e) {
+    console.error('[embed-cache] save error:', e.message)
+  }
+}
+
+function hashText(s) {
+  return crypto.createHash('sha1').update(s).digest('base64url').slice(0, 16)
+}
+
+// Initialise cache from disk
+Object.assign(embedCache, loadEmbedCache())
+
+
+const SKILLS_DIR = path.join(LCL_DIR, 'skills')
+const SKILL_SLUG_RE = /^[a-z0-9-]{1,64}$/
+const SKILL_MAX_BYTES = 256 * 1024  // 256 KB cap on file body
+
+function ensureSkillsDir() {
+  try {
+    fs.mkdirSync(SKILLS_DIR, { recursive: true })
+  } catch (e) {
+    console.error('[skills] mkdir failed:', e.message)
+  }
+}
+ensureSkillsDir()
+
+function isValidSlug(s) {
+  return typeof s === 'string' && SKILL_SLUG_RE.test(s)
+}
+
+function skillPath(id) {
+  if (!isValidSlug(id)) throw new Error('invalid slug')
+  return path.join(SKILLS_DIR, id + '.md')
+}
+
+function readSkillTitleFromBody(body) {
+  const lines = body.split(/\r?\n/)
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t) continue
+    if (t.startsWith('# ')) return t.slice(2).trim().slice(0, 200)
+    return null
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Change 4: SETTINGS STORED IN lcl_data.json — no config.json
+// loadData / saveData unchanged; settings live in appData.settings
+// ---------------------------------------------------------------------------
+function loadData() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return { chats: {} }
+    const raw = fs.readFileSync(DATA_FILE, 'utf8')
+    if (!raw.trim()) return { chats: {} }
+    return JSON.parse(raw)
+  } catch (e) {
+    console.error('[loadData] error:', e.message)
+    return { chats: {} }
+  }
+}
+
+function saveData(data) {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8')
+  } catch (e) {
+    console.error('[saveData] error:', e.message)
+  }
+}
+
+let appData = loadData()
+
+function json(res, data, status = 200) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8'
+  })
+  res.end(JSON.stringify(data))
+}
+
+// Only accept requests whose Host header points at loopback. Blocks DNS-rebinding
+// attacks and stops any accidental exposure if the bind address is ever widened.
+function isLocalHost(req) {
+  const h = (req.headers.host || '').split(':')[0].toLowerCase()
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1'
+}
+
+function readBody(req, cb) {
+  let body = ''
+
+  req.on('data', chunk => {
+    body += chunk
+    if (body.length > 10 * 1024 * 1024) {
+      cb(new Error('Body too large'))
+      req.destroy()
+    }
+  })
+
+  req.on('end', () => {
+    if (!body.trim()) return cb(new Error('Empty body'))
+    try {
+      cb(null, JSON.parse(body))
+    } catch {
+      cb(new Error('Bad JSON'))
+    }
+  })
+
+  req.on('error', err => cb(err))
+}
+
+function maskSecret(v) {
+  if (!v) return '(not set)'
+  if (v.length <= 10) return '[set]'
+  return v.slice(0, 4) + '...' + v.slice(-4)
+}
+
+function previewText(v, max = 4000) {
+  if (!v) return ''
+  return v.length > max ? v.slice(0, max) + ' ...[truncated]' : v
+}
+
+// ---------------------------------------------------------------------------
+// Rate-limit header parser
+// PlatformAI returns x-ratelimit-api_key-* headers on every response. We parse
+// them once and pass the result alongside the body so callers can:
+//   - log per-call usage,
+//   - surface remaining quota to the client,
+//   - pre-emptively slow down before hitting a 429.
+// Headers seen in the wild:
+//   x-ratelimit-api_key-remaining-requests
+//   x-ratelimit-api_key-limit-requests
+//   x-ratelimit-api_key-remaining-tokens
+//   x-ratelimit-api_key-limit-tokens
+// ---------------------------------------------------------------------------
+function extractRateLimit(headers) {
+  if (!headers) return null
+  const h = (k) => headers[k.toLowerCase()] ?? headers[k]
+  const reqRem = h('x-ratelimit-api_key-remaining-requests')
+  const reqLim = h('x-ratelimit-api_key-limit-requests')
+  const tokRem = h('x-ratelimit-api_key-remaining-tokens')
+  const tokLim = h('x-ratelimit-api_key-limit-tokens')
+  if (reqRem == null && tokRem == null) return null
+  const num = (v) => (v == null ? null : Number(v))
+  return {
+    reqRemaining: num(reqRem),
+    reqLimit:     num(reqLim),
+    tokRemaining: num(tokRem),
+    tokLimit:     num(tokLim),
+  }
+}
+
+// Track the most recent rate-limit snapshot per (apiKey prefix). Used by the
+// embed batch loop to adapt its pacing without needing the previous response
+// in scope. Keyed on the first 6 chars of the masked key so we don't keep the
+// full secret in memory.
+const rateLimitSnapshots = new Map()
+function snapshotKey(apiKey) {
+  if (!apiKey) return '_'
+  return apiKey.slice(0, 6)
+}
+function getLastRateLimit(apiKey) {
+  return rateLimitSnapshots.get(snapshotKey(apiKey)) || null
+}
+function setLastRateLimit(apiKey, rl) {
+  if (rl) rateLimitSnapshots.set(snapshotKey(apiKey), { ...rl, ts: Date.now() })
+}
+
+// Keep-alive pool so we don't pay a fresh TLS handshake on every call.
+// Fresh sockets into a warming upstream are the common cause of 502/empty body.
+const upstreamAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: 8,
+  maxFreeSockets: 4,
+  timeout: 60_000
+})
+
+// ---------------------------------------------------------------------------
+// Change 2: TLS/CERT RETRY FIX — destroy socket on cert/TLS errors
+// ---------------------------------------------------------------------------
+function callGccJsonOnce(pathName, apiKey, payload, cb) {
+  const bodyStr = JSON.stringify(payload)
+
+  const opts = {
+    hostname: API_HOST,
+    port: 443,
+    path: pathName,
+    method: 'POST',
+    agent: upstreamAgent,
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(bodyStr),
+      'Accept': '*/*',
+      'User-Agent': 'curl/8.0.0',
+      'Connection': 'keep-alive'
+    }
+  }
+
+  console.log('')
+  console.log('========== OUTBOUND REQUEST ==========')
+  console.log('[api] time       =', new Date().toISOString())
+  console.log('[api] hostname   =', opts.hostname)
+  console.log('[api] path       =', opts.path)
+  console.log('[api] auth       =', maskSecret(apiKey))
+  console.log('[api] payload    =', previewText(bodyStr))
+  console.log('======================================')
+  console.log('')
+
+  // Guard against double-invocation: on timeout we'll destroy() the request,
+  // which can race with 'end' or 'error' firing. done() ensures cb runs once
+  // and always clears the total-budget timer.
+  let settled = false
+  let totalBudgetTimer = null
+  const done = (err, result) => {
+    if (settled) return
+    settled = true
+    if (totalBudgetTimer) clearTimeout(totalBudgetTimer)
+    cb(err, result)
+  }
+
+  const req = https.request(opts, upstreamRes => {
+    let body = ''
+
+    console.log('[api] response status  =', upstreamRes.statusCode)
+    console.log('[api] response headers =', upstreamRes.headers)
+
+    upstreamRes.on('data', chunk => {
+      body += chunk
+      console.log('[api] chunk bytes =', Buffer.byteLength(chunk))
+    })
+
+    upstreamRes.on('end', () => {
+      console.log('[api] response body length =', body.length)
+      console.log('[api] response body =', previewText(body))
+      const rl = extractRateLimit(upstreamRes.headers)
+      if (rl) {
+        // One-line summary so console scans cleanly without dumping full headers.
+        const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
+        console.log('[api] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
+                    '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
+        setLastRateLimit(apiKey, rl)
+      }
+      done(null, {
+        statusCode: upstreamRes.statusCode || 500,
+        headers: upstreamRes.headers,
+        body,
+        rateLimit: rl
+      })
+    })
+
+    upstreamRes.on('error', err => {
+      console.log('[api] response stream error =', err.message)
+      done(err)
+    })
+  })
+
+  // Inactivity timeout: no bytes moved in 90s -> treat as dead and retry.
+  // Generous because Claude Opus 4.6 on a long prompt may take 60s+ to emit
+  // its first byte when stream=false.
+  req.setTimeout(90_000, () => {
+    console.log('[api] inactivity timeout (90s)')
+    req.destroy(new Error('Upstream inactivity timeout'))
+  })
+
+  // Hard overall budget: inactivity alone isn't enough - a trickling upstream
+  // can keep a socket alive for minutes. 120s is the worst-case cap per attempt.
+  totalBudgetTimer = setTimeout(() => {
+    console.log('[api] total-budget exceeded (120s), aborting')
+    req.destroy(new Error('Upstream total-budget exceeded'))
+  }, 120_000)
+
+  req.on('socket', socket => {
+    console.log('[api] socket assigned')
+    socket.on('secureConnect', () => {
+      console.log('[api] TLS connected')
+      console.log('[api] authorized =', socket.authorized)
+      console.log('[api] authorizationError =', socket.authorizationError || '(none)')
+    })
+    // Change 2: destroy socket on cert/TLS errors to force fresh connection on retry
+    socket.on('error', err => {
+      console.log('[api] socket error =', err.message)
+      if (/certificate|CERT|TLS|SSL|issuer/i.test(err.message)) {
+        socket.destroy()
+      }
+    })
+  })
+
+  req.on('finish', () => {
+    console.log('[api] request body sent')
+  })
+
+  req.on('error', err => {
+    console.log('[api] request error =', err.message)
+    done(err)
+  })
+
+  req.write(bodyStr)
+  req.end()
+}
+
+// Retry wrapper: transparently re-issue the call on transient upstream failures
+// (5xx, empty body, non-JSON body, socket errors, TLS/cert errors).
+// Uses exponential backoff with jitter. `maxAttempts` includes the first try.
+// ---------------------------------------------------------------------------
+// Change 2 (continued): cert/TLS errors treated as transient
+// Change 3: baseDelay reduced from 400 to 150ms
+// ---------------------------------------------------------------------------
+function callGccJson(pathName, apiKey, payload, cb, opts = {}) {
+  const maxAttempts = opts.maxAttempts || 4
+  const baseDelay   = opts.baseDelay   || 150   // ms  (was 400)
+  const maxDelay    = opts.maxDelay    || 4000  // ms
+
+  let attempt = 0
+
+  const tryOnce = () => {
+    attempt++
+    callGccJsonOnce(pathName, apiKey, payload, (err, upstream) => {
+      const transient = (() => {
+        if (err && /certificate|CERT|TLS|SSL|issuer/i.test(err.message)) return true
+        if (err) return true
+        if (!upstream) return true
+        const s = upstream.statusCode
+        if (s === 502 || s === 503 || s === 504 || s === 429) return true
+        const b = upstream.body
+        if (!b || !b.trim()) return true
+        // Non-JSON response from what should be a JSON endpoint.
+        try { JSON.parse(b); return false } catch { return true }
+      })()
+
+      if (!transient || attempt >= maxAttempts) return cb(err, upstream)
+
+      const delay = Math.min(maxDelay, baseDelay * 2 ** (attempt - 1))
+      const jitter = Math.floor(Math.random() * 200)
+      console.log(`[api] transient failure (attempt ${attempt}/${maxAttempts}) - retrying in ${delay + jitter}ms`)
+      setTimeout(tryOnce, delay + jitter)
+    })
+  }
+
+  tryOnce()
+}
+
+// ---------------------------------------------------------------------------
+// Change 4: handleGetConfig — return appData.settings (no config.json)
+// ---------------------------------------------------------------------------
+function handleGetConfig(req, res) {
+  json(res, appData.settings || {})
+}
+
+// Change 4: POST /api/config — merge into appData.settings and persist
+function handleSaveConfig(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+    appData.settings = Object.assign(appData.settings || {}, body)
+    saveData(appData)
+    json(res, { ok: true })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Streaming proxy. When the client sends payload.stream === true we open the
+// upstream and pipe its SSE bytes straight back — no buffering, no JSON parse.
+// The 90s inactivity timeout effectively becomes a non-issue because tokens
+// trickle in continuously. Auto-title and any other non-streamed callers
+// still go through the buffered callGccJson path.
+// ---------------------------------------------------------------------------
+function callGccStreaming(pathName, apiKey, payload, res) {
+  const bodyStr = JSON.stringify(payload)
+  const opts = {
+    hostname: API_HOST, port: 443, path: pathName, method: 'POST',
+    agent: upstreamAgent,
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type':  'application/json',
+      'Content-Length': Buffer.byteLength(bodyStr),
+      'Accept':        'text/event-stream',
+      'User-Agent':    'curl/8.0.0',
+      'Connection':    'keep-alive'
+    }
+  }
+
+  console.log('')
+  console.log('========== STREAMING OUTBOUND ==========')
+  console.log('[stream] time     =', new Date().toISOString())
+  console.log('[stream] path     =', pathName)
+  console.log('[stream] auth     =', maskSecret(apiKey))
+  console.log('[stream] payload  =', previewText(bodyStr))
+  console.log('========================================')
+
+  const upReq = https.request(opts, upRes => {
+    console.log('[stream] response status  =', upRes.statusCode)
+    const rl = extractRateLimit(upRes.headers)
+    if (rl) {
+      setLastRateLimit(apiKey, rl)
+      const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
+      console.log('[stream] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
+                  '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
+    }
+
+    // Non-200: drain the body and surface it as a single JSON error event.
+    if (upRes.statusCode !== 200) {
+      let body = ''
+      upRes.on('data', c => body += c)
+      upRes.on('end', () => {
+        console.log('[stream] non-200 body =', previewText(body))
+        if (!res.headersSent) {
+          res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' })
+        }
+        let parsed
+        try { parsed = JSON.parse(body) }
+        catch { parsed = { error: body || ('HTTP ' + upRes.statusCode), status: upRes.statusCode } }
+        if (rl) parsed._rateLimit = rl
+        res.end(JSON.stringify(parsed))
+      })
+      return
+    }
+
+    // 200 OK: pipe SSE bytes straight to the client.
+    res.writeHead(200, {
+      'Content-Type':  'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection':    'keep-alive'
+    })
+    upRes.on('data', chunk => res.write(chunk))
+    upRes.on('end', () => { console.log('[stream] upstream end'); try { res.end() } catch {} })
+    upRes.on('error', err => {
+      console.log('[stream] upstream stream error =', err.message)
+      try { res.end() } catch {}
+    })
+  })
+
+  // 90s inactivity timeout for the initial connection. With streaming working
+  // this should almost never fire.
+  upReq.setTimeout(90_000, () => {
+    console.log('[stream] inactivity timeout (90s)')
+    upReq.destroy(new Error('Upstream inactivity timeout'))
+  })
+
+  upReq.on('error', err => {
+    console.log('[stream] request error =', err.message)
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: err.message, kind: 'upstream_unreachable' }))
+    } else {
+      try {
+        res.write('data: ' + JSON.stringify({ error: err.message }) + '\n\n')
+        res.end()
+      } catch {}
+    }
+  })
+
+  // If the browser aborts (user clicked Stop), kill the upstream so we don't
+  // keep burning tokens.
+  res.on('close', () => {
+    if (!upReq.destroyed) {
+      console.log('[stream] client disconnected, aborting upstream')
+      upReq.destroy()
+    }
+  })
+
+  upReq.write(bodyStr)
+  upReq.end()
+}
+
+// ---------------------------------------------------------------------------
+// handleChat: routes to streaming or buffered path based on payload.stream.
+// ---------------------------------------------------------------------------
+function handleChat(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+
+    const settings = appData.settings || {}
+    const apiKey  = settings.apiKey  || body.apiKey
+    const modelId = settings.modelId || body.modelId
+    const { payload } = body
+
+    if (!apiKey || !modelId || !payload) {
+      return json(res, { error: 'Missing params' }, 400)
+    }
+
+    const finalPayload = { ...payload, model: modelId }
+
+    // Streaming path for live token-by-token rendering
+    if (finalPayload.stream === true) {
+      return callGccStreaming(CHAT_PATH, apiKey, finalPayload, res)
+    }
+
+    // Buffered path for short utility calls (auto-title, embed test, etc.)
+    callGccJson(CHAT_PATH, apiKey, finalPayload, (err, upstream) => {
+      if (err) {
+        // 504 = Gateway Timeout. Correct signal for "we couldn't reach upstream";
+        // lets clients distinguish network failure from a real server bug.
+        const isTimeout = /timeout|budget/i.test(err.message)
+        return json(res, { error: err.message, kind: 'upstream_unreachable' },
+                    isTimeout ? 504 : 502)
+      }
+
+      const { statusCode, headers, body: respBody } = upstream
+
+      if (!respBody || !respBody.trim()) {
+        return json(res, {
+          error: 'Empty response from upstream',
+          status: statusCode,
+          headers
+        }, statusCode >= 400 ? statusCode : 502)
+      }
+
+      try {
+        const parsed = JSON.parse(respBody)
+        if (upstream.rateLimit) parsed._rateLimit = upstream.rateLimit
+        return json(res, parsed, statusCode)
+      } catch {
+        return json(res, {
+          error: 'Upstream returned non-JSON response',
+          status: statusCode,
+          headers,
+          raw: respBody,
+          _rateLimit: upstream.rateLimit || null
+        }, statusCode >= 400 ? statusCode : 502)
+      }
+    })
+  })
+}
+
+function handleEmbed(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+
+    const { apiKey, modelId, input, text } = body
+    const finalInput = input ?? text
+
+    if (!apiKey || !modelId || !finalInput) {
+      return json(res, { error: 'Missing params' }, 400)
+    }
+
+    const finalPayload = {
+      model: modelId,
+      input: finalInput
+    }
+
+    callGccJson(EMBED_PATH, apiKey, finalPayload, (err, upstream) => {
+      if (err) {
+        const isTimeout = /timeout|budget/i.test(err.message)
+        return json(res, { error: err.message, kind: 'upstream_unreachable' },
+                    isTimeout ? 504 : 502)
+      }
+
+      const { statusCode, headers, body: respBody } = upstream
+
+      if (!respBody || !respBody.trim()) {
+        return json(res, {
+          error: 'Empty response from upstream',
+          status: statusCode,
+          headers
+        }, statusCode >= 400 ? statusCode : 502)
+      }
+
+      try {
+        const parsed = JSON.parse(respBody)
+        if (upstream.rateLimit) parsed._rateLimit = upstream.rateLimit
+        return json(res, parsed, statusCode)
+      } catch {
+        return json(res, {
+          error: 'Upstream returned non-JSON response',
+          status: statusCode,
+          headers,
+          raw: respBody,
+          _rateLimit: upstream.rateLimit || null
+        }, statusCode >= 400 ? statusCode : 502)
+      }
+    })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Batch embed — helpers
+// ---------------------------------------------------------------------------
+// Per-model embedding limits — batch = max texts per request, maxChars = per-text
+// cap. Cohere Embed v3: 96 texts, ~512 tokens (~2000 chars). OpenAI
+// text-embedding-3: 2048 inputs, ~8191 tokens (~30000 chars). Unknown models fall
+// back to the conservative Cohere caps so we never exceed a provider limit.
+const EMBED_LIMITS = {
+  'cohere.embed-english-v3':      { batch: 96,   maxChars: 2000 },
+  'cohere.embed-multilingual-v3': { batch: 96,   maxChars: 2000 },
+  'text-embedding-3-small':       { batch: 2048, maxChars: 30000 },
+  'text-embedding-3-large':       { batch: 2048, maxChars: 30000 }
+}
+function embedLimitsFor(modelId) {
+  if (EMBED_LIMITS[modelId]) return EMBED_LIMITS[modelId]
+  const m = String(modelId || '').toLowerCase()
+  if (m.includes('text-embedding')) return { batch: 2048, maxChars: 30000 }
+  if (m.includes('cohere') || m.includes('embed-')) return { batch: 96, maxChars: 2000 }
+  return { batch: 96, maxChars: 2000 }   // conservative default
+}
+
+function callGccJsonAsync(pathName, apiKey, payload) {
+  return new Promise((resolve, reject) => {
+    callGccJson(pathName, apiKey, payload, (err, upstream) => {
+      if (err) return reject(err)
+      resolve(upstream)
+    })
+  })
+}
+
+async function callStandardBatchEmbed(apiKey, modelId, texts) {
+  console.log('[embed] batch embed | chunks:', texts.length)
+  const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts })
+
+  if (!upstream.body || !upstream.body.trim()) {
+    throw new Error('Empty response from embeddings (status ' + upstream.statusCode + ')')
+  }
+
+  let data
+  try { data = JSON.parse(upstream.body) }
+  catch { throw new Error('Non-JSON response: ' + upstream.body.slice(0, 200)) }
+
+  if (upstream.statusCode >= 400) {
+    throw new Error('Embeddings error ' + upstream.statusCode + ': ' + JSON.stringify(data))
+  }
+
+  const sorted = (data?.data || []).sort((a, b) => a.index - b.index)
+  const embeddings = sorted.map(e => e.embedding)
+
+  if (embeddings.length !== texts.length) {
+    throw new Error('Embedding count mismatch: got ' + embeddings.length + ', expected ' + texts.length)
+  }
+  return embeddings
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+// Pace embed batches against the per-minute rate-limit window. The PlatformAI
+// key allows only a small number of requests/tokens per ~60s; bursting several
+// batches can trip a 429 the short retry can't outlast. Before a batch, if the
+// last snapshot shows we're near the cap, wait for the window to reset and call
+// notify(secsLeft) each tick so the client can show a clear countdown instead
+// of looking frozen. tokenEst = rough token cost of the upcoming batch.
+async function waitForEmbedHeadroom(apiKey, tokenEst, notify) {
+  const WINDOW_MS = 60000
+  const rl = getLastRateLimit(apiKey)
+  if (!rl) return
+  const reqLow = rl.reqRemaining != null && rl.reqRemaining <= 2
+  const tokLow = rl.tokRemaining != null && rl.tokRemaining <= (tokenEst || 25000)
+  if (!reqLow && !tokLow) return
+  const age = Date.now() - (rl.ts || 0)
+  let remain = Math.max(2000, WINDOW_MS - age)
+  console.log('[embed] pacing - req=' + rl.reqRemaining + ', tok=' + rl.tokRemaining +
+              ' near cap; waiting ~' + Math.round(remain / 1000) + 's for rate-limit window reset')
+  while (remain > 0) {
+    if (notify) { try { notify(Math.ceil(remain / 1000)) } catch {} }
+    const step = Math.min(3000, remain)
+    await sleep(step)
+    remain -= step
+  }
+  rateLimitSnapshots.delete(snapshotKey(apiKey))   // window reset - re-measure next call
+}
+
+async function handleEmbedBatch(req, res) {
+  readBody(req, async (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+
+    const settings = appData.settings || {}
+    const apiKey   = settings.embedApiKey  || body.apiKey
+    const modelId  = settings.embedModelId || body.modelId
+    const lim = embedLimitsFor(modelId)
+    const { inputs } = body
+
+    if (!apiKey || !modelId || !inputs?.length) {
+      return json(res, { error: 'Missing apiKey, modelId, or inputs' }, 400)
+    }
+
+    const allHashes = inputs.map(t => hashText(modelId + ':' + t))
+
+    // ── Cache check ──
+    const results = new Array(inputs.length).fill(null)
+    const missIdx = []
+    for (let i = 0; i < inputs.length; i++) {
+      const key = hashText(modelId + ':' + inputs[i])
+      if (embedCache[key]) {
+        results[i] = embedCache[key]
+      } else {
+        missIdx.push(i)
+      }
+    }
+
+    console.log('[embed-batch] total:', inputs.length,
+                '| hits:', inputs.length - missIdx.length,
+                '| misses:', missIdx.length)
+
+    // All cached — return plain JSON
+    if (!missIdx.length) {
+      return json(res, { embeddings: results.map(v => Array.from(v)), hashes: allHashes })
+    }
+
+    // SSE for partial / full miss
+    res.writeHead(200, {
+      'Content-Type':      'text/event-stream; charset=utf-8',
+      'Cache-Control':     'no-cache',
+      'Connection':        'keep-alive',
+      'X-Accel-Buffering': 'no'
+    })
+    const send = obj => res.write('data: ' + JSON.stringify(obj) + '\n\n')
+
+    try {
+      let chunksEmbedded = 0
+      const totalMisses  = missIdx.length
+      const totalBatches = Math.ceil(totalMisses / lim.batch)
+
+      for (let b = 0; b < missIdx.length; b += lim.batch) {
+        const batchOrigIdx = missIdx.slice(b, b + lim.batch)
+        const batchTexts   = batchOrigIdx.map(i => inputs[i].slice(0, lim.maxChars))
+        const batchNum     = Math.floor(b / lim.batch) + 1
+
+        console.log('[embed] batch', batchNum + '/' + totalBatches, '| chunks:', batchTexts.length)
+
+        await waitForEmbedHeadroom(apiKey, batchTexts.length * 250, secsLeft =>
+          send({ type: 'pacing', waitSec: secsLeft, done: chunksEmbedded, total: totalMisses,
+                 batchDone: batchNum, batchTotal: totalBatches }))
+
+        const embeddings = await callStandardBatchEmbed(apiKey, modelId, batchTexts)
+
+        for (let i = 0; i < embeddings.length; i++) {
+          const origIdx  = batchOrigIdx[i]
+          const cacheKey = hashText(modelId + ':' + inputs[origIdx])
+          const f32      = new Float32Array(embeddings[i])
+          results[origIdx]     = f32
+          embedCache[cacheKey] = f32
+        }
+
+        chunksEmbedded += batchTexts.length
+        saveEmbedCache()
+
+        send({
+          type:       'progress',
+          done:       chunksEmbedded,
+          total:      totalMisses,
+          batchDone:  batchNum,
+          batchTotal: totalBatches
+        })
+      }
+
+      send({ type: 'done', embeddings: results.map(v => Array.from(v)), hashes: allHashes })
+      res.end()
+    } catch (e) {
+      console.error('[embed-batch] error:', e.message)
+      send({ type: 'error', message: e.message })
+      res.end()
+    }
+  })
+}
+
+function handleEmbedLookup(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+
+    const { hashes } = body
+    if (!Array.isArray(hashes) || !hashes.length || hashes.length > 1500) {
+      return json(res, { error: 'Invalid hashes array' }, 400)
+    }
+
+    const vectors = hashes.map(h => {
+      const v = embedCache[h]
+      return v ? Array.from(v) : null
+    })
+
+    const hits = vectors.filter(v => v !== null).length
+    console.log('[embed-lookup] requested:', hashes.length,
+                '| hits:', hits, '| misses:', hashes.length - hits)
+
+    json(res, { vectors })
+  })
+}
+
+function handleEmbedEvict(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+
+    const { hashes } = body
+    if (!Array.isArray(hashes) || !hashes.length || hashes.length > 1500) {
+      return json(res, { error: 'Invalid hashes array' }, 400)
+    }
+
+    let removed = 0
+    for (const h of hashes) {
+      if (embedCache[h]) { delete embedCache[h]; removed++ }
+    }
+
+    console.log('[embed-evict] requested:', hashes.length, '| removed:', removed)
+    if (removed > 0) saveEmbedCache()
+
+    json(res, { ok: true, removed })
+  })
+}
+
+function handleGetData(req, res) {
+  json(res, appData)
+}
+
+// ---------------------------------------------------------------------------
+// Change 4: handleSaveData — do NOT strip settings from the saved body.
+// Preserve existing settings if the incoming body doesn't include them.
+// ---------------------------------------------------------------------------
+function handleSaveData(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+    // Preserve existing settings if the incoming body doesn't include them
+    if (!body.settings && appData.settings) {
+      body.settings = appData.settings
+    }
+    // Strip full embedding vectors — only embHash is needed on disk
+    if (body && body.chats) {
+      for (const chat of Object.values(body.chats)) {
+        if (!Array.isArray(chat.docs)) continue
+        for (const doc of chat.docs) {
+          if (!Array.isArray(doc.chunks)) continue
+          for (const chunk of doc.chunks) {
+            delete chunk.embedding
+          }
+        }
+      }
+    }
+    appData = body
+    saveData(appData)
+    json(res, { ok: true })
+  })
+}
+
+function handleSkillsList(req, res) {
+  let entries
+  try {
+    entries = fs.readdirSync(SKILLS_DIR)
+  } catch (e) {
+    return json(res, { error: 'Cannot read skills directory: ' + e.message }, 500)
+  }
+
+  const skills = []
+  for (const name of entries) {
+    if (!name.endsWith('.md')) continue
+    const id = name.slice(0, -3)
+    if (!isValidSlug(id)) {
+      console.warn('[skills] ignoring file with invalid slug:', name)
+      continue
+    }
+    const fp = path.join(SKILLS_DIR, name)
+    let stat
+    try { stat = fs.statSync(fp) } catch { continue }
+    if (!stat.isFile()) continue
+    let title = null
+    if (stat.size <= SKILL_MAX_BYTES) {
+      try {
+        const body = fs.readFileSync(fp, 'utf8')
+        title = readSkillTitleFromBody(body)
+      } catch {}
+    }
+    skills.push({
+      id,
+      title: title || id,
+      bytes: stat.size,
+      mtime: stat.mtimeMs
+    })
+  }
+  skills.sort((a, b) => a.id.localeCompare(b.id))
+  json(res, { skills })
+}
+
+function handleSkillRead(req, res, id) {
+  if (!isValidSlug(id)) return json(res, { error: 'Invalid skill id' }, 400)
+  const fp = skillPath(id)
+  let stat
+  try { stat = fs.statSync(fp) }
+  catch { return json(res, { error: 'Not found' }, 404) }
+  if (!stat.isFile()) return json(res, { error: 'Not found' }, 404)
+  if (stat.size > SKILL_MAX_BYTES) {
+    return json(res, { error: 'Skill exceeds size cap (' + SKILL_MAX_BYTES + ' bytes)' }, 413)
+  }
+  let body
+  try { body = fs.readFileSync(fp, 'utf8') }
+  catch (e) { return json(res, { error: 'Read failed: ' + e.message }, 500) }
+  json(res, { id, title: readSkillTitleFromBody(body) || id, body })
+}
+
+function handleSkillWrite(req, res, id) {
+  if (!isValidSlug(id)) return json(res, { error: 'Invalid skill id' }, 400)
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+    if (!body || typeof body.body !== 'string') {
+      return json(res, { error: 'Expected JSON { body: string }' }, 400)
+    }
+    if (body.body.indexOf('\0') !== -1) {
+      return json(res, { error: 'Body contains NUL byte' }, 400)
+    }
+    const bytes = Buffer.byteLength(body.body, 'utf8')
+    if (bytes > SKILL_MAX_BYTES) {
+      return json(res, { error: 'Skill exceeds size cap (' + SKILL_MAX_BYTES + ' bytes)' }, 413)
+    }
+    const fp = skillPath(id)
+    try { fs.writeFileSync(fp, body.body, 'utf8') }
+    catch (e) { return json(res, { error: 'Write failed: ' + e.message }, 500) }
+    let stat
+    try { stat = fs.statSync(fp) } catch { stat = { size: bytes, mtimeMs: Date.now() } }
+    json(res, {
+      id,
+      title: readSkillTitleFromBody(body.body) || id,
+      bytes: stat.size,
+      mtime: stat.mtimeMs
+    })
+  })
+}
+
+
+function handleSkillDelete(req, res, id) {
+  if (!isValidSlug(id)) return json(res, { error: 'Invalid skill id' }, 400)
+  const fp = skillPath(id)
+  try {
+    fs.unlinkSync(fp)
+  } catch (e) {
+    if (e.code === 'ENOENT') return json(res, { error: 'Not found' }, 404)
+    return json(res, { error: 'Delete failed: ' + e.message }, 500)
+  }
+  json(res, { id, deleted: true })
+}
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8'
+}
+
+function serveStatic(req, res) {
+  const reqPath   = req.url === '/' ? '/index.html' : req.url
+  const cleanPath = path.normalize(reqPath).replace(/^(\.\.[/\\])+/, '')
+  const fp        = path.join(LCL_DIR, cleanPath)
+
+  if (!fp.startsWith(path.resolve(LCL_DIR) + path.sep) && fp !== path.resolve(LCL_DIR)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('Forbidden')
+    return
+  }
+
+  fs.readFile(fp, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('Not found')
+      return
+    }
+
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream'
+    })
+    res.end(data)
+  })
+}
+
+const server = http.createServer((req, res) => {
+  // Host-header guard: refuse anything that wasn't addressed to localhost.
+  if (!isLocalHost(req)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('Forbidden: localhost only')
+    return
+  }
+
+  // Reflect the loopback origin only; no wildcard CORS.
+  const origin = req.headers.origin
+  if (origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
+  const p = req.url.split('?')[0]
+
+  if (req.method === 'POST' && p === '/api/chat')          return handleChat(req, res)
+  if (req.method === 'POST' && p === '/api/embed')         return handleEmbed(req, res)
+  if (req.method === 'POST' && p === '/api/embed-batch')   return handleEmbedBatch(req, res)
+  if (req.method === 'POST' && p === '/api/embed-lookup')  return handleEmbedLookup(req, res)
+  if (req.method === 'POST' && p === '/api/embed-evict')   return handleEmbedEvict(req, res)
+  if (req.method === 'GET'  && p === '/api/config')       return handleGetConfig(req, res)
+  if (req.method === 'POST' && p === '/api/config')       return handleSaveConfig(req, res)
+  if (req.method === 'GET'  && p === '/api/data')         return handleGetData(req, res)
+  if (req.method === 'POST' && p === '/api/data')         return handleSaveData(req, res)
+
+  if (req.method === 'GET'  && p === '/skills') return handleSkillsList(req, res)
+  if (req.method === 'POST' && p === '/skills/reload') return handleSkillsList(req, res)
+
+  // /skills/:id  (no further slashes allowed)
+  const skillMatch = /^\/skills\/([^\/]+)$/.exec(p)
+  if (skillMatch) {
+    const id = decodeURIComponent(skillMatch[1])
+    if (req.method === 'GET')    return handleSkillRead(req, res, id)
+    if (req.method === 'PUT')    return handleSkillWrite(req, res, id)
+    if (req.method === 'DELETE') return handleSkillDelete(req, res, id)
+  }
+
+  return serveStatic(req, res)
+})
+
+server.listen(PORT, BIND_HOST, () => {
+  console.log('')
+  console.log('  LCL - Local Comet LLM  ->  http://' + BIND_HOST + ':' + PORT)
+  console.log('  Bound interface        ->  ' + BIND_HOST + ' (loopback only - not reachable from LAN)')
+  console.log('  Folder                 ->  ' + LCL_DIR)
+  console.log('  Data file              ->  ' + DATA_FILE)
+  console.log('  API Host               ->  ' + API_HOST)
+  console.log('  Node version           ->  ' + process.version)
+  console.log('')
+})
