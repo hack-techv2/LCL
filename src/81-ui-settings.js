@@ -72,10 +72,10 @@ function renderSpSkillsList() {
     return
   }
   root.innerHTML = skillsCache.map(s => `
-    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;background:var(--bg3)">
-      <div style="flex:1;min-width:0;font-size:12px">
-        <div style="font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${esc(s.id)}.md &middot; ${s.bytes} B</div>
+    <div class="skill-row">
+      <div class="skill-row-main">
+        <div class="skill-row-title">${esc(s.title)}</div>
+        <div class="skill-row-meta">${esc(s.id)}.md &middot; ${s.bytes} B</div>
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
