@@ -1,4 +1,8 @@
 async function queueFilesForPreview(files, target) {
+  if (typeof demoOn === 'function' && demoOn()) {
+    files = demoCapFiles(Array.from(files), target)
+    if (!files.length) return
+  }
   const valid = []
   for (const f of Array.from(files)) {
     if (!isSupported(f)) {
