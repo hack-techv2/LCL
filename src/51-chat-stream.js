@@ -54,8 +54,9 @@ async function runStream(chat, payload, ragSources) {
         }
       }
 
-      // 5xx transient errors — auto-retry with backoff (up to 3 times)
-      if ([502, 503, 504].includes(resp.status) && retry5xxCount < 3) {
+      // Any 5xx is transient — auto-retry with backoff (up to 3 times). 429 is
+      // handled above (quota wait); everything else falls through to a clean box.
+      if (resp.status >= 500 && resp.status < 600 && retry5xxCount < 3) {
         const em5 = errData?.error?.message || errData?.error || ('HTTP '+resp.status)
         handle5xxRetry(chat, payload, ragSources, resp.status, em5)
         return
@@ -63,10 +64,10 @@ async function runStream(chat, payload, ragSources) {
       retry5xxCount = 0
       const labels = { 500:'Server error', 502:'Bad gateway', 503:'Service unavailable', 504:'Gateway timeout' }
       const note = labels[resp.status]
-        ? ('Error ' + resp.status + ': ' + labels[resp.status] + ' — the model service is temporarily unreachable. Please try again in a moment.')
+        ? ('Error ' + resp.status + ': ' + labels[resp.status] + ' — The model service is temporarily unreachable. Please try again in a moment.')
         : ('Error ' + resp.status + ': ' + cleanErrMsg(errData?.error?.message || errData?.error || ('HTTP ' + resp.status)))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources)
+      appendMsg('ai', note, null, ragSources, null, true)
       setHealth('err', labels[resp.status] ? 'Service unavailable' : ('Error ' + resp.status))
       return
     }
@@ -144,7 +145,7 @@ async function runStream(chat, payload, ragSources) {
       try { typingEl.remove() } catch {}
       const note = 'Stream error: '+streamErr
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources)
+      appendMsg('ai', note, null, ragSources, null, true)
       setHealth('err', 'Unreachable')
       return
     }
@@ -187,7 +188,7 @@ async function runStream(chat, payload, ragSources) {
         ? 'SSL certificate error — Please try restarting your Zscaler connection, then retry.'
         : 'Network error: '+err.message
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources)
+      appendMsg('ai', note, null, ragSources, null, true)
       setHealth('err', 'Unreachable')
     }
   } finally {
