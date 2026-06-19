@@ -75,3 +75,4 @@ function finishRename(id, inp) {
 }
 
 function curChat() { return chatId ? D.chats[chatId] : null }
+
