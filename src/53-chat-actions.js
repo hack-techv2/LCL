@@ -34,19 +34,11 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
 
   const render = () => {
     const remain = retryAt - Date.now()
-    bodyEl.innerHTML =
-      '<div style="background:rgba(220,60,60,.08);border:1px solid rgba(220,60,60,.3);border-radius:10px;padding:14px 16px;margin-top:14px;">' +
-        '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:#e05050;margin-bottom:8px;font-size:13px">' +
-          '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 6a.75.75 0 110-1.5.75.75 0 010 1.5z"/></svg>' +
-          'Error ' + status + ': ' + statusLabel +
-        '</div>' +
-        '<div style="font-size:12px;color:var(--tx2);line-height:1.7">' +
-          '<div style="margin-bottom:4px">' + hint + '</div>' +
-          '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(remain) + '</strong>' +
-          '&nbsp;<span style="font-size:11px;opacity:.7">(attempt ' + retry5xxCount + ' of 3)</span></div>' +
-        '</div>' +
-        '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px" onclick="cancelRateLimitRetry()">Cancel retry</button></div>' +
-      '</div>'
+    bodyEl.innerHTML = statusBox('err', 'Error ' + status + ': ' + statusLabel,
+      '<div style="margin-bottom:4px">' + hint + '</div>' +
+      '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(remain) + '</strong>' +
+      '&nbsp;<span style="font-size:11px;opacity:.7">(attempt ' + retry5xxCount + ' of 3)</span></div>',
+      { icon: 'err', cancel: 'cancelRateLimitRetry()' })
   }
 
   render()
