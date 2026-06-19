@@ -138,6 +138,11 @@ Refactor (maintainability / extensibility)
   (embed step mocked); floating "Reset demo" button. Nothing touches disk — persist
   is a no-op and the embed API is mocked, so lcl_data.json / embed_cache.bin are
   never written under #demo.
+- #demo skills now carry seeded bodies so Edit opens the content offline; the
+  skills manager got an X-close + consistent .skill-row styling; mutating actions
+  (save/rename/delete/upload) are no-ops with a toast under #demo.
+- #demo limits: file uploads + embeds capped at 1 MB/file and 3 files (docs or
+  attachments); skills are read-only (capped at the seeded set).
 
 NOTE: this batch currently lives on the `alpha` branch only. Promote to stable by
 pushing the build to `main` and refreshing the v0.67d release.
