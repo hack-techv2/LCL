@@ -8,7 +8,7 @@ async function embedDoc(doc) {
     doc.status = 'ready'
     if (typeof renderDocPanel === 'function') renderDocPanel()
     if (typeof updateDocsBtn === 'function') updateDocsBtn()
-    if (typeof toast === 'function') toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks, demo)', 'ok')
+    if (typeof toast === 'function') toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     return
   }
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON).
