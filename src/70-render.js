@@ -93,7 +93,7 @@ function chatItemHTML(c) {
 
 function renderTopbar() {
   const chat = curChat()
-  const subEl = document.getElementById('tb-chat-title'); if(subEl) subEl.textContent = chat ? chat.title : ''
+  const subEl = document.getElementById('tb-chat-title'); if(subEl) subEl.textContent = (chat && chat.title && chat.title !== 'New chat') ? chat.title : ''
 }
 
 function renderMessages() {
@@ -104,11 +104,14 @@ function renderMessages() {
     const embModel = (creds && creds.embedModelId) || (D.settings && D.settings.embedModelId) || ''
     const embKey   = (creds && creds.embedApiKey)  || (D.settings && D.settings.embedApiKey)  || ''
     const embOk    = !!(embModel && embKey)
+    // Example hint cards are first-run onboarding only: hide once the user
+    // already has chat history (more than just this empty new chat).
+    const firstRun = Object.keys(D.chats||{}).length <= 1
     const cap = ' — ask questions, write &amp; review code, summarise and draft documents.'
     const copyLine = '<br><em style="color:var(--tx2)">Copy any reply straight into Word or Outlook with formatting intact.</em>'
     let sub
     if (creds) {
-      sub = 'Connected to <strong style="color:var(--ac)">' + esc(creds.model||'a model') + '</strong>' + cap + copyLine + '<br>' +
+      sub = 'Connected to <strong style="color:var(--ac)">' + esc(creds.model||'a model') + '</strong>' + clsSuffix(creds) + cap + copyLine + '<br>' +
         (embOk ? 'Embeddings ready (<strong style="color:var(--ac)">' + esc(embModel) + '</strong>) — attach files to chat over them.'
                : 'Add an embedding key in Settings to chat over your files.')
     } else if (embOk) {
@@ -120,11 +123,11 @@ function renderMessages() {
       <div class="empty-logo" style="padding:6px"><svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg></div>
       <div class="empty-title">${chat?chat.title:'Local Comet LLM (LCL)'}</div>
       <div class="empty-sub">${sub}</div>
-      <div class="hint-cards">
+      ${firstRun ? `<div class="hint-cards">
         <button class="hint-card" onclick="useHint('Summarise this document for me: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5A1.5 1.5 0 015.5 0h4.1a1.5 1.5 0 011.06.44l1.9 1.9A1.5 1.5 0 0113 3.41V14.5A1.5 1.5 0 0111.5 16h-6A1.5 1.5 0 014 14.5v-13zM6 6.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h2a.5.5 0 000-1H6z"/></svg><span class="hint-card-title">Summarise a document</span><span class="hint-card-sub">Paste or attach a file</span></button>
         <button class="hint-card" onclick="useHint('Help me write a pentest report. ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .6l5.4 2.1v4.2c0 3.4-2.3 6.5-5.4 7.4C4.9 13.4 2.6 10.3 2.6 6.9V2.7L8 .6z"/></svg><span class="hint-card-title">Write a pentest report</span><span class="hint-card-sub">Draft findings &amp; structure</span></button>
         <button class="hint-card" onclick="useHint('Explain this concept to me step by step: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4.5 4.5 0 00-2.7 8.1c.4.3.6.8.6 1.3v.6h4.2v-.6c0-.5.2-1 .6-1.3A4.5 4.5 0 008 1zM6 13h4v.4A1.6 1.6 0 018.4 15h-.8A1.6 1.6 0 016 13.4V13z"/></svg><span class="hint-card-title">Explain a concept</span><span class="hint-card-sub">Step-by-step breakdown</span></button>
-      </div>
+      </div>` : ''}
     </div>`
     return
   }
