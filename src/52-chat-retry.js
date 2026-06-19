@@ -89,7 +89,7 @@ function handleRateLimitWait(chat, payload, ragSources, resetMs, rawErrMsg) {
   const render = () => {
     const remain = resetMs - Date.now()
     bodyEl.innerHTML =
-      '<div style="background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:14px 16px;">' +
+      '<div style="background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:14px 16px;margin-top:14px;">' +
         '<div style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--pin);margin-bottom:8px;font-size:13px">' +
           '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.5a.5.5 0 01.5.5v4.5l3 1.5a.5.5 0 01-.4.9l-3.3-1.65A.5.5 0 017.5 8.5V4a.5.5 0 01.5-.5z"/><path d="M8 16A8 8 0 108 0a8 8 0 000 16zM1 8a7 7 0 1114 0A7 7 0 011 8z"/></svg>' +
           'Rate limit reached' +
@@ -135,5 +135,5 @@ function cancelRateLimitRetry() {
   if (pendingRetry) pendingRetry.cancel()
 }
 
-// Auto-retry for 502/503/504. Backoff: 5s → 10s → 20s (3 retries max).
+// Auto-retry for 502/503/504. Backoff: 10s → 20s → 60s (3 retries max).
 // Shows a transient countdown bubble; cancellable by the user.
