@@ -42,7 +42,7 @@ function renderMessages() {
   inner.className = 'msgs-inner'
   chat.messages.forEach(m => {
     const t = typeof m.content==='string'?m.content:m.content?.find?.(b=>b.type==='text')?.text||'[attachment]'
-    const div = buildMsgEl(m.role==='user'?'user':'ai', t, new Date(m.ts), m.sources, m.fileNames)
+    const div = buildMsgEl(m.role==='user'?'user':'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
     inner.appendChild(div)
   })
   el.innerHTML=''
@@ -51,7 +51,7 @@ function renderMessages() {
   refreshTailActions()
 }
 
-function appendMsg(role, text, date, sources, fileNames) {
+function appendMsg(role, text, date, sources, fileNames, errored) {
   let inner = document.querySelector('.msgs-inner')
   if (!inner) {
     document.getElementById('messages').innerHTML=''
@@ -59,14 +59,14 @@ function appendMsg(role, text, date, sources, fileNames) {
     inner.className='msgs-inner'
     document.getElementById('messages').appendChild(inner)
   }
-  const div = buildMsgEl(role, text, date, sources, fileNames)
+  const div = buildMsgEl(role, text, date, sources, fileNames, errored)
   inner.appendChild(div)
   document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight
   refreshTailActions()
   return div
 }
 
-function buildMsgEl(role, text, date, sources, fileNames) {
+function buildMsgEl(role, text, date, sources, fileNames, errored) {
   const isUser = role==='user'
   const time   = (date||new Date()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
   const label  = isUser?'You':(creds?.model||'LCL')
@@ -97,13 +97,24 @@ function buildMsgEl(role, text, date, sources, fileNames) {
   // Action row: Copy always; Regenerate on assistant messages; Edit on user messages.
   // The renderer sets `data-last-user` / `data-last-ai` on the final ones so the
   // specific buttons only show on the last matching message (cleaner UX).
-  const acts = [
+  const acts = (errored && !isUser) ? '' : [
     `<button class="mact" onclick="copyMsg(this)" title="Copy raw markdown to clipboard">Copy</button>`,
     isUser
       ? `<button class="mact edit-act" onclick="editLastUser()" style="display:none">Edit</button>`
       : `<button class="mact" onclick="copyMsgHtml(this)" title="Paste into Word or Outlook to preserve formatting (tables, bold, headings)">Copy for Word / Outlook</button>
          <button class="mact regen-act" onclick="regenerateLast()" title="Re-send the last message and get a new response" style="display:none">Regenerate</button>`
   ].join('')
+  // Errored assistant replies render through the shared statusBox so 4xx/5xx and
+  // terminal errors all look the same. Note format: "Error <code>: <label> — <hint>".
+  let bodyInner
+  if (errored && !isUser) {
+    const raw = String(text || ''); const dash = raw.indexOf(' — ')
+    const title = dash > -1 ? raw.slice(0, dash) : raw
+    const body  = dash > -1 ? raw.slice(dash + 3) : ''
+    bodyInner = statusBox('err', title, esc(body))
+  } else {
+    bodyInner = fmt(displayText)
+  }
 
   const div = document.createElement('div')
   div.className='msg-group'
@@ -117,7 +128,7 @@ function buildMsgEl(role, text, date, sources, fileNames) {
       <div class="msg-time">${time}</div>
     </div>
     ${fileChips}
-    <div class="msg-body">${fmt(displayText)}</div>
+    <div class="msg-body">${bodyInner}</div>
     ${srcHtml}
     <div class="msg-acts">${acts}</div>`
   return div
