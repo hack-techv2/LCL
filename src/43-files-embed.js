@@ -1,4 +1,16 @@
 async function embedDoc(doc) {
+  // Demo mode: skip the API — fake chunk hashes and mark ready so the upload +
+  // Embed-panel flow can be tried offline.
+  if (typeof demoOn === 'function' && demoOn()) {
+    const size = creds.chunkSize || 800
+    const raw = (typeof chunkText === 'function' && doc.content) ? chunkText(doc.content, size, Math.floor(size * 0.2)) : []
+    doc.chunks = raw.map((t, i) => ({ text: t, embHash: 'demo' + i }))
+    doc.status = 'ready'
+    if (typeof renderDocPanel === 'function') renderDocPanel()
+    if (typeof updateDocsBtn === 'function') updateDocsBtn()
+    if (typeof toast === 'function') toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks, demo)', 'ok')
+    return
+  }
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON).
   // Only the 16-char SHA-1 hash is stored per chunk (embHash) — the actual
   // vector lives in the server's binary cache (embed_cache.bin).
