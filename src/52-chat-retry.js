@@ -26,7 +26,7 @@ async function autoTitleChat(chat) {
     if (!resp.ok) return
     const data = await resp.json()
     let title = (data?.choices?.[0]?.message?.content || '').trim()
-    title = title.replace(/^["'`“”‘’]/, '').replace(/["'`“”‘’]$/, '')
+    title = title.replace(/^["'`""'']/, '').replace(/["'`""'']$/, '')
                  .replace(/^Title:\s*/i, '').replace(/[.!?]+$/, '')
                  .slice(0, 60)
     if (title && chat) {
