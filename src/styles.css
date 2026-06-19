@@ -113,7 +113,7 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 .chat-list::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
 
 .section-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding:10px 8px 4px}
-.sb-skills{border-top:1px solid var(--bdr);padding:6px 6px 8px;max-height:30vh;overflow-y:auto;flex-shrink:0}
+.sb-skills{border-top:1px solid var(--bdr);padding:6px 6px 8px;max-height:30vh;overflow-y:auto;overflow-x:hidden;flex-shrink:0}
 .sb-skills::-webkit-scrollbar{width:3px}
 .sb-skills::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
 .sb-skills-hd{padding:6px 8px 4px}
@@ -408,6 +408,13 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sl input[type=range]:hover::-webkit-slider-thumb{background:var(--ac2);box-shadow:0 0 0 1px var(--ac2), 0 1px 4px rgba(0,0,0,.4)}
 .sl input[type=range]:hover::-moz-range-thumb{background:var(--ac2)}
 .sp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:6px}
+.skill-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);background:var(--bg3);border:1px solid var(--bdr)}
+.skill-row-main{flex:1;min-width:0;font-size:12px}
+.skill-row-title{font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.skill-row-meta{font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:1px}
+.skill-row .tb-btn{padding:4px 9px}
+#demo-reset{position:fixed;right:24px;bottom:104px;z-index:120;background:var(--ac);color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:.9;transition:all .15s}
+#demo-reset:hover{opacity:1;transform:translateY(-1px)}
 .ver-alpha{font-size:8px;font-weight:700;letter-spacing:.1em;color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:20px;padding:1px 7px;line-height:1.5}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
