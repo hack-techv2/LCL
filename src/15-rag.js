@@ -173,3 +173,10 @@ async function evictDocFromCache(doc) {
     console.warn('[evictDocFromCache]', e.message)
   }
 }
+
+// Ask the server to prune vectors no longer referenced by any doc (called after
+// a doc is removed). More thorough than per-hash eviction: clears orphans too.
+async function gcEmbedCache() {
+  try { const r = await fetch('/api/embed-gc', { method: 'POST' }); return await r.json() }
+  catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
+}
