@@ -1,8 +1,6 @@
 LCL CHANGELOG  —  v0.67d
 ========================
 
-Released: 17 Jun 2026
-
 
 UI, settings & experimental-channel batch (20 Jun 2026, still v0.67d)
 --------------------------------------------------------------------
