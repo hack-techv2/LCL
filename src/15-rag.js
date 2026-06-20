@@ -43,14 +43,10 @@ async function embedBatch(texts) {
   if (!embedModel) throw new Error('No embedding model configured')
 
   return new Promise((resolve, reject) => {
-    fetch('/api/embed-batch', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        apiKey:  creds?.embedApiKey,
-        modelId: embedModel,
-        inputs:  texts
-      })
+    httpPost('/api/embed-batch', {
+      apiKey:  creds?.embedApiKey,
+      modelId: embedModel,
+      inputs:  texts
     }).then(async res => {
       const contentType = res.headers.get('content-type') || ''
 
@@ -65,38 +61,29 @@ async function embedBatch(texts) {
         return reject(new Error('Unexpected content-type: ' + contentType))
       }
 
-      const reader  = res.body.getReader()
-      const decoder = new TextDecoder()
-      let   buffer  = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop()
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          let evt
-          try { evt = JSON.parse(line.slice(6)) } catch { continue }
-          if (evt.type === 'progress') {
-            toast('Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
-              + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
-            if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
-          } else if (evt.type === 'pacing') {
-            // Server is waiting out the API rate-limit window. Make the pause
-            // obvious so the UI doesn't look frozen.
-            toast('⏳ API rate limit reached — resuming embedding in ~' + evt.waitSec + 's'
-              + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
-            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
-          } else if (evt.type === 'done') {
-            return resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
-          } else if (evt.type === 'error') {
-            return reject(new Error(evt.message))
-          }
+      // Shared SSE consumption (streamSse, 12-transport); events resolve/reject
+      // the outer promise. A normal end without a done event is an error.
+      let settled = false
+      await streamSse(res, payload => {
+        let evt
+        try { evt = JSON.parse(payload) } catch { return }
+        if (evt.type === 'progress') {
+          toast('Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
+            + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
+          if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
+        } else if (evt.type === 'pacing') {
+          // Server is waiting out the API rate-limit window. Make the pause
+          // obvious so the UI doesn't look frozen.
+          toast('⏳ API rate limit reached — resuming embedding in ~' + evt.waitSec + 's'
+            + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
+          if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
+        } else if (evt.type === 'done') {
+          settled = true; resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
+        } else if (evt.type === 'error') {
+          settled = true; reject(new Error(evt.message))
         }
-      }
-      reject(new Error('SSE stream ended without a done event'))
+      })
+      if (!settled) reject(new Error('SSE stream ended without a done event'))
     }).catch(reject)
   })
 }
@@ -124,10 +111,7 @@ async function retrieveChunks(query, docs, topK, stickyChunks) {
   const needLookup = all.filter(c => c.embHash && !c.embedding)
   if (needLookup.length) {
     try {
-      const r    = await fetch('/api/embed-lookup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hashes: needLookup.map(c => c.embHash) })
-      })
+      const r    = await httpPost('/api/embed-lookup', { hashes: needLookup.map(c => c.embHash) })
       if (!r.ok) throw new Error('lookup HTTP ' + r.status)
       const data = await r.json()
       const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
@@ -168,10 +152,7 @@ async function evictDocFromCache(doc) {
   const hashes = doc.chunks.map(c => c.embHash).filter(Boolean)
   if (!hashes.length) return
   try {
-    await fetch('/api/embed-evict', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hashes })
-    })
+    await httpPost('/api/embed-evict', { hashes })
   } catch (e) {
     console.warn('[evictDocFromCache]', e.message)
   }
@@ -180,6 +161,6 @@ async function evictDocFromCache(doc) {
 // Ask the server to prune vectors no longer referenced by any doc (called after
 // a doc is removed). More thorough than per-hash eviction: clears orphans too.
 async function gcEmbedCache() {
-  try { const r = await fetch('/api/embed-gc', { method: 'POST' }); return await r.json() }
+  try { const r = await httpPost('/api/embed-gc'); return await r.json() }
   catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
 }
