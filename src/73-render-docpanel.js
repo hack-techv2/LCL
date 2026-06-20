@@ -25,15 +25,7 @@ function updateDocsBtn() {
   // Status dot reflects whether the embedding key is configured.
   // Green dot = embed key + model set; amber = missing (RAG won't work yet).
   const hasEmbed = !!(creds?.embedApiKey && creds?.embedModelId)
-  const dotColor = hasEmbed ? 'var(--ok)' : 'var(--pin)'
-  const dotGlow  = hasEmbed
-    ? '0 0 4px color-mix(in srgb, var(--ok) 60%, transparent)'
-    : '0 0 4px color-mix(in srgb, var(--pin) 55%, transparent)'
-  btn.innerHTML =
-    '<span class="embed-dot" style="display:inline-block;width:6px;height:6px;'+
-    'border-radius:50%;background:'+dotColor+';box-shadow:'+dotGlow+';'+
-    'vertical-align:middle;margin-right:6px"></span>'+
-    'Embed ('+cnt+')'
+  btn.innerHTML = '<span class="embed-dot'+(hasEmbed?' on':'')+'"></span>Embed ('+cnt+')'
   btn.setAttribute('data-tip-bottom-left',
     hasEmbed ? 'Embedding configured — RAG ready' :
                'Embed API key not set — click to configure')
