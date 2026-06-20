@@ -43,6 +43,14 @@ Misc
   streak in the gap right of the title, then bursts.
 - #demo mode showcases the "update available" state with no GitHub calls (all
   update actions are simulated in demo).
+- #demo test harness expanded: token-streaming replies with working Stop /
+  Regenerate / Edit, doc-panel states (ready / embedding / error), connect &
+  disconnect, an emulated update -> restart, one-version-behind seed, and the
+  update dialog now pulls the REAL GitHub release notes (read-only).
+- Slider polish: thin 4px tracks aligned flush to the min/max ticks, a smaller
+  centred thumb; RAG (chunk size / Top-K) and Max Tokens use editable,
+  slider-synced value fields; footer version / "new" / ALPHA badges unified in
+  size; "Alpha updates" toggle with an "Experimental" tag (alpha never shows "new").
 
 
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
