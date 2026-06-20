@@ -79,6 +79,13 @@ Misc
 - #demo: the Experimental (alpha) channel now starts locked in demo regardless of
   the real profile's unlock state — the easter egg unlocks it for the demo session
   only (in-memory), with no write to localStorage and no leak into normal mode.
+- Alpha server.txt updates no longer auto re-exec at boot. Auto-spawning a fresh
+  Node process froze the parent REPL behind spawnSync (ending the session and
+  breaking Ctrl+C); the update is now applied and the user is asked to restart
+  Node, keeping the REPL alive. The explicit "Update & restart" button still
+  restarts on demand.
+- REPL cosmetics: server.txt now exports a short status string so `require()`
+  echoes a readable line instead of a bare {}.
 
 
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
