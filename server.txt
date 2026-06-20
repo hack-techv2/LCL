@@ -1197,11 +1197,19 @@ function serveStatic(req, res) {
       return
     }
 
+    // Always revalidate: the browser sends If-None-Match and gets a tiny 304 when
+    // the file is unchanged, or the fresh bytes when it changed — so rebuilds show
+    // up on a normal reload without re-downloading every file every time.
+    const etag = '"' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 16) + '"'
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { 'ETag': etag, 'Cache-Control': 'no-cache' })
+      res.end()
+      return
+    }
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream',
-      // Local dev server: never let the browser cache the app shell, otherwise
-      // rebuilds don't show up until a manual hard-refresh.
-      'Cache-Control': 'no-store, must-revalidate'
+      'ETag': etag,
+      'Cache-Control': 'no-cache'
     })
     res.end(data)
   })
