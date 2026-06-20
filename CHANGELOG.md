@@ -37,7 +37,8 @@ Local-testable items from the deferred R-series, landing incrementally on `alpha
     18px version style).
   - New "· updated <date>" on the experimental build line: server alphaStatus()
     now returns installedAt (mtime of the on-disk index.html); client formats it
-    via fmtUpdated() in the user's locale (.upd-when, muted).
+    via fmtUpdated() in the user's locale + local timezone — now date AND time
+    (e.g. "21 Jun 2026, 2:30 pm"), via toLocaleString (.upd-when, muted).
   - Easter egg: unlockAlpha() now no-ops if already unlocked, so the "Developer
     mode enabled" toast only fires on the FIRST 7-click unlock (not when already
     on alpha). Demo seeds carry installedAt so the date shows in #demo.
