@@ -56,8 +56,9 @@ Registries & further de-duplication (R5/R8/R9/R10)
 - mkEl() DOM builder added; renderDocPanel rebuilt with it + addEventListener
   (no inline onclick; text auto-escaped by the DOM). Sidebar/message renderers
   left on the existing escJs-safe approach by design.
-- Server: leveled logger - per-request payload/header/body dumps are DEBUG-only
-  (LCL_LOG=debug); a ROUTES table replaces the request-dispatch if-ladder.
+- Server: a ROUTES table replaces the request-dispatch if-ladder. Per-request
+  payload/header/body logging is always on (dlog = console.log alias) to the Node
+  console.
 - NOT done by design: folding the 4 update-swap impls into applyRef (R4) - too
   risky to re-touch the just-stabilised updater with no demo validation; and the
   full DOM rewrite of the SVG-heavy sidebar/message renderers (XSS already fixed).
