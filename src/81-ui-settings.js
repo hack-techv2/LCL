@@ -25,7 +25,7 @@ function refreshSliderFill(el) {
 function setTok(v){
   const inp = document.getElementById('s-tok-v-input')
   if (inp) inp.value = v
-  refreshTokChips()
+  refreshSliderFill(document.getElementById('s-tok'))
 }
 function refreshTokChips(){
   const inp = document.getElementById('s-tok-v-input')
@@ -53,7 +53,8 @@ function openSP() {
   document.getElementById('s-key').value   = creds.apiKey||''
   document.getElementById('s-mdl').value   = creds.model||''
   document.getElementById('s-sys').value   = creds.systemPrompt||''
-  document.getElementById('s-tok-v-input').value = creds.maxTokens||8192
+  document.getElementById('s-tok-v-input').value = Math.min(32768, creds.maxTokens||8192)
+  document.getElementById('s-tok').value = Math.min(32768, creds.maxTokens||8192)
   document.getElementById('s-chunk').value = creds.chunkSize||800
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
@@ -61,7 +62,7 @@ function openSP() {
   document.getElementById('s-chunk-v').value = creds.chunkSize||800
   document.getElementById('s-topk-v').value  = creds.topK||5
   // Paint the slider fills to match initial values
-  refreshTokChips()
+  refreshSliderFill(document.getElementById('s-tok'))
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
