@@ -1176,12 +1176,23 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8'
 }
 
+// Sensitive runtime files that live inside LCL_DIR but must never be served:
+// saved API keys, the embedding cache, dotfiles, and the .stable update backups.
+const STATIC_DENY = ['lcl_data.json', 'embed_cache.bin']
+
 function serveStatic(req, res) {
   const reqPath   = req.url === '/' ? '/index.html' : req.url
   const cleanPath = path.normalize(reqPath).replace(/^(\.\.[/\\])+/, '')
   const fp        = path.join(LCL_DIR, cleanPath)
 
   if (!fp.startsWith(path.resolve(LCL_DIR) + path.sep) && fp !== path.resolve(LCL_DIR)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('Forbidden')
+    return
+  }
+
+  const base = path.basename(fp)
+  if (STATIC_DENY.includes(base) || base.endsWith('.stable') || base.startsWith('.')) {
     res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
     res.end('Forbidden')
     return
