@@ -96,23 +96,36 @@ async function applyAlphaNow(){
   }catch(e){ toast('Update failed: '+e.message,'err') }
 }
 
-// Dev/test (alpha): run the REAL apply+restart pipeline but reuse the current file
-// (the server copies it onto itself instead of downloading), so the restart/reload
-// flow can be exercised on a live alpha build without a new build.
-async function simulateUpdate(file){
+// Dev/test (alpha): a two-step simulation that mirrors the real UX. Clicking a
+// file ARMS it (no apply yet); the next "Check now" reports it as an available
+// update; "Update & restart" then runs the real apply+restart, reusing the current
+// file (server copies it onto itself instead of downloading).
+let _simArmed = []   // set of files armed for simulation (multi-select)
+function armSimulate(file){
+  const i = _simArmed.indexOf(file)
+  if (i >= 0) _simArmed.splice(i, 1); else _simArmed.push(file)
+  if (typeof toast === 'function') toast(_simArmed.length ? ('Armed: ' + _simArmed.join(', ') + ' \u2014 click "Check now" to simulate') : 'Simulation cleared', 'info')
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+}
+
+async function simulateUpdate(files){
+  files = Array.isArray(files) ? files : (files ? [files] : [])
+  _simArmed = []
+  if (!files.length) return
   if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 simulate is a no-op','info'); return }
+  const label = files.join(', ')
   try{
-    toast('Simulating update (' + file + ')\u2026','info')
-    const r = await httpPost('/api/update/simulate', { file })
+    toast('Simulating update (' + label + ')\u2026','info')
+    const r = await httpPost('/api/update/simulate', { files })
     const d = await r.json()
     if (d.error){ toast('Simulate failed: ' + d.error,'err'); return }
     if (d.restartNeeded){
-      toast('Applied (' + file + '). Restarting Node.js\u2026','ok')
+      toast('Applied (' + label + '). Restarting Node.js\u2026','ok')
       try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
     }
-    if (d.refreshNeeded){ toast('Applied (' + file + '). Reloading\u2026','ok'); setTimeout(()=>location.reload(), 700); return }
+    if (d.refreshNeeded){ toast('Applied (' + label + '). Reloading\u2026','ok'); setTimeout(()=>location.reload(), 700); return }
     toast('Simulated apply done','ok')
   }catch(e){ toast('Simulate failed: ' + e.message,'err') }
 }
