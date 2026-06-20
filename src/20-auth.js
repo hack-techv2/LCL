@@ -158,6 +158,12 @@ async function disconnect() {
     D.settings.embedModelId = ''
   }
   await persist()
+  // Also clear the server-side /api/config (mirror of connect()'s write). init()
+  // prefers /api/config over D.settings, so a stale config would silently
+  // auto-reconnect on next launch. Push blank credentials to wipe it.
+  try {
+    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' }) })
+  } catch {}
   setHealth('off', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
