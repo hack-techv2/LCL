@@ -2,6 +2,74 @@ LCL CHANGELOG  —  v0.67d
 ========================
 
 
+Refactor, hardening & update-flow batch (20 Jun 2026, still v0.67d - alpha)
+---------------------------------------------------------------------------
+On `alpha` only (main + the v0.67d release tag NOT updated). Full review of all
+client modules + server.txt; bug-fixes, de-duplication and safety hardening landed
+in phases, each build-validated (node build.js, 5 checks).
+
+Bug fixes & security
+- XSS: doc-panel filenames are escaped; new escJs() escapes values interpolated
+  into inline onclick="fn('...')" handlers (chat list + file chips) - esc() alone
+  did not escape the JS-string quote.
+- Max-tokens cap unified: the editable field accepts up to 131072 (slider max
+  stays 32768); openSP no longer clamps a saved >32768 value down on reopen.
+- send() claims the busy lock BEFORE the first await, so a fast second Enter can't
+  start a concurrent send and orphan the Stop/abort controller.
+- disconnect() now clears server-side /api/config too (was only blanking
+  D.settings), so a disconnected profile no longer silently auto-reconnects.
+- serveStatic denylist: lcl_data.json, embed_cache.bin, *.stable, dotfiles are no
+  longer served over HTTP.
+- #demo hashchange watcher uses the same case-insensitive demoOn() predicate.
+
+Update channel / flow
+- Channel-downgrade split-brain fixed: writeChannel('stable') runs ONLY after the
+  stable files are actually restored (release download OR .stable backup). A
+  failed/rate-limited downgrade stays on alpha and returns a clear error instead
+  of flipping the flag while the alpha build keeps running (cause of "downgrade
+  did nothing / still showed alpha until a second try").
+- alpha == stable handling: alphaMatchesStable() compares @alpha vs the latest
+  release checksums. When identical the update check drops the flag (reverts to
+  stable), enabling Experimental is refused, and the toggle is hidden.
+- Channel-switch failure toast is now direction-aware.
+- relockDemoAlpha() was referenced by demo reset but undefined on alpha (the branch
+  would not pass build.js's undefined-fn scan); now defined in 98-update-channel.
+
+De-duplication & internals
+- New src/00-config.js: central CFG constants (token caps, RAG/chunk defaults, doc
+  full-text limit, OCR thresholds) - replaces scattered magic numbers. Build is now
+  29 JS modules.
+- buildPayload(chat, query): shared by send() and regenerateLast(); regenerate now
+  uses the same full-text-vs-RAG doc logic as send (previously RAG-only).
+- makeCreds()/credsToSettings(): single source for the creds shape + defaults (was
+  hand-built in init/connect/demo) and the on-disk settings mapping.
+- makeUpdateState(): normalizes the lclUpdate shape so the check error path no
+  longer drops fields and `applied` cannot go stale.
+- respondUpstreamJson(): one server helper for the buffered chat/embed JSON
+  error/empty/non-JSON handling (was duplicated in handleChat + handleEmbed).
+
+Safety
+- Embed responses validated: /api/embed-lookup and embed-batch JSON are checked for
+  shape/alignment; a short/missing/non-array response degrades gracefully instead
+  of corrupting RAG ranking or throwing on undefined[0].
+- Atomic writes: saveData (lcl_data.json) and saveEmbedCache (embed_cache.bin) write
+  .tmp then rename, so a crash mid-write cannot corrupt them.
+- Boot-time embed-cache GC is guarded: it only runs when there are saved chats, so a
+  transiently malformed lcl_data.json cannot make it wipe the whole cache.
+
+UI
+- All toasts unified to one neutral style (removed the ok/info/err colour split).
+- Updates "Update available" pill: solid accent-orange + white text (ties to the
+  Update CTA); ok/err pills darkened in light mode for AA contrast. Embed status
+  dot moved from an inline style to a .embed-dot CSS class.
+
+Deferred (recommended as a dedicated, real-API-tested follow-up): DOM-helper +
+event-delegation rewrite (R8), transport abstraction (R11), client persistence seam
+(R12), scheduleRetry unification (R5), update-swap unification (R4), leveled logger +
+route table (R10), data-driven channel/tier/extractor registries (R9). R11/R12
+(streaming + persistence) cannot be exercised in #demo - they need a live key.
+
+
 UI, settings & experimental-channel batch (20 Jun 2026, still v0.67d)
 --------------------------------------------------------------------
 Look & feel
