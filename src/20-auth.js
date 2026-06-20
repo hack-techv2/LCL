@@ -11,9 +11,10 @@ async function init() {
     if (r.ok) {
       const cfg = await r.json()
       // Primary: settings from /api/config. Fallback: settings embedded in D (from /api/data)
-      const s = (cfg.apiKey && cfg.modelId) ? cfg
-              : (D.settings?.apiKey && D.settings?.modelId) ? D.settings
-              : null
+      // Ignore the demo sentinel ('demo') so a prior #demo visit never looks
+      // connected in normal mode.
+      const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
+      const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
       if (s) {
         creds = { apiKey: s.apiKey, model: s.modelId || s.model, maxTokens: s.maxTokens||8192, systemPrompt: s.systemPrompt||'', chunkSize: s.chunkSize||800, topK: s.topK||5, embedApiKey: s.embedApiKey||'', embedModelId: s.embedModelId||'', classification: s.classification||'' }
         setHealth('ok', connectedLabel())
