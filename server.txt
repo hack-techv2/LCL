@@ -131,7 +131,7 @@ function loadEmbedCache() {
     if (buf.length < 8) return {}
     const magic = buf.readUInt32BE(0)
     if (magic !== MAGIC) {
-      console.warn('[embed-cache] unrecognised magic — delete embed_cache.bin to suppress this warning')
+      elog('cache: unrecognised magic — delete embed_cache.bin to silence this warning')
       return {}
     }
     const count  = buf.readUInt32LE(4)
@@ -153,10 +153,10 @@ function loadEmbedCache() {
       result[hash] = f32
       offset += byteLen
     }
-    console.log('[embed-cache] loaded', Object.keys(result).length, 'entries from binary cache (float16)')
+    elog('cache: loaded ' + Object.keys(result).length + ' entries (float16)')
     return result
   } catch (e) {
-    console.error('[embed-cache] load error:', e.message)
+    elog('cache load error: ' + e.message)
     return {}
   }
 }
@@ -190,7 +190,7 @@ function saveEmbedCache() {
     }
     fs.writeFileSync(EMBED_CACHE_FILE, buf)
   } catch (e) {
-    console.error('[embed-cache] save error:', e.message)
+    elog('cache save error: ' + e.message)
   }
 }
 
@@ -817,7 +817,7 @@ function callGccJsonAsync(pathName, apiKey, payload) {
 }
 
 async function callStandardBatchEmbed(apiKey, modelId, texts) {
-  console.log('[embed] batch embed | chunks:', texts.length)
+  elog('batch embed | ' + texts.length + ' chunks')
   const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts })
 
   if (!upstream.body || !upstream.body.trim()) {
@@ -858,8 +858,8 @@ async function waitForEmbedHeadroom(apiKey, tokenEst, notify) {
   if (!reqLow && !tokLow) return
   const age = Date.now() - (rl.ts || 0)
   let remain = Math.max(2000, WINDOW_MS - age)
-  console.log('[embed] pacing - req=' + rl.reqRemaining + ', tok=' + rl.tokRemaining +
-              ' near cap; waiting ~' + Math.round(remain / 1000) + 's for rate-limit window reset')
+  elog('pacing | req=' + rl.reqRemaining + ', tok=' + rl.tokRemaining +
+       ' near cap; waiting ~' + Math.round(remain / 1000) + 's for rate-limit window reset')
   while (remain > 0) {
     if (notify) { try { notify(Math.ceil(remain / 1000)) } catch {} }
     const step = Math.min(3000, remain)
@@ -897,9 +897,7 @@ async function handleEmbedBatch(req, res) {
       }
     }
 
-    console.log('[embed-batch] total:', inputs.length,
-                '| hits:', inputs.length - missIdx.length,
-                '| misses:', missIdx.length)
+    elog('cache check | total ' + inputs.length + ' | hits ' + (inputs.length - missIdx.length) + ' | misses ' + missIdx.length)
 
     // All cached — return plain JSON
     if (!missIdx.length) {
@@ -925,7 +923,7 @@ async function handleEmbedBatch(req, res) {
         const batchTexts   = batchOrigIdx.map(i => inputs[i].slice(0, lim.maxChars))
         const batchNum     = Math.floor(b / lim.batch) + 1
 
-        console.log('[embed] batch', batchNum + '/' + totalBatches, '| chunks:', batchTexts.length)
+        elog('batch ' + batchNum + '/' + totalBatches + ' | ' + batchTexts.length + ' chunks')
 
         await waitForEmbedHeadroom(apiKey, batchTexts.length * 250, secsLeft =>
           send({ type: 'pacing', waitSec: secsLeft, done: chunksEmbedded, total: totalMisses,
@@ -956,7 +954,7 @@ async function handleEmbedBatch(req, res) {
       send({ type: 'done', embeddings: results.map(v => Array.from(v)), hashes: allHashes })
       res.end()
     } catch (e) {
-      console.error('[embed-batch] error:', e.message)
+      elog('batch error: ' + e.message)
       send({ type: 'error', message: e.message })
       res.end()
     }
@@ -978,8 +976,7 @@ function handleEmbedLookup(req, res) {
     })
 
     const hits = vectors.filter(v => v !== null).length
-    console.log('[embed-lookup] requested:', hashes.length,
-                '| hits:', hits, '| misses:', hashes.length - hits)
+    elog('lookup | requested ' + hashes.length + ' | hits ' + hits + ' | misses ' + (hashes.length - hits))
 
     json(res, { vectors })
   })
@@ -999,7 +996,7 @@ function handleEmbedEvict(req, res) {
       if (embedCache[h]) { delete embedCache[h]; removed++ }
     }
 
-    console.log('[embed-evict] requested:', hashes.length, '| removed:', removed)
+    elog('evict | requested ' + hashes.length + ' | removed ' + removed)
     if (removed > 0) saveEmbedCache()
 
     json(res, { ok: true, removed })
@@ -1032,7 +1029,7 @@ function pruneEmbedCache() {
     if (!keep.has(h)) { delete embedCache[h]; removed++ }
   }
   if (removed) saveEmbedCache()
-  console.log('[embed-cache] prune: kept ' + keep.size + ', removed ' + removed)
+  elog('cache prune | kept ' + keep.size + ' | removed ' + removed)
   return removed
 }
 
@@ -1407,6 +1404,7 @@ async function alphaStatus() {
 }
 // All update log lines share one aligned label/column for a consistent console.
 function ulog(m) { console.log('  ' + 'Updates'.padEnd(23) + '->  ' + m) }
+function elog(m) { console.log('  ' + 'Embedding'.padEnd(23) + '->  ' + m) }
 async function alphaBootstrap() {
   ulog('alpha: checking @' + ALPHA_REF + ' ...')
   const cs = await ghFetchFile(ALPHA_REF, 'checksums.txt')
@@ -1629,6 +1627,24 @@ const server = http.createServer((req, res) => {
 // Track live sockets so a restart can free the port promptly.
 const openSockets = new Set()
 server.on('connection', sock => { openSockets.add(sock); sock.on('close', () => openSockets.delete(sock)) })
+
+// Graceful shutdown — make Ctrl+C (SIGINT) and SIGTERM reliably stop the server.
+// Critical when launched from inside the Node REPL (`require('./server.txt')`),
+// whose own SIGINT handler otherwise swallows Ctrl+C, and under the alpha
+// re-exec supervisor. A 2nd Ctrl+C (or the 300ms timer) forces exit if a
+// keep-alive socket or other handle lingers.
+let _shuttingDown = false
+function shutdown(sig) {
+  if (_shuttingDown) { process.exit(0); return }
+  _shuttingDown = true
+  try { console.log('\n  Shutting down (' + sig + ') - bye.') } catch {}
+  try { server.close() } catch {}
+  for (const sock of openSockets) { try { sock.destroy() } catch {} }
+  try { upstreamAgent.destroy() } catch {}
+  setTimeout(() => process.exit(0), 300).unref()
+}
+process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('SIGTERM', () => shutdown('SIGTERM'))
 
 function startupLog() {
   console.log('')
