@@ -38,7 +38,7 @@ async function editSkill(id) {
     return
   }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(id))
+    const r = await httpGet('/skills/' + encodeURIComponent(id))
     if (!r.ok) throw new Error('HTTP ' + r.status)
     const data = await r.json()
     _editingSkillId = id
@@ -66,11 +66,7 @@ async function saveSkillEdit() {
     return
   }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(_editingSkillId), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body })
-    })
+    const r = await httpPut('/skills/' + encodeURIComponent(_editingSkillId), { body })
     if (!r.ok) {
       const err = await r.json().catch(() => ({}))
       throw new Error(err.error || ('HTTP ' + r.status))
@@ -104,16 +100,12 @@ async function renameSkill(oldId) {
     return
   }
   try {
-    let r = await fetch('/skills/' + encodeURIComponent(oldId))
+    let r = await httpGet('/skills/' + encodeURIComponent(oldId))
     if (!r.ok) throw new Error('Read old: HTTP ' + r.status)
     const data = await r.json()
-    r = await fetch('/skills/' + encodeURIComponent(slug), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: data.body })
-    })
+    r = await httpPut('/skills/' + encodeURIComponent(slug), { body: data.body })
     if (!r.ok) throw new Error('Write new: HTTP ' + r.status)
-    r = await fetch('/skills/' + encodeURIComponent(oldId), { method: 'DELETE' })
+    r = await httpDelete('/skills/' + encodeURIComponent(oldId))
     if (!r.ok) throw new Error('Delete old: HTTP ' + r.status)
     let touched = 0
     for (const cid of Object.keys(D.chats)) {
@@ -145,7 +137,7 @@ async function deleteSkillUI(id) {
     return
   }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(id), { method: 'DELETE' })
+    const r = await httpDelete('/skills/' + encodeURIComponent(id))
     if (!r.ok && r.status !== 404) {
       const err = await r.json().catch(() => ({}))
       throw new Error(err.error || ('HTTP ' + r.status))
@@ -177,11 +169,7 @@ function saveSP() {
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
   D.settings = credsToSettings(creds)
-  if (!(typeof demoOn === 'function' && demoOn())) {
-    try {
-      fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
-    } catch {}
-  }
+  saveSettings(D.settings)
   persist()
   closeSP(); toast('Settings saved','ok')
 }
