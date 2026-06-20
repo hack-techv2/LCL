@@ -7,6 +7,11 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
 - Update-flow polish (alpha):
+  - "Check failed" now still shows the current build (#hash · updated date/time)
+    instead of a bare dash: server includes localBuild() (on-disk index.html hash +
+    mtime) in the alpha check-error response, and the client preserves the prior
+    channel/hash/installedAt if the check throws. Falls back to a dash only when no
+    build info is known.
   - Console: an auto-restart now prints a clear bold-cyan ">> RESTART TRIGGERED -
     reloading server.txt now ..." banner (finishRestart), distinct from the yellow
     manual-restart-NEEDED banner.
