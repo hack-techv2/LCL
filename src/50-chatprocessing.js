@@ -108,6 +108,14 @@ async function send() {
 
   const chat = curChat(); if (!chat) return
 
+  // Claim the busy lock NOW — before any await — so a second send can't slip in
+  // during retrieveChunks()/resolveSystemPrompt() and orphan the inflight stream.
+  // runStream() also sets busy=true (idempotent). Reset on any early bail below.
+  busy = true
+  if (typeof updateSendBtn === 'function') updateSendBtn()
+
+  try {
+
   // auto-title after first message
   if (!chat.messages.length) {
     chat.title = text.slice(0,42)+(text.length>42?'...':'')
@@ -153,6 +161,8 @@ async function send() {
     chat.updatedAt = Date.now()
     renderMessages()
     toast(skillErr, 'err')
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
     return
   }
   let sys = sysBase
@@ -168,6 +178,14 @@ async function send() {
   const payload = { messages:msgs, max_tokens:creds.maxTokens||8192 }
 
   await runStream(chat, payload, ragSources)
+
+  } catch (e) {
+    // Bailing out before/around runStream — release the busy lock so the UI
+    // doesn't get stuck with Send disabled and Stop showing.
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
+    throw e
+  }
 }
 
 // Core send loop. Streams from /api/chat (stream:true) and writes tokens into
