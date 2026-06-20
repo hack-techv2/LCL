@@ -6,12 +6,10 @@ const os = require('os')
 const crypto = require('crypto')
 
 const PORT = 3000
-// Leveled logging: routine per-request payload/header/body dumps are DEBUG-only
-// (run with LCL_LOG=debug to see them). Operational lines (startup, updates,
-// errors, rate limits) stay at info. Keeps the console quiet + avoids dumping
-// request bodies to stdout in normal use.
-const LCL_DEBUG = (process.env.LCL_LOG || '').toLowerCase() === 'debug'
-function dlog(...a) { if (LCL_DEBUG) console.log(...a) }
+// Verbose per-request logging (payload / headers / body) is ALWAYS on and prints
+// to the Node console where the server runs. dlog() is a thin console.log alias,
+// kept only so the verbose call sites stay grep-able.
+function dlog(...a) { console.log(...a) }
 const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
 const API_HOST = 'api.ai.tech.gov.sg'
 const CHAT_PATH = '/platform/models/chat/completions'
