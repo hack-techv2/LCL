@@ -102,31 +102,14 @@ async function regenerateLast() {
   // and just stream another canned reply.
   if (typeof demoOn === 'function' && demoOn()) { demoStream(chat); return }
 
-  // Rebuild payload from remaining history + RAG (same as send).
+  // Rebuild the payload from the remaining history. Shared with send() via
+  // buildPayload() so the full-text-vs-RAG doc logic is identical (regenerate
+  // previously did RAG-only and skipped the full-text path).
   const lastUser = chat.messages[chat.messages.length-1]
   const qText = typeof lastUser.content==='string' ? lastUser.content : lastUser.content?.find?.(b=>b.type==='text')?.text || ''
-
-  let ragChunks=[], ragSources=[]
-  const hasDocs = chat.docs?.some(d=>d.status==='ready'&&d.chunks?.length)
-  if (hasDocs) {
-    try {
-      ragChunks = await retrieveChunks(qText, chat.docs, creds.topK||10, ragStickyChunks)
-      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
-      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * 0.3)))
-    }
-    catch(e) { console.warn('RAG:',e.message) }
-  }
-  const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
-  if (skillErr) { toast(skillErr, 'err'); return }
-  let sys = sysBase
-  if (ragChunks.length) {
-    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
-    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
-  }
-  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
-  const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
-  const payload = { messages:msgs, max_tokens:creds.maxTokens||8192 }
-  await runStream(chat, payload, ragSources)
+  const built = await buildPayload(chat, qText)
+  if (built.skillErr) { toast(built.skillErr, 'err'); return }
+  await runStream(chat, built.payload, built.ragSources)
 }
 // Edit the last user turn: drop any trailing assistant reply and the last user
 // message, then put that message's text back into the composer for editing.
