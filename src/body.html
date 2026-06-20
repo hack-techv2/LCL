@@ -43,11 +43,15 @@
     <div class="sp-sec">
       <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
       <div class="sp-grid">
-        <div class="sf"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label>
-          <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="document.getElementById('s-chunk-v').textContent=this.value;refreshSliderFill(this)"><span id="s-chunk-v">800</span></div>
+        <div class="sf">
+          <div class="sf-head"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
+          <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="onRangeIn('s-chunk-v',this)"></div>
+          <div class="sl-ticks"><span>200</span><span>2000</span></div>
         </div>
-        <div class="sf"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label>
-          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="document.getElementById('s-topk-v').textContent=this.value;refreshSliderFill(this)"><span id="s-topk-v">5</span></div>
+        <div class="sf">
+          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="1" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
+          <div class="sl-ticks"><span>1</span><span>10</span></div>
         </div>
       </div>
     </div>
@@ -56,7 +60,15 @@
       <div class="sp-lbl">Defaults</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
       <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
-        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
+        <div class="tok-presets" id="tok-presets">
+          <button type="button" class="tok-chip" data-tok="1024" onclick="setTok(1024)">1K</button>
+          <button type="button" class="tok-chip" data-tok="2048" onclick="setTok(2048)">2K</button>
+          <button type="button" class="tok-chip" data-tok="4096" onclick="setTok(4096)">4K</button>
+          <button type="button" class="tok-chip" data-tok="8192" onclick="setTok(8192)">8K</button>
+          <button type="button" class="tok-chip" data-tok="16384" onclick="setTok(16384)">16K</button>
+          <button type="button" class="tok-chip" data-tok="32768" onclick="setTok(32768)">32K</button>
+          <span class="tok-custom-wrap"><span class="tok-custom-lbl">custom</span><input type="number" id="s-tok-v-input" min="64" max="131072" class="tok-custom" oninput="refreshTokChips()"></span>
+        </div>
       </div>
     </div>
     <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
@@ -148,12 +160,13 @@
     <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span></span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
 </div>
 
 <!-- Main -->
 <div id="main">
   <div id="topbar">
+    <div class="tb-comets"><i class="h1"></i><i class="h2"></i><i class="h3"></i></div>
     <button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()" data-tip-bottom="Collapse sidebar" aria-label="Toggle sidebar">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><line x1="6" y1="2.75" x2="6" y2="13.25"/></svg>
     </button>
