@@ -101,6 +101,9 @@ UI polish
 - Skills empty-state message now reads "drop one into LCL/skills" (was LCL_DIR/skills/).
 - AI reply header now shows the data classification after the model name, e.g.
   "cce.claude-opus-4-6 (CCE/SN)" (muted), matching the welcome line (clsSuffix).
+- Code styling: inline code + code blocks now use a neutral, theme-aware colour
+  (light text on dark, dark text on light) for strong contrast in both modes —
+  replaces the hardcoded mint green that washed out on the light background.
 
 Dev / infra
 - `#demo` no-API debug mode: seeds sample messages + a typing
