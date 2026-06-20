@@ -7,7 +7,7 @@ async function setChannel(ch){
   if (typeof demoOn === 'function' && demoOn()) {
     // Demo: flip the in-memory state so both the version-based (stable) and
     // hash-based (experimental) update cards can be previewed. Touches nothing.
-    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
+    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', installedAt:Date.now()-86400000, error:null }
     else lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
     if (ch !== 'alpha') relockAlpha()
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
@@ -16,7 +16,7 @@ async function setChannel(ch){
   }
   toast('Switching to ' + (ch==='alpha' ? 'experimental' : 'stable') + '\u2026', 'info')
   try{
-    const r = await fetch('/api/update/channel',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channel:ch}) })
+    const r = await httpPost('/api/update/channel', { channel: ch })
     const d = await r.json()
     if (d.error){ const stay = (d.channel === 'alpha') ? 'experimental' : 'stable'; toast('Channel switch failed: '+d.error+' \u2014 staying on '+stay,'err'); await checkForUpdate(true); return }
     if (d.sameAsStable){ toast('Experimental build is identical to stable \u2014 nothing to switch','info'); await checkForUpdate(true); return }
@@ -26,7 +26,7 @@ async function setChannel(ch){
         ? 'Experimental build applied'
         : (d.restoredFromBackup ? 'Offline \u2014 restored local stable backup' : ('Restored stable '+((d.restored&&d.restored.tag)||'')))
       toast(msg+' \u2014 restarting Node\u2026','ok')
-      try{ await fetch('/api/update/restart',{ method:'POST' }) }catch{}
+      try{ await httpPost('/api/update/restart') }catch{}
       waitForServerThenReload(); return
     }
     if (d.refreshNeeded){ toast('Experimental build applied \u2014 reloading\u2026','ok'); setTimeout(()=>location.reload(),700); return }
@@ -46,6 +46,9 @@ function alphaUnlocked(){
   try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false }
 }
 function unlockAlpha(){
+  // Only announce on the first unlock. If already unlocked (e.g. already on the
+  // alpha channel), the 7-click egg is a no-op rather than re-popping the toast.
+  if (alphaUnlocked()) return
   if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = true }
   else { try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {} }
   if (typeof toast === 'function') toast('Developer mode enabled','ok')
@@ -67,7 +70,7 @@ async function applyAlphaNow(){
   if (typeof demoOn === 'function' && demoOn()) {
     toast('Downloading alpha build\u2026 (demo)', 'info')
     setTimeout(() => {
-      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', error:null }
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', installedAt:Date.now(), error:null }
       renderUpdateBadge(); renderUpdateSettings()
       toast('Alpha updated to #e4f5a6b (demo) \u2014 Reset demo to replay', 'ok')
     }, 1200)
@@ -75,13 +78,13 @@ async function applyAlphaNow(){
   }
   try{
     toast('Downloading alpha update...','info')
-    const r = await fetch('/api/update/apply', { method:'POST' })
+    const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){ toast('Update failed: '+d.error,'err'); return }
     const applied = (d.applied||[]).join(', ') || 'no changes'
     if (d.restartNeeded){
       toast('Applied ('+applied+'). Restarting Node…','ok')
-      try { await fetch('/api/update/restart', { method:'POST' }) } catch {}
+      try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
     }
@@ -98,7 +101,7 @@ async function applyAlphaNow(){
 async function waitForServerThenReload(){
   for (let i=0;i<60;i++){
     await new Promise(r=>setTimeout(r,500))
-    try { const h = await fetch('/api/health',{cache:'no-store'}); if (h.ok){ location.reload(); return } } catch {}
+    try { const h = await httpGet('/api/health',{cache:'no-store'}); if (h.ok){ location.reload(); return } } catch {}
   }
   toast('Server still restarting — reload when ready','info')
 }
