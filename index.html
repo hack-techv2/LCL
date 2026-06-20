@@ -401,12 +401,13 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sf label{display:block;font-size:11px;font-weight:500;color:var(--tx2);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
 .tip{font-size:10px;color:var(--tx3);cursor:help;font-style:normal;text-transform:none;letter-spacing:0;vertical-align:middle;opacity:.7}
 .tip:hover{opacity:1}
-.sf input,.sf textarea{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;transition:border-color .15s,box-shadow .15s}
-.sf input:focus,.sf textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+.sf input:not([type=range]):not(.sf-num),.sf textarea{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;transition:border-color .15s,box-shadow .15s}
+.sf input:not([type=range]):not(.sf-num):focus,.sf textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sf textarea{resize:vertical;min-height:72px;line-height:1.5}
-.sf-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sf-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .sf-head label{margin-bottom:0}
-.sf-num{width:64px;height:26px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bdr);border-radius:999px;padding:0 8px;color:var(--ac);font-family:var(--mono);font-size:12px;text-align:right;outline:none}
+.sf-num{width:74px;height:26px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bdr);border-radius:999px;padding:0 12px;color:var(--ac);font-family:var(--mono);font-size:12px;text-align:right;outline:none;-moz-appearance:textfield;appearance:textfield}
+.sf-num::-webkit-outer-spin-button,.sf-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .sf-num:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sl-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:6px}
 .sl{display:flex;align-items:center;gap:10px}
@@ -427,15 +428,15 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sl input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;
   appearance:none;
-  width:14px;height:14px;border-radius:50%;
+  width:12px;height:12px;border-radius:50%;
   background:var(--ac);
   border:2px solid var(--bg2);
   box-shadow:0 0 0 1px var(--ac), 0 1px 3px rgba(0,0,0,.3);
   cursor:pointer;
-  margin-top:-5px;
+  margin-top:-1px;
 }
 .sl input[type=range]::-moz-range-thumb{
-  width:14px;height:14px;border-radius:50%;
+  width:12px;height:12px;border-radius:50%;
   background:var(--ac);
   border:2px solid var(--bg2);
   box-shadow:0 0 0 1px var(--ac), 0 1px 3px rgba(0,0,0,.3);
@@ -454,7 +455,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 #demo-reset:hover{opacity:1;transform:translateY(-1px)}
 #demo-more{position:fixed;right:24px;bottom:150px;z-index:120;background:var(--bg3);color:var(--tx2);border:1px solid var(--bdr2);border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:.9;transition:all .15s}
 #demo-more:hover{opacity:1;color:var(--tx);border-color:var(--ac);transform:translateY(-1px)}
-.ver-alpha{font-size:8px;font-weight:700;letter-spacing:.1em;color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:20px;padding:1px 7px;line-height:1.5}
+.ver-alpha{font-size:9px;font-family:var(--mono);color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap;line-height:1.4;cursor:pointer;min-width:48px;text-align:center}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
 .btn-sv{padding:8px 16px;background:var(--ac);border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:background .12s}
@@ -495,8 +496,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .footer-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .footer-name{font-size:11px;font-weight:600;color:var(--tx2);line-height:1.3}
 .footer-meta{font-size:10px;color:var(--tx3);font-family:var(--mono);line-height:1.3}
-.footer-ver{font-size:9px;font-family:var(--mono);color:var(--ac);background:var(--acbg);border:1px solid rgba(232,97,10,.25);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap}
-.footer-upd{font-size:10px;font-family:var(--mono);color:var(--ok);background:var(--okbg);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);border-radius:4px;padding:1px 6px;flex-shrink:0;cursor:pointer;white-space:nowrap;line-height:1}
+.footer-ver{font-size:9px;font-family:var(--mono);color:var(--ac);background:var(--acbg);border:1px solid rgba(232,97,10,.25);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap;line-height:1.4;min-width:48px;text-align:center}
+.footer-upd{font-size:9px;font-family:var(--mono);color:var(--ok);background:var(--okbg);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);border-radius:4px;padding:2px 6px;flex-shrink:0;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:48px;text-align:center}
 body.sb-collapsed .footer-upd{display:none !important}
 
 
@@ -697,16 +698,10 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <div class="sp-pane" data-pane="settings"><div class="sp-sec">
       <div class="sp-lbl">Defaults</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
-      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
-        <div class="tok-presets" id="tok-presets">
-          <button type="button" class="tok-chip" data-tok="1024" onclick="setTok(1024)">1K</button>
-          <button type="button" class="tok-chip" data-tok="2048" onclick="setTok(2048)">2K</button>
-          <button type="button" class="tok-chip" data-tok="4096" onclick="setTok(4096)">4K</button>
-          <button type="button" class="tok-chip" data-tok="8192" onclick="setTok(8192)">8K</button>
-          <button type="button" class="tok-chip" data-tok="16384" onclick="setTok(16384)">16K</button>
-          <button type="button" class="tok-chip" data-tok="32768" onclick="setTok(32768)">32K</button>
-          <span class="tok-custom-wrap"><span class="tok-custom-lbl">custom</span><input type="number" id="s-tok-v-input" min="64" max="131072" class="tok-custom" oninput="refreshTokChips()"></span>
-        </div>
+      <div class="sf">
+        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="32768" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
+        <div class="sl-ticks"><span>64</span><span>32768</span></div>
       </div>
     </div>
     <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
@@ -1372,6 +1367,17 @@ async function persist() {
 // Auth
 // =============================================================================
 async function connect() {
+  if (typeof demoOn === 'function' && demoOn()) {
+    // Demo: re-seed creds offline (no API ping, no /api/config write) so the
+    // Connect modal / reconnect flow is exercisable.
+    const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
+    creds = { apiKey:'demo', model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey:'demo', embedModelId:'cohere.embed-english-v3', classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') }
+    if (typeof closeConnect==='function') closeConnect()
+    if (typeof updateConnectedUI==='function') updateConnectedUI()
+    if (typeof setHealth==='function') setHealth('ok','Demo')
+    if (typeof toast==='function') toast('Connected (demo)','ok')
+    return
+  }
   const apiKey = document.getElementById('cfg-key').value.trim()
   const model  = document.getElementById('cfg-mdl').value.trim() || 'cce.claude-opus-4-6'
   const errEl  = document.getElementById('modal-err')
@@ -2244,6 +2250,8 @@ async function send() {
 
 // SECTION: 51-chat-stream.js
 async function runStream(chat, payload, ragSources) {
+  // #demo: stream a canned reply through the same busy/stop UI; no network.
+  if (typeof demoOn === 'function' && demoOn()) { demoStream(chat, ragSources); return }
   payload.stream = true   // enable server-side streaming proxy
 
   const typingEl = appendTyping()
@@ -2691,6 +2699,10 @@ async function regenerateLast() {
   }
   if (!chat.messages.length) return
   renderMessages()
+
+  // #demo: skip the real RAG/skill payload build (which would hit the network)
+  // and just stream another canned reply.
+  if (typeof demoOn === 'function' && demoOn()) { demoStream(chat); return }
 
   // Rebuild payload from remaining history + RAG (same as send).
   const lastUser = chat.messages[chat.messages.length-1]
@@ -3385,7 +3397,7 @@ function refreshSliderFill(el) {
 function setTok(v){
   const inp = document.getElementById('s-tok-v-input')
   if (inp) inp.value = v
-  refreshTokChips()
+  refreshSliderFill(document.getElementById('s-tok'))
 }
 function refreshTokChips(){
   const inp = document.getElementById('s-tok-v-input')
@@ -3413,7 +3425,8 @@ function openSP() {
   document.getElementById('s-key').value   = creds.apiKey||''
   document.getElementById('s-mdl').value   = creds.model||''
   document.getElementById('s-sys').value   = creds.systemPrompt||''
-  document.getElementById('s-tok-v-input').value = creds.maxTokens||8192
+  document.getElementById('s-tok-v-input').value = Math.min(32768, creds.maxTokens||8192)
+  document.getElementById('s-tok').value = Math.min(32768, creds.maxTokens||8192)
   document.getElementById('s-chunk').value = creds.chunkSize||800
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
@@ -3421,7 +3434,7 @@ function openSP() {
   document.getElementById('s-chunk-v').value = creds.chunkSize||800
   document.getElementById('s-topk-v').value  = creds.topK||5
   // Paint the slider fills to match initial values
-  refreshTokChips()
+  refreshSliderFill(document.getElementById('s-tok'))
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
@@ -3902,7 +3915,7 @@ function launchComet(startX, startY) {
   const startA = Math.max(0, IMPACT - D_A)                       // launches later, fast enough to meet the streak
   const BURST  = 950
   const start = performance.now()
-  const trailA = [], trailB = [], TLEN = 34
+  const trailA = [], trailB = [], TRAIL_PX = 170  // match the ambient streak tail length
   let particles = null
 
   const drawTail = (ctx, tr, wMax = 4) => {
@@ -3920,6 +3933,15 @@ function launchComet(startX, startY) {
     ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill()
     ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill()
   }
+  // Trim a trail so its on-screen path length stays at TRAIL_PX (the ambient
+  // streak's tail length), regardless of the comet's speed. Keeps it bounded too.
+  const trimTrail = (tr) => {
+    let acc = 0
+    for (let i = tr.length - 1; i > 0; i--) {
+      acc += Math.hypot(tr[i].x - tr[i-1].x, tr[i].y - tr[i-1].y)
+      if (acc > TRAIL_PX) { tr.splice(0, i); return }
+    }
+  }
 
   function draw(now) {
     const el = now - start
@@ -3930,13 +3952,13 @@ function launchComet(startX, startY) {
       // Horizontal streak B (behind the bar content), linear like the ambient one.
       const eb = el / IMPACT
       const bx = bX0 + (bMx - bX0) * eb
-      trailB.push({ x: bx, y: bY }); if (trailB.length > 18) trailB.shift()
+      trailB.push({ x: bx, y: bY }); trimTrail(trailB)
       drawTail(ctxB, trailB); drawHead(ctxB, bx, bY)
       // Badge comet A (front), launches later, eases in; both reach the gap together.
       if (el >= startA) {
         const ta = (el - startA) / (IMPACT - startA), ea = ta * ta
         const ax = A0.x + (Mx - A0.x) * ea, ay = A0.y + (My - A0.y) * ea
-        trailA.push({ x: ax, y: ay }); if (trailA.length > 18) trailA.shift()
+        trailA.push({ x: ax, y: ay }); trimTrail(trailA)
         drawTail(ctxF, trailA); drawHead(ctxF, ax, ay)
       }
       requestAnimationFrame(draw)
@@ -4225,6 +4247,12 @@ function maybeDemo() {
       { text: 'Q2 revenue rose 12% QoQ driven by cloud.', embHash: 'demo0' },
       { text: 'Two risks flagged: supply chain and FX exposure.', embHash: 'demo1' }
     ], status: 'ready', addedAt: now
+  }, {
+    id: 'demo_doc2', name: 'policy-handbook.docx', size: 96000,
+    content: '', chunks: [], status: 'embedding', addedAt: now
+  }, {
+    id: 'demo_doc3', name: 'scanned-invoice.pdf', size: 421000,
+    content: '', chunks: [], status: 'error', addedAt: now
   }]
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
@@ -4274,8 +4302,11 @@ function maybeDemo() {
   }
 
   // Demo: show the "update available" state so the update UI is visible.
-  lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e',
-                newer:true, notes:'### v0.67e\n\n- Condensed updates panel\n- New token presets\n- Comet easter egg', html_url:'',
+  // Demo pretends you're one version behind so the upgrade panel shows a real
+  // pending update (installed v0.67c -> latest v0.67d).
+  const _vb = document.getElementById('ver-badge'); if (_vb) _vb.textContent = 'v0.67c'
+  lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d',
+                newer:true, notes:'### v0.67d\n\n- Card-based settings\n- Token presets + editable RAG sliders\n- Condensed updates panel\n- Comet easter egg', html_url:'',
                 error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
   if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
@@ -4301,13 +4332,47 @@ function demoSend(text, input) {
   input.value = ''; if (typeof autoResize === 'function') autoResize(input)
   const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
   appendMsg('user', text, null, null, [])
-  const typing = appendTyping()
-  setTimeout(() => {
-    try { typing.remove() } catch {}
-    const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
-    chat.messages.push({ role: 'assistant', content: reply, ts: Date.now() })
-    appendMsg('ai', reply, null, null, [])
-  }, 600)
+  demoStream(chat)
+}
+
+// Faithful offline copy of runStream's UX: typing indicator -> busy + Stop
+// button -> token-by-token reply -> Stop/Regenerate/Edit all work. inflightCtl
+// is a stub so the real stopStreaming() can cancel the demo stream.
+function demoStream(chat) {
+  const typingEl = appendTyping()
+  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
+  if (typeof setHealth === 'function') setHealth('warn', 'Thinking')
+  let stopped = false
+  inflightCtl = { abort() { stopped = true } }
+  const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
+  const tokens = reply.match(/\S+\s*/g) || [reply]
+  let i = 0, acc = '', msgObj = null, bubble = null
+  const swap = () => {
+    try { typingEl.remove() } catch {}
+    msgObj = { role: 'assistant', content: '', ts: Date.now() }
+    chat.messages.push(msgObj)
+    bubble = appendMsg('ai', '', null, null)
+  }
+  const done = (wasStopped) => {
+    busy = false; inflightCtl = null; if (typeof updateSendBtn === 'function') updateSendBtn()
+    if (wasStopped) {
+      if (!msgObj) { try { typingEl.remove() } catch {}; chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true }); appendMsg('ai', '(stopped)', null, null) }
+      else { msgObj.stopped = true; msgObj.content = acc + (acc ? '\n\n' : '') + '(stopped)'; const b = bubble.querySelector('.msg-body'); if (b) b.innerHTML = fmt(msgObj.content) }
+      if (typeof setHealth === 'function') setHealth('ok', 'Stopped')
+    } else if (typeof setHealth === 'function') setHealth('ok', 'Demo')
+    chat.updatedAt = Date.now(); if (typeof renderChatList === 'function') renderChatList()
+  }
+  const tick = () => {
+    if (stopped) { done(true); return }
+    if (!msgObj) swap()
+    if (i < tokens.length) {
+      acc += tokens[i++]; msgObj.content = acc; bubble.dataset.raw = acc
+      const b = bubble.querySelector('.msg-body'); if (b) b.innerHTML = fmt(acc)
+      const m = document.getElementById('messages'); if (m) m.scrollTop = m.scrollHeight
+      setTimeout(tick, 38)
+    } else { done(false) }
+  }
+  setTimeout(tick, 350)
 }
 
 // Derive a skill title from its body (first markdown H1) or its id slug. Used by
@@ -4384,7 +4449,7 @@ function renderUpdateSettings(){
   // or "Installed" tile), then the two toggle rows.
   const verRow = (verHtml,p)=> '<div class="upd-top"><span class="upd-ver">'+verHtml+'</span>'+p+'</div>'
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
-  const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Experimental updates</label><span class="upd-exp">Experimental</span></div>'
+  const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Alpha updates</label><span class="upd-exp">Experimental</span></div>'
 
   if (!u.checked){
     body.innerHTML = verRow(v, pill('neutral','Not checked'))
@@ -4446,13 +4511,39 @@ function openUpdateDialog(){
         '<button class="btn-sv" id="update-apply-btn" onclick="applyUpdate()">Download &amp; apply</button>'+
       '</div></div>'
   document.body.appendChild(bd)
+  // #demo: the notes are seeded placeholders — fetch the REAL release notes from
+  // GitHub (read-only, via the server check endpoint) so "What is new" is genuine.
+  if (typeof demoOn === 'function' && demoOn()) {
+    const notesEl = bd.querySelector('.msg-body')
+    if (notesEl) {
+      notesEl.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Loading release notes from GitHub\u2026</div>'
+      fetch('/api/update/check').then(r => r.json()).then(d => {
+        notesEl.innerHTML = fmt(d.notes || '_No release notes provided._')
+      }).catch(e => { notesEl.innerHTML = '<div style="color:var(--red);padding:6px 0">Could not load notes: ' + esc(e.message) + '</div>' })
+    }
+  }
   bd.addEventListener('click', e=>{ if(e.target===bd) closeUpdateDialog() })
 }
 
 function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
 
 async function applyUpdate(){
-  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
+  if (typeof demoOn === 'function' && demoOn()) {
+    // Emulate the full download -> restart -> updated sequence (no network). The
+    // floating "Reset demo" button re-seeds the one-version-behind state.
+    const out = document.getElementById('update-result')
+    const btn = document.getElementById('update-apply-btn')
+    if (btn){ btn.disabled = true; btn.textContent = 'Working\u2026' }
+    if (out) out.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Downloading and verifying\u2026 (demo)</div>'
+    setTimeout(() => { if (out) out.innerHTML = '<div style="color:var(--ok);padding:6px 0">Updated to v0.67d. Restarting Node\u2026</div>' }, 1000)
+    setTimeout(() => {
+      const vb = document.getElementById('ver-badge'); if (vb) vb.textContent = 'v0.67d'
+      lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67d', tag:'v0.67d', newer:false, error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+      renderUpdateBadge(); renderUpdateSettings(); closeUpdateDialog()
+      toast('Updated to v0.67d (demo) \u2014 Reset demo to replay', 'ok')
+    }, 2100)
+    return
+  }
   const btn = document.getElementById('update-apply-btn')
   const out = document.getElementById('update-result')
   if (btn){ btn.disabled=true; btn.textContent='Working…' }
@@ -4494,8 +4585,8 @@ async function setChannel(ch){
   if (typeof demoOn === 'function' && demoOn()) {
     // Demo: flip the in-memory state so both the version-based (stable) and
     // hash-based (experimental) update cards can be previewed. Touches nothing.
-    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67d', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
-    else lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e', newer:true, inSync:true, changed:[], hash:'', error:null }
+    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
+    else lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
     renderUpdateSettings()
     return
@@ -4527,7 +4618,15 @@ function unlockAlpha(){ try { localStorage.setItem('lcl_alpha_unlocked', '1') } 
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
 async function applyAlphaNow(){
-  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
+  if (typeof demoOn === 'function' && demoOn()) {
+    toast('Downloading alpha build\u2026 (demo)', 'info')
+    setTimeout(() => {
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', error:null }
+      renderUpdateBadge(); renderUpdateSettings()
+      toast('Alpha updated to #e4f5a6b (demo) \u2014 Reset demo to replay', 'ok')
+    }, 1200)
+    return
+  }
   try{
     toast('Downloading alpha update...','info')
     const r = await fetch('/api/update/apply', { method:'POST' })
