@@ -52,75 +52,70 @@ function stopStreaming(silent = false) {
   }
 }
 
+// Shared retry scheduler for the 429 + 5xx paths: shows a transient (NOT persisted)
+// status bubble with a live countdown, auto-fires opts.onFire() after delayMs, and
+// registers a cancellable pendingRetry. render(bodyEl, remainMs) draws the box each
+// tick; onCancelHtml() is the cancelled-state body; optional onCancel() does extra
+// cleanup. Health labels are [state,label] pairs.
+function scheduleRetry(opts) {
+  const bubble = appendMsg('ai', '', null, opts.ragSources)
+  const bodyEl = bubble.querySelector('.msg-body')
+  const acts   = bubble.querySelector('.msg-acts')
+  if (acts) acts.style.display = 'none'
+  const fireAt = Date.now() + opts.delayMs
+  const tick = () => { try { opts.render(bodyEl, fireAt - Date.now()) } catch {} }
+  tick()
+  if (opts.healthWait) setHealth(opts.healthWait[0], opts.healthWait[1])
+  const intervalId = setInterval(tick, opts.intervalMs || 1000)
+  const timerId = setTimeout(() => {
+    clearInterval(intervalId)
+    try { bubble.remove() } catch {}
+    pendingRetry = null
+    if (opts.healthRetry) setHealth(opts.healthRetry[0], opts.healthRetry[1])
+    opts.onFire()
+  }, opts.delayMs)
+  pendingRetry = {
+    cancel() {
+      clearTimeout(timerId); clearInterval(intervalId)
+      if (typeof opts.onCancel === 'function') opts.onCancel()
+      bodyEl.innerHTML = opts.onCancelHtml()
+      pendingRetry = null
+      if (opts.healthCancel) setHealth(opts.healthCancel[0], opts.healthCancel[1])
+    }
+  }
+}
+
 // 429 handler: shows a non-message bubble with a live countdown to the
 // reset time (converted to the user's local timezone) and auto-retries the
 // same payload when the timer expires. The bubble is purely UI — it does
 // not get pushed into chat.messages, so retry can transparently replace it
 // with the real assistant response.
 function handleRateLimitWait(chat, payload, ragSources, resetMs, rawErrMsg) {
-  // Format the reset time in the user's local timezone with the timezone
-  // abbreviation appended so it's unambiguous.
   const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
-  const resetDate = new Date(resetMs)
-  const localTime = resetDate.toLocaleString(undefined, {
+  const localTime = new Date(resetMs).toLocaleString(undefined, {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   }) + ' (' + tzName + ')'
-
-  // Build a transient bubble — not added to chat.messages.
-  const bubble = appendMsg('ai', '', null, ragSources)
-  const bodyEl = bubble.querySelector('.msg-body')
-  const acts   = bubble.querySelector('.msg-acts')
-  if (acts) acts.style.display = 'none'  // no Copy/Regen for a status bubble
-
   const pad = (n) => String(n).padStart(2, '0')
   const formatCountdown = (ms) => {
     if (ms <= 0) return '0:00'
-    const s = Math.floor(ms / 1000)
-    const d = Math.floor(s / 86400)
-    const h = Math.floor((s % 86400) / 3600)
-    const m = Math.floor((s % 3600) / 60)
-    const sec = s % 60
+    const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
     if (d > 0) return d + 'd ' + pad(h) + ':' + pad(m) + ':' + pad(sec)
     if (h > 0) return pad(h) + ':' + pad(m) + ':' + pad(sec)
     return pad(m) + ':' + pad(sec)
   }
-
-  const render = () => {
-    const remain = resetMs - Date.now()
-    bodyEl.innerHTML = statusBox('warn', 'Error 429: Rate limit reached',
+  scheduleRetry({
+    ragSources,
+    delayMs: Math.max(1000, (resetMs - Date.now()) + CFG.RATE_LIMIT_GRACE_MS),
+    intervalMs: 1000,
+    render: (bodyEl) => { bodyEl.innerHTML = statusBox('warn', 'Error 429: Rate limit reached',
       '<div>Resets at:&nbsp; <strong style="color:var(--tx);font-family:var(--mono)">' + localTime + '</strong></div>' +
-      '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(remain) + '</strong></div>',
-      { icon: 'clock', cancel: 'cancelRateLimitRetry()' })
-  }
-
-  render()
-  setHealth('warn', 'Rate-limited')
-  const intervalId = setInterval(render, 1000)
-
-  // Auto-retry: fire 2 seconds past the reset to give the upstream a
-  // moment to clear the bucket.
-  const delay = Math.max(1000, (resetMs - Date.now()) + 2000)
-  const timerId = setTimeout(() => {
-    if (intervalId) clearInterval(intervalId)
-    try { bubble.remove() } catch {}
-    pendingRetry = null
-    setHealth('warn', 'Retrying')
-    runStream(chat, payload, ragSources)
-  }, delay)
-
-  pendingRetry = {
-    cancel() {
-      clearTimeout(timerId)
-      clearInterval(intervalId)
-      bodyEl.innerHTML =
-        '<div style="background:var(--redbg);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--red)">' +
-          'Retry cancelled. The rate limit may still be active.' +
-        '</div>'
-      pendingRetry = null
-      setHealth('err', 'Rate-limited')
-    }
-  }
+      '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(resetMs - Date.now()) + '</strong></div>',
+      { icon: 'clock', cancel: 'cancelRateLimitRetry()' }) },
+    onFire: () => runStream(chat, payload, ragSources),
+    onCancelHtml: () => '<div style="background:var(--redbg);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--red)">Retry cancelled. The rate limit may still be active.</div>',
+    healthWait: ['warn', 'Rate-limited'], healthRetry: ['warn', 'Retrying'], healthCancel: ['err', 'Rate-limited'],
+  })
 }
 
 function cancelRateLimitRetry() {
