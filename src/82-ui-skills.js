@@ -177,9 +177,11 @@ function saveSP() {
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
   D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey||'', embedModelId: creds.embedModelId||'', classification: creds.classification }
-  try {
-    fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
-  } catch {}
+  if (!(typeof demoOn === 'function' && demoOn())) {
+    try {
+      fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
+    } catch {}
+  }
   persist()
   closeSP(); toast('Settings saved','ok')
 }
