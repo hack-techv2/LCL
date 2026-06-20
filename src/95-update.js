@@ -12,7 +12,7 @@ function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||
 // Compact "updated <date>" for the experimental build line (e.g. 21 Jun 2026).
 function fmtUpdated(ms){
   if (!ms) return ''
-  try { return new Date(ms).toLocaleDateString([], { day:'numeric', month:'short', year:'numeric' }) }
+  try { return new Date(ms).toLocaleString([], { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) }
   catch { return '' }
 }
 
