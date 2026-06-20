@@ -18,6 +18,7 @@ function fmt(text) {
 }
 
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function escJs(s){ return esc(String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")) }
 
 function fmtSz(b) {
   if (!b) return '0 B'
