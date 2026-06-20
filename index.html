@@ -1171,6 +1171,64 @@ async function fetchWithRetry(url, opts, cfg) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
+// SECTION: 12-transport.js
+// =============================================================================
+// Transport — the single client<->local-proxy HTTP/SSE seam (R11)
+// =============================================================================
+// All browser fetches to the Node proxy go through here so headers, JSON body
+// serialization and SSE consumption live in one place. The http* helpers return
+// the raw Response (callers keep their own .ok / .json() / .text() handling, so
+// migrating a call site is mechanical and behaviour-preserving). fetchWithRetry
+// (10-state.js) stays the retry/transient layer; transport wraps the plain calls.
+
+// Build a fetch init for a JSON request. Only sets a body + Content-Type when a
+// body is provided (a bodyless POST/PUT/DELETE stays bodyless, as before).
+function _httpInit(method, body, opts) {
+  const init = Object.assign({ method }, opts || {})
+  if (body !== undefined) {
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {})
+    init.body = JSON.stringify(body)
+  }
+  return init
+}
+
+function httpGet(path, opts)          { return fetch(path, opts) }
+function httpPost(path, body, opts)   { return fetch(path, _httpInit('POST', body, opts)) }
+function httpPut(path, body, opts)    { return fetch(path, _httpInit('PUT', body, opts)) }
+function httpDelete(path, opts)       { return fetch(path, _httpInit('DELETE', undefined, opts)) }
+
+// Consume an SSE Response body, invoking onData(payload) for each "data:" line
+// (payload is the text after "data:", trimmed; "[DONE]" is passed through for the
+// caller to skip). Lines are split on "\n", so this handles both the chat stream
+// (frames separated by "\n\n" -> the blank line is filtered) and the embed stream
+// (single "\n"). If opts.aborted() reports true (or read() throws AbortError) the
+// loop stops and returns { stopped:true } WITHOUT throwing, so the chat path keeps
+// its "abort -> (stopped)" wrap-up. Callers that omit opts.aborted get errors
+// propagated to their own catch. Returns { stopped:false } on a normal end.
+async function streamSse(resp, onData, opts) {
+  opts = opts || {}
+  const reader  = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    let chunk
+    try { chunk = await reader.read() }
+    catch (e) {
+      if (opts.aborted && (e.name === 'AbortError' || opts.aborted())) return { stopped: true }
+      throw e
+    }
+    if (chunk.done) break
+    buf += decoder.decode(chunk.value, { stream: true })
+    let nl
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (line.startsWith('data:')) onData(line.slice(5).trim())
+    }
+  }
+  return { stopped: false }
+}
+
 // SECTION: 15-rag.js
 // =============================================================================
 // RAG — chunking, hashing, embedding, retrieval
@@ -1217,14 +1275,10 @@ async function embedBatch(texts) {
   if (!embedModel) throw new Error('No embedding model configured')
 
   return new Promise((resolve, reject) => {
-    fetch('/api/embed-batch', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        apiKey:  creds?.embedApiKey,
-        modelId: embedModel,
-        inputs:  texts
-      })
+    httpPost('/api/embed-batch', {
+      apiKey:  creds?.embedApiKey,
+      modelId: embedModel,
+      inputs:  texts
     }).then(async res => {
       const contentType = res.headers.get('content-type') || ''
 
@@ -1239,38 +1293,29 @@ async function embedBatch(texts) {
         return reject(new Error('Unexpected content-type: ' + contentType))
       }
 
-      const reader  = res.body.getReader()
-      const decoder = new TextDecoder()
-      let   buffer  = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop()
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          let evt
-          try { evt = JSON.parse(line.slice(6)) } catch { continue }
-          if (evt.type === 'progress') {
-            toast('Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
-              + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
-            if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
-          } else if (evt.type === 'pacing') {
-            // Server is waiting out the API rate-limit window. Make the pause
-            // obvious so the UI doesn't look frozen.
-            toast('⏳ API rate limit reached — resuming embedding in ~' + evt.waitSec + 's'
-              + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
-            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
-          } else if (evt.type === 'done') {
-            return resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
-          } else if (evt.type === 'error') {
-            return reject(new Error(evt.message))
-          }
+      // Shared SSE consumption (streamSse, 12-transport); events resolve/reject
+      // the outer promise. A normal end without a done event is an error.
+      let settled = false
+      await streamSse(res, payload => {
+        let evt
+        try { evt = JSON.parse(payload) } catch { return }
+        if (evt.type === 'progress') {
+          toast('Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
+            + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
+          if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
+        } else if (evt.type === 'pacing') {
+          // Server is waiting out the API rate-limit window. Make the pause
+          // obvious so the UI doesn't look frozen.
+          toast('⏳ API rate limit reached — resuming embedding in ~' + evt.waitSec + 's'
+            + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
+          if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
+        } else if (evt.type === 'done') {
+          settled = true; resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
+        } else if (evt.type === 'error') {
+          settled = true; reject(new Error(evt.message))
         }
-      }
-      reject(new Error('SSE stream ended without a done event'))
+      })
+      if (!settled) reject(new Error('SSE stream ended without a done event'))
     }).catch(reject)
   })
 }
@@ -1298,10 +1343,7 @@ async function retrieveChunks(query, docs, topK, stickyChunks) {
   const needLookup = all.filter(c => c.embHash && !c.embedding)
   if (needLookup.length) {
     try {
-      const r    = await fetch('/api/embed-lookup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hashes: needLookup.map(c => c.embHash) })
-      })
+      const r    = await httpPost('/api/embed-lookup', { hashes: needLookup.map(c => c.embHash) })
       if (!r.ok) throw new Error('lookup HTTP ' + r.status)
       const data = await r.json()
       const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
@@ -1342,10 +1384,7 @@ async function evictDocFromCache(doc) {
   const hashes = doc.chunks.map(c => c.embHash).filter(Boolean)
   if (!hashes.length) return
   try {
-    await fetch('/api/embed-evict', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hashes })
-    })
+    await httpPost('/api/embed-evict', { hashes })
   } catch (e) {
     console.warn('[evictDocFromCache]', e.message)
   }
@@ -1354,8 +1393,52 @@ async function evictDocFromCache(doc) {
 // Ask the server to prune vectors no longer referenced by any doc (called after
 // a doc is removed). More thorough than per-hash eviction: clears orphans too.
 async function gcEmbedCache() {
-  try { const r = await fetch('/api/embed-gc', { method: 'POST' }); return await r.json() }
+  try { const r = await httpPost('/api/embed-gc'); return await r.json() }
   catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
+}
+
+// SECTION: 18-store.js
+// =============================================================================
+// Persistence seam — the single owner of client<->server state I/O (R12)
+// =============================================================================
+// All reads/writes of persisted state go through here, on top of the R11
+// transport. There are two stores by design (mirrors the server): the full app
+// data blob (chats + embedded settings) at /api/data, and the live settings
+// (credentials + RAG defaults) at /api/config, which the server applies
+// immediately on connect/disconnect.
+//
+// The #demo write-guard lives in ONE place now: a demo session seeds throwaway
+// state and must never touch disk/network, so every SAVE is a no-op in demo.
+// (Reads aren't reached in demo — init() returns at its maybeDemo() guard
+// before any load.) This also closes a prior leak where disconnect() in demo
+// still POSTed blank credentials to /api/config.
+
+function storeIsDemo() { return typeof demoOn === 'function' && demoOn() }
+
+// --- full app data (chats + settings) <-> /api/data --------------------------
+async function loadAppData() {
+  try {
+    const r = await httpGet('/api/data')
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+async function saveAppData(data) {
+  if (storeIsDemo()) return
+  try { await httpPost('/api/data', data) } catch {}
+}
+
+// --- live settings <-> /api/config -------------------------------------------
+async function loadSettings() {
+  try {
+    const r = await httpGet('/api/config')
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+async function saveSettings(settings) {
+  if (storeIsDemo()) return
+  try { await httpPost('/api/config', settings) } catch {}
 }
 
 // SECTION: 20-auth.js
@@ -1389,20 +1472,17 @@ async function init() {
   }
   // Try to auto-connect from saved settings
   try {
-    const r = await fetch('/api/config')
-    if (r.ok) {
-      const cfg = await r.json()
-      // Primary: settings from /api/config. Fallback: settings embedded in D (from /api/data)
-      // Ignore the demo sentinel ('demo') so a prior #demo visit never looks
-      // connected in normal mode.
-      const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
-      const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
-      if (s) {
-        creds = makeCreds(s)
-        setHealth('ok', connectedLabel())
-        document.body.classList.remove('not-connected')
-        document.getElementById('connect-banner')?.classList.add('hidden')
-      }
+    const cfg = await loadSettings()
+    // Primary: settings from /api/config. Fallback: settings embedded in D (from /api/data)
+    // Ignore the demo sentinel ('demo') so a prior #demo visit never looks
+    // connected in normal mode.
+    const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
+    const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
+    if (s) {
+      creds = makeCreds(s)
+      setHealth('ok', connectedLabel())
+      document.body.classList.remove('not-connected')
+      document.getElementById('connect-banner')?.classList.add('hidden')
     }
   } catch {}
   await loadSkillsList()
@@ -1415,18 +1495,13 @@ async function init() {
 }
 
 async function loadData() {
-  try {
-    const r = await fetch('/api/data')
-    if (r.ok) { const d=await r.json(); if (d&&d.chats) D=d }
-  } catch {}
+  const d = await loadAppData()
+  if (d && d.chats) D = d
 }
 
 async function persist() {
-  // Demo mode (#demo) seeds throwaway chats — never write them to lcl_data.json.
-  if (typeof demoOn === 'function' && demoOn()) return
-  try {
-    await fetch('/api/data', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(D) })
-  } catch {}
+  // Persistence + the #demo write-guard live in saveAppData (18-store).
+  await saveAppData(D)
 }
 
 // =============================================================================
@@ -1501,9 +1576,7 @@ async function connect() {
   // Write settings into D directly — persist() will carry them to disk on every save
   D.settings = credsToSettings(creds)
   // Also save via /api/config for immediate server-side update
-  try {
-    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
-  } catch {}
+  await saveSettings(D.settings)
   await persist()  // write D (with settings) to disk right now
   await loadData()
   await loadSkillsList()
@@ -1537,9 +1610,7 @@ async function disconnect() {
   // Also clear the server-side /api/config (mirror of connect()'s write). init()
   // prefers /api/config over D.settings, so a stale config would silently
   // auto-reconnect on next launch. Push blank credentials to wipe it.
-  try {
-    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' }) })
-  } catch {}
+  await saveSettings({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' })
   setHealth('off', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
@@ -1695,7 +1766,7 @@ function saveEmbedKey() {
   // Mirror into D.settings so persist() also carries these to disk
   if (D.settings) { D.settings.embedApiKey = keyVal; D.settings.embedModelId = modelVal }
   const settingsBody = { apiKey: creds?.apiKey||'', modelId: creds?.model||'', maxTokens: creds?.maxTokens||8192, systemPrompt: creds?.systemPrompt||'', embedApiKey: keyVal, embedModelId: modelVal }
-  if (!(typeof demoOn === 'function' && demoOn())) { try { fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(settingsBody) }) } catch {} }
+  saveSettings(settingsBody)
   persist()
   document.getElementById('embed-key-banner')?.remove()
   toast('Embedding settings saved', 'ok')
@@ -1716,10 +1787,7 @@ async function testEmbedConnection() {
   try {
     // /api/embed (single-shot) returns plain JSON. /api/embed/batch is SSE
     // and would make resp.json() throw — that was the previous bug here.
-    const resp = await fetch('/api/embed', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ apiKey: keyVal, modelId: modelVal, input: 'test' })
-    })
+    const resp = await httpPost('/api/embed', { apiKey: keyVal, modelId: modelVal, input: 'test' })
     const data = await resp.json().catch(() => ({}))
     const vec = data.data?.[0]?.embedding || data.embedding
     if (resp.ok && Array.isArray(vec) && vec.length) {
@@ -2150,7 +2218,7 @@ async function removeDoc(id, event) {
 async function resolveSystemPrompt(chat) {
   if (!chat || !chat.skillId) return { sys: creds.systemPrompt || '', error: null }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(chat.skillId))
+    const r = await httpGet('/skills/' + encodeURIComponent(chat.skillId))
     if (r.status === 404) return { sys: null, error: 'Skill "' + chat.skillId + '" not found' }
     if (!r.ok) return { sys: null, error: 'Skill "' + chat.skillId + '" failed to load (HTTP ' + r.status + ')' }
     const data = await r.json()
@@ -2163,7 +2231,7 @@ async function resolveSystemPrompt(chat) {
 async function loadSkillsList() {
   if (typeof demoOn === 'function' && demoOn()) return  // keep seeded demo skills
   try {
-    const r = await fetch('/skills')
+    const r = await httpGet('/skills')
     if (!r.ok) { skillsCache = []; return }
     const data = await r.json()
     skillsCache = Array.isArray(data.skills) ? data.skills : []
@@ -2369,12 +2437,9 @@ async function runStream(chat, payload, ragSources) {
   }
 
   try {
-    const resp = await fetch('/api/chat', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      signal: inflightCtl.signal,
-      body: JSON.stringify({ apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload })
-    })
+    const resp = await httpPost('/api/chat',
+      { apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload },
+      { signal: inflightCtl.signal })
 
     // Non-200 responses from our proxy are JSON, not SSE.
     if (!resp.ok) {
@@ -2416,56 +2481,39 @@ async function runStream(chat, payload, ragSources) {
     }
     if (!resp.body) throw new Error('No response body for streaming')
 
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
     const msgsEl = document.getElementById('messages')
 
-    while (true) {
-      let chunk
-      try { chunk = await reader.read() }
-      catch (e) {
-        if (e.name === 'AbortError' || inflightCtl?.signal?.aborted) { stopped = true; break }
-        throw e
+    // SSE consumption is shared (streamSse, 12-transport). Each "data:" payload is
+    // one event; abort is reported via res.stopped (keeps the (stopped) wrap-up).
+    const res = await streamSse(resp, data => {
+      if (data === '[DONE]') return
+
+      let evt
+      try { evt = JSON.parse(data) } catch { return }
+
+      if (evt.error) {
+        streamErr = evt.error?.message || evt.error
+        return
       }
-      if (chunk.done) break
-      buf += decoder.decode(chunk.value, { stream: true })
 
-      // SSE frames are separated by \n\n. Each frame is "data: <json>".
-      const parts = buf.split('\n\n')
-      buf = parts.pop() || ''
-      for (const part of parts) {
-        const line = part.trim()
-        if (!line || !line.startsWith('data:')) continue
-        const data = line.slice(5).trim()
-        if (data === '[DONE]') continue
+      const choice = evt.choices?.[0]
+      if (!choice) return
+      const delta = choice.delta?.content || ''
 
-        let evt
-        try { evt = JSON.parse(data) } catch { continue }
+      if (delta || choice.finish_reason) swapBubble()
 
-        if (evt.error) {
-          streamErr = evt.error?.message || evt.error
-          continue
-        }
-
-        const choice = evt.choices?.[0]
-        if (!choice) continue
-        const delta = choice.delta?.content || ''
-
-        if (delta || choice.finish_reason) swapBubble()
-
-        if (delta && msgObj && bubble) {
-          accumulated += delta
-          msgObj.content = accumulated
-          bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
-          const bodyEl = bubble.querySelector('.msg-body')
-          if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
-          if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
-        }
-        if (choice.finish_reason === 'content_filter') filtered = true
-        if (choice.finish_reason === 'length') truncated = true
+      if (delta && msgObj && bubble) {
+        accumulated += delta
+        msgObj.content = accumulated
+        bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
+        const bodyEl = bubble.querySelector('.msg-body')
+        if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
+        if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
       }
-    }
+      if (choice.finish_reason === 'content_filter') filtered = true
+      if (choice.finish_reason === 'length') truncated = true
+    }, { aborted: () => inflightCtl?.signal?.aborted })
+    if (res.stopped) stopped = true
 
     // Wrap-up: handle stop / error / success states
     if (stopped) {
@@ -2565,9 +2613,7 @@ async function autoTitleChat(chat) {
   const seed = (extract(chat.messages[0]) + '\n\n' +
                 extract(chat.messages[1])).slice(0, 1500)
   try {
-    const resp = await fetch('/api/chat', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const resp = await httpPost('/api/chat', {
         apiKey: creds.apiKey, modelId: creds.model,
         payload: {
           messages: [
@@ -2580,7 +2626,6 @@ async function autoTitleChat(chat) {
           max_tokens: 24,
           stream: false
         }
-      })
     })
     if (!resp.ok) return
     const data = await resp.json()
@@ -2932,44 +2977,72 @@ function connectedLabel() {
 
 // SECTION: 71-render-chatlist.js
 // =============================================================================
-// Render — sidebar chat list
+// Render — sidebar chat list (mkEl + one delegated listener; no inline onclick)
 // =============================================================================
+
+// Trusted, static icon markup for the per-row action buttons.
+const ICON_PIN = fill => '<svg width="12" height="12" viewBox="0 0 16 16" fill="' + fill + '"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg>'
+const ICON_RENAME = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064L11.189 6.25z"/></svg>'
+const ICON_DELETE = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 0V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.149l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 011.492-.15z"/></svg>'
 
 function renderChatList() {
   const el    = document.getElementById('chat-list')
   const chats = sortedChats().filter(c => c.messages.length || (c.docs && c.docs.length))
-  if (!chats.length) { el.innerHTML='<div style="padding:12px 10px;font-size:12px;color:var(--tx3)">No chats yet</div>'; return }
-
-  const pinned   = chats.filter(c=>c.pinned)
-  const unpinned = chats.filter(c=>!c.pinned)
-
-  let html = ''
-
-  if (pinned.length) {
-    html += '<div class="section-lbl">Pinned</div>'
-    html += pinned.map(c=>chatItemHTML(c)).join('')
+  el.innerHTML = ''
+  if (!chats.length) {
+    el.appendChild(mkEl('div', { style: 'padding:12px 10px;font-size:12px;color:var(--tx3)' }, 'No chats yet'))
+    return
   }
+
+  const pinned   = chats.filter(c => c.pinned)
+  const unpinned = chats.filter(c => !c.pinned)
+  const frag     = document.createDocumentFragment()
+
+  const section = (label, items) => {
+    if (!items.length) return
+    frag.appendChild(mkEl('div', { class: 'section-lbl' }, label))
+    items.forEach(c => frag.appendChild(chatItemEl(c)))
+  }
+
+  section('Pinned', pinned)
 
   // group unpinned by date
-  const today     = new Date(); today.setHours(0,0,0,0)
-  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1)
-  const week      = new Date(today); week.setDate(today.getDate()-7)
+  const today     = new Date(); today.setHours(0, 0, 0, 0)
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
+  const week      = new Date(today); week.setDate(today.getDate() - 7)
 
-  const groups = [
-    { label:'Today',          items: unpinned.filter(c=>new Date(c.updatedAt)>=today) },
-    { label:'Yesterday',      items: unpinned.filter(c=>{ const d=new Date(c.updatedAt); return d>=yesterday&&d<today }) },
-    { label:'Previous 7 days',items: unpinned.filter(c=>{ const d=new Date(c.updatedAt); return d>=week&&d<yesterday }) },
-    { label:'Older',          items: unpinned.filter(c=>new Date(c.updatedAt)<week) },
-  ]
+  section('Today',           unpinned.filter(c => new Date(c.updatedAt) >= today))
+  section('Yesterday',       unpinned.filter(c => { const d = new Date(c.updatedAt); return d >= yesterday && d < today }))
+  section('Previous 7 days', unpinned.filter(c => { const d = new Date(c.updatedAt); return d >= week && d < yesterday }))
+  section('Older',           unpinned.filter(c => new Date(c.updatedAt) < week))
 
-  for (const g of groups) {
-    if (!g.items.length) continue
-    html += `<div class="section-lbl">${g.label}</div>`
-    html += g.items.map(c=>chatItemHTML(c)).join('')
-  }
-
-  el.innerHTML = html
+  el.appendChild(frag)
+  setupChatListDelegation()
   setupChatTitleScroll()
+}
+
+// One delegated click listener on the persistent #chat-list container, installed
+// once. Reads data-id / data-act off the clicked row/button — no per-item binding
+// and no inline onclick="fn('id')" (so no escJs string-interpolation either).
+let _chatListBound = false
+function setupChatListDelegation() {
+  if (_chatListBound) return
+  _chatListBound = true
+  const el = document.getElementById('chat-list')
+  el.addEventListener('click', e => {
+    const item = e.target.closest('.chat-item')
+    if (!item) return
+    const id  = item.getAttribute('data-id')
+    const btn = e.target.closest('.ca-btn')
+    if (btn) {
+      const act = btn.getAttribute('data-act')
+      if (act === 'pin')    return togglePin(id, e)
+      if (act === 'rename') return startRename(id, e)
+      if (act === 'delete') return deleteChat(id, e)
+      return
+    }
+    switchChat(id)
+  })
 }
 
 // Continuously scroll (ping-pong) an overflowing chat name while its row is
@@ -2995,51 +3068,69 @@ function setupChatTitleScroll() {
   })
 }
 
-function chatItemHTML(c) {
-  return `<div class="chat-item ${c.id===chatId?'active':''} ${c.pinned?'pinned':''}" data-id="${c.id}" onclick="switchChat('${escJs(c.id)}')">
-    <div class="chat-avatar" title="${esc(c.title)}">${esc((c.title||'').trim().charAt(0).toUpperCase()||'?')}</div>
-    <div class="chat-item-inner">
-      <div class="chat-pin-dot"></div>
-      <div class="chat-item-text" title="${esc(c.title)}">
-        <div class="chat-title"><span class="chat-title-inner">${esc(c.title)}</span></div>
-        <div class="chat-meta">${c.messages.length} msg${c.messages.length!==1?'s':''} * ${fmtDate(c.updatedAt)}</div>
-      </div>
-    </div>
-    <div class="chat-actions">
-      <button class="ca-btn pin-btn" onclick="togglePin('${escJs(c.id)}',event)" data-tip="${c.pinned?'Unpin':'Pin'}">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="${c.pinned?'var(--pin)':'currentColor'}"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg>
-      </button>
-      <button class="ca-btn" onclick="startRename('${escJs(c.id)}',event)" data-tip="Rename">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064L11.189 6.25z"/></svg>
-      </button>
-      <button class="ca-btn del-btn" onclick="deleteChat('${escJs(c.id)}',event)" data-tip="Delete">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 0V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.149l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 011.492-.15z"/></svg>
-      </button>
-    </div>
-  </div>`
+function chatItemEl(c) {
+  const n      = c.messages.length
+  const title  = c.title || ''
+  const avatar = mkEl('div', { class: 'chat-avatar', title: title }, (title.trim().charAt(0).toUpperCase() || '?'))
+
+  const text = mkEl('div', { class: 'chat-item-text', title: title }, [
+    mkEl('div', { class: 'chat-title' }, mkEl('span', { class: 'chat-title-inner' }, title)),
+    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' * ' + fmtDate(c.updatedAt))
+  ])
+
+  const inner = mkEl('div', { class: 'chat-item-inner' }, [
+    mkEl('div', { class: 'chat-pin-dot' }),
+    text
+  ])
+
+  const actions = mkEl('div', { class: 'chat-actions' }, [
+    mkEl('button', { class: 'ca-btn pin-btn', 'data-act': 'pin',    'data-tip': c.pinned ? 'Unpin' : 'Pin', html: ICON_PIN(c.pinned ? 'var(--pin)' : 'currentColor') }),
+    mkEl('button', { class: 'ca-btn',         'data-act': 'rename', 'data-tip': 'Rename', html: ICON_RENAME }),
+    mkEl('button', { class: 'ca-btn del-btn', 'data-act': 'delete', 'data-tip': 'Delete', html: ICON_DELETE })
+  ])
+
+  return mkEl('div', {
+    class: 'chat-item' + (c.id === chatId ? ' active' : '') + (c.pinned ? ' pinned' : ''),
+    'data-id': c.id
+  }, [avatar, inner, actions])
 }
 
 // SECTION: 72-render-message.js
 // =============================================================================
 // Render — chat messages (bubbles, file chips, RAG tags, typing)
+// mkEl + addEventListener throughout; no inline onclick / escJs string-building.
+// Dynamic text goes through DOM text nodes (auto-escaped); only trusted, static
+// markup (icons) and sanitised output (fmt() / statusBox()) use html:.
 // =============================================================================
+
+const LOGO_SVG = '<svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg>'
+
+// Hint-card markup is fully static (no user data) — safe to assemble as html.
+const HINT_CARDS = [
+  { prompt: 'Summarise this document for me: ',        html: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5A1.5 1.5 0 015.5 0h4.1a1.5 1.5 0 011.06.44l1.9 1.9A1.5 1.5 0 0113 3.41V14.5A1.5 1.5 0 0111.5 16h-6A1.5 1.5 0 014 14.5v-13zM6 6.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h2a.5.5 0 000-1H6z"/></svg><span class="hint-card-title">Summarise a document</span><span class="hint-card-sub">Paste or attach a file</span>' },
+  { prompt: 'Help me write a pentest report. ',         html: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .6l5.4 2.1v4.2c0 3.4-2.3 6.5-5.4 7.4C4.9 13.4 2.6 10.3 2.6 6.9V2.7L8 .6z"/></svg><span class="hint-card-title">Write a pentest report</span><span class="hint-card-sub">Draft findings &amp; structure</span>' },
+  { prompt: 'Explain this concept to me step by step: ', html: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4.5 4.5 0 00-2.7 8.1c.4.3.6.8.6 1.3v.6h4.2v-.6c0-.5.2-1 .6-1.3A4.5 4.5 0 008 1zM6 13h4v.4A1.6 1.6 0 018.4 15h-.8A1.6 1.6 0 016 13.4V13z"/></svg><span class="hint-card-title">Explain a concept</span><span class="hint-card-sub">Step-by-step breakdown</span>' }
+]
+
+const ICON_CHIP_FILE = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2z"/></svg>'
+const ICON_CHIP_CHEVRON = '<svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.94L1.53 4.47a.75.75 0 011.06-1.06L8 8.81l5.41-5.4a.75.75 0 111.06 1.06L8 10.94z"/></svg>'
 
 function renderMessages() {
   const el   = document.getElementById('messages')
   const chat = curChat()
 
-  if (!chat||!chat.messages.length) {
+  if (!chat || !chat.messages.length) {
     const embModel = (creds && creds.embedModelId) || (D.settings && D.settings.embedModelId) || ''
     const embKey   = (creds && creds.embedApiKey)  || (D.settings && D.settings.embedApiKey)  || ''
     const embOk    = !!(embModel && embKey)
     // Example hint cards are first-run onboarding only: hide once the user
     // already has chat history (more than just this empty new chat).
-    const firstRun = Object.keys(D.chats||{}).length <= 1
+    const firstRun = Object.keys(D.chats || {}).length <= 1
     const cap = ' — ask questions, write &amp; review code, summarise and draft documents.'
     const copyLine = '<br><em style="color:var(--tx2)">Copy any reply straight into Word or Outlook with formatting intact.</em>'
     let sub
     if (creds) {
-      sub = 'Connected to <strong style="color:var(--ac)">' + esc(creds.model||'a model') + '</strong>' + clsSuffix(creds) + cap + copyLine + '<br>' +
+      sub = 'Connected to <strong style="color:var(--ac)">' + esc(creds.model || 'a model') + '</strong>' + clsSuffix(creds) + cap + copyLine + '<br>' +
         (embOk ? 'Embeddings ready (<strong style="color:var(--ac)">' + esc(embModel) + '</strong>) — attach files to chat over them.'
                : 'Add an embedding key in Settings to chat over your files.')
     } else if (embOk) {
@@ -3047,38 +3138,41 @@ function renderMessages() {
     } else {
       sub = 'Your AI chatbot, running locally on Comet.<br>Click <strong style="color:var(--ac)">Connect</strong> below to get started.'
     }
-    el.innerHTML = `<div id="empty">
-      <div class="empty-logo" style="padding:6px"><svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg></div>
-      <div class="empty-title">${chat?chat.title:'Local Comet LLM (LCL)'}</div>
-      <div class="empty-sub">${sub}</div>
-      ${firstRun ? `<div class="hint-cards">
-        <button class="hint-card" onclick="useHint('Summarise this document for me: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.5A1.5 1.5 0 015.5 0h4.1a1.5 1.5 0 011.06.44l1.9 1.9A1.5 1.5 0 0113 3.41V14.5A1.5 1.5 0 0111.5 16h-6A1.5 1.5 0 014 14.5v-13zM6 6.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h4a.5.5 0 000-1H6zm0 2.5a.5.5 0 000 1h2a.5.5 0 000-1H6z"/></svg><span class="hint-card-title">Summarise a document</span><span class="hint-card-sub">Paste or attach a file</span></button>
-        <button class="hint-card" onclick="useHint('Help me write a pentest report. ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .6l5.4 2.1v4.2c0 3.4-2.3 6.5-5.4 7.4C4.9 13.4 2.6 10.3 2.6 6.9V2.7L8 .6z"/></svg><span class="hint-card-title">Write a pentest report</span><span class="hint-card-sub">Draft findings &amp; structure</span></button>
-        <button class="hint-card" onclick="useHint('Explain this concept to me step by step: ')"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4.5 4.5 0 00-2.7 8.1c.4.3.6.8.6 1.3v.6h4.2v-.6c0-.5.2-1 .6-1.3A4.5 4.5 0 008 1zM6 13h4v.4A1.6 1.6 0 018.4 15h-.8A1.6 1.6 0 016 13.4V13z"/></svg><span class="hint-card-title">Explain a concept</span><span class="hint-card-sub">Step-by-step breakdown</span></button>
-      </div>` : ''}
-    </div>`
+
+    const empty = mkEl('div', { id: 'empty' }, [
+      mkEl('div', { class: 'empty-logo', style: 'padding:6px', html: LOGO_SVG }),
+      mkEl('div', { class: 'empty-title' }, chat ? chat.title : 'Local Comet LLM (LCL)'),
+      mkEl('div', { class: 'empty-sub', html: sub })
+    ])
+    if (firstRun) {
+      empty.appendChild(mkEl('div', { class: 'hint-cards' },
+        HINT_CARDS.map(h => mkEl('button', { class: 'hint-card', html: h.html, onclick: () => useHint(h.prompt) }))
+      ))
+    }
+    el.innerHTML = ''
+    el.appendChild(empty)
     return
   }
 
   const inner = document.createElement('div')
   inner.className = 'msgs-inner'
   chat.messages.forEach(m => {
-    const t = typeof m.content==='string'?m.content:m.content?.find?.(b=>b.type==='text')?.text||'[attachment]'
-    const div = buildMsgEl(m.role==='user'?'user':'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
+    const t = typeof m.content === 'string' ? m.content : m.content?.find?.(b => b.type === 'text')?.text || '[attachment]'
+    const div = buildMsgEl(m.role === 'user' ? 'user' : 'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
     inner.appendChild(div)
   })
-  el.innerHTML=''
+  el.innerHTML = ''
   el.appendChild(inner)
-  el.scrollTop=el.scrollHeight
+  el.scrollTop = el.scrollHeight
   refreshTailActions()
 }
 
 function appendMsg(role, text, date, sources, fileNames, errored) {
   let inner = document.querySelector('.msgs-inner')
   if (!inner) {
-    document.getElementById('messages').innerHTML=''
+    document.getElementById('messages').innerHTML = ''
     inner = document.createElement('div')
-    inner.className='msgs-inner'
+    inner.className = 'msgs-inner'
     document.getElementById('messages').appendChild(inner)
   }
   const div = buildMsgEl(role, text, date, sources, fileNames, errored)
@@ -3089,10 +3183,10 @@ function appendMsg(role, text, date, sources, fileNames, errored) {
 }
 
 function buildMsgEl(role, text, date, sources, fileNames, errored) {
-  const isUser = role==='user'
-  const time   = (date||new Date()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
-  const label  = isUser ? 'You' : ((creds?.model||'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : ''))
-  const srcHtml= (sources&&sources.length)?`<div class="rag-row">${sources.map(s=>`<span class="rag-tag">${s}</span>`).join('')}</div>`:''
+  const isUser = role === 'user'
+  const time   = (date || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const label  = isUser ? 'You' : ((creds?.model || 'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : ''))
+
   // strip injected file content blocks from display - only show the user's actual typed text
   let displayText = text
   // Build a map of filename -> extracted content for expandable chips
@@ -3104,30 +3198,42 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
     displayText = text.replace(/<file name="[^"]*">[\s\S]*?<\/file>/g, '').trim()
   }
 
-  // show filename chips above the message body — clickable to expand content
-  const fileChips = (fileNames && fileNames.length)
-    ? `<div class="msg-file-chips">${fileNames.map(f => {
-        const hasContent = !!fileContentMap[f]
-        return `<span class="msg-chip" ${hasContent ? `onclick="toggleFileChip(this,'${escJs(f)}')" title="Click to expand"` : ''}>
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2z"/></svg>
-          ${esc(f)}${hasContent ? ' <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.94L1.53 4.47a.75.75 0 011.06-1.06L8 8.81l5.41-5.4a.75.75 0 111.06 1.06L8 10.94z"/></svg>' : ''}
-        </span>`
-      }).join('')}</div>
-      <div class="msg-file-expand hidden" data-file-contents='${JSON.stringify(fileContentMap).replace(/'/g,"&#39;")}'></div>`
-    : ''
+  const div = mkEl('div', { class: 'msg-group' })
+  // Stash the raw markdown (or user text) so Copy grabs the original text,
+  // not the rendered innerText.
+  div.dataset.raw = isUser ? displayText : (text || '')
 
-  // Action row: Copy always; Regenerate on assistant messages; Edit on user messages.
-  // The renderer sets `data-last-user` / `data-last-ai` on the final ones so the
-  // specific buttons only show on the last matching message (cleaner UX).
-  const acts = (errored && !isUser) ? '' : [
-    `<button class="mact" onclick="copyMsg(this)" title="Copy raw markdown to clipboard">Copy</button>`,
-    isUser
-      ? `<button class="mact edit-act" onclick="editLastUser()" style="display:none">Edit</button>`
-      : `<button class="mact" onclick="copyMsgHtml(this)" title="Paste into Word or Outlook to preserve formatting (tables, bold, headings)">Copy for Word / Outlook</button>
-         <button class="mact regen-act" onclick="regenerateLast()" title="Re-send the last message and get a new response" style="display:none">Regenerate</button>`
-  ].join('')
-  // Errored assistant replies render through the shared statusBox so 4xx/5xx and
-  // terminal errors all look the same. Note format: "Error <code>: <label> — <hint>".
+  // Header
+  div.appendChild(mkEl('div', { class: 'msg-hdr' }, [
+    mkEl('div', { class: 'msg-av ' + (isUser ? 'user' : 'ai') }, isUser ? 'U' : 'LCL'),
+    mkEl('div', { class: 'msg-role' }, label),
+    mkEl('div', { class: 'msg-time' }, time)
+  ]))
+
+  // Filename chips above the body — clickable to expand extracted content.
+  if (fileNames && fileNames.length) {
+    const chipsRow = mkEl('div', { class: 'msg-file-chips' })
+    fileNames.forEach(f => {
+      const hasContent = !!fileContentMap[f]
+      const chip = mkEl('span', { class: 'msg-chip', title: hasContent ? 'Click to expand' : null })
+      chip.appendChild(svgNode(ICON_CHIP_FILE))
+      chip.appendChild(document.createTextNode(f))
+      if (hasContent) {
+        chip.appendChild(document.createTextNode(' '))
+        chip.appendChild(svgNode(ICON_CHIP_CHEVRON))
+        chip.addEventListener('click', e => toggleFileChip(e.currentTarget, f))
+      }
+      chipsRow.appendChild(chip)
+    })
+    div.appendChild(chipsRow)
+    // The expand target must be chipsRow.nextElementSibling (see toggleFileChip).
+    const expand = mkEl('div', { class: 'msg-file-expand hidden' })
+    expand.dataset.fileContents = JSON.stringify(fileContentMap)
+    div.appendChild(expand)
+  }
+
+  // Body: errored assistant replies go through the shared statusBox; everything
+  // else through fmt() (marked + DOMPurify). Both return trusted/sanitised HTML.
   let bodyInner
   if (errored && !isUser) {
     const raw = String(text || ''); const dash = raw.indexOf(' — ')
@@ -3137,22 +3243,29 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
   } else {
     bodyInner = fmt(displayText)
   }
+  div.appendChild(mkEl('div', { class: 'msg-body', html: bodyInner }))
 
-  const div = document.createElement('div')
-  div.className='msg-group'
-  // Stash the raw markdown (or user text) on the element so Copy can grab
-  // the original text instead of the rendered innerText.
-  div.dataset.raw = isUser ? displayText : (text || '')
-  div.innerHTML=`
-    <div class="msg-hdr">
-      <div class="msg-av ${isUser?'user':'ai'}">${isUser?'U':'LCL'}</div>
-      <div class="msg-role">${label}</div>
-      <div class="msg-time">${time}</div>
-    </div>
-    ${fileChips}
-    <div class="msg-body">${bodyInner}</div>
-    ${srcHtml}
-    <div class="msg-acts">${acts}</div>`
+  // RAG source tags
+  if (sources && sources.length) {
+    div.appendChild(mkEl('div', { class: 'rag-row' },
+      sources.map(s => mkEl('span', { class: 'rag-tag' }, String(s)))
+    ))
+  }
+
+  // Action row: Copy always; Regenerate on assistant messages; Edit on user
+  // messages (both hidden until refreshTailActions reveals the tail ones).
+  const acts = mkEl('div', { class: 'msg-acts' })
+  if (!(errored && !isUser)) {
+    acts.appendChild(mkEl('button', { class: 'mact', title: 'Copy raw markdown to clipboard', onclick: e => copyMsg(e.currentTarget) }, 'Copy'))
+    if (isUser) {
+      acts.appendChild(mkEl('button', { class: 'mact edit-act', style: 'display:none', onclick: () => editLastUser() }, 'Edit'))
+    } else {
+      acts.appendChild(mkEl('button', { class: 'mact', title: 'Paste into Word or Outlook to preserve formatting (tables, bold, headings)', onclick: e => copyMsgHtml(e.currentTarget) }, 'Copy for Word / Outlook'))
+      acts.appendChild(mkEl('button', { class: 'mact regen-act', style: 'display:none', title: 'Re-send the last message and get a new response', onclick: () => regenerateLast() }, 'Regenerate'))
+    }
+  }
+  div.appendChild(acts)
+
   return div
 }
 
@@ -3161,21 +3274,21 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
 function refreshTailActions() {
   const inner = document.querySelector('.msgs-inner')
   if (!inner) return
-  inner.querySelectorAll('.edit-act, .regen-act').forEach(b => b.style.display='none')
+  inner.querySelectorAll('.edit-act, .regen-act').forEach(b => b.style.display = 'none')
   const groups = Array.from(inner.querySelectorAll('.msg-group'))
   // Last assistant
-  for (let i=groups.length-1; i>=0; i--) {
+  for (let i = groups.length - 1; i >= 0; i--) {
     if (groups[i].querySelector('.msg-av.ai')) {
       const b = groups[i].querySelector('.regen-act')
-      if (b) b.style.display=''
+      if (b) b.style.display = ''
       break
     }
   }
   // Last user
-  for (let i=groups.length-1; i>=0; i--) {
+  for (let i = groups.length - 1; i >= 0; i--) {
     if (groups[i].querySelector('.msg-av.user')) {
       const b = groups[i].querySelector('.edit-act')
-      if (b) b.style.display=''
+      if (b) b.style.display = ''
       break
     }
   }
@@ -3183,10 +3296,17 @@ function refreshTailActions() {
 
 function appendTyping() {
   let inner = document.querySelector('.msgs-inner')
-  if (!inner) { inner=document.createElement('div'); inner.className='msgs-inner'; document.getElementById('messages').appendChild(inner) }
-  const div=document.createElement('div'); div.className='msg-group'
-  div.innerHTML=`<div class="msg-hdr"><div class="msg-av ai">LCL</div><div class="msg-role">${(creds?.model||'LCL')}${typeof clsSuffix === 'function' ? clsSuffix(creds) : ''}</div></div><div class="msg-body"><div class="typing"><span></span><span></span><span></span></div></div>`
-  inner.appendChild(div); document.getElementById('messages').scrollTop=document.getElementById('messages').scrollHeight
+  if (!inner) { inner = document.createElement('div'); inner.className = 'msgs-inner'; document.getElementById('messages').appendChild(inner) }
+  const role = (creds?.model || 'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : '')
+  const div = mkEl('div', { class: 'msg-group' }, [
+    mkEl('div', { class: 'msg-hdr' }, [
+      mkEl('div', { class: 'msg-av ai' }, 'LCL'),
+      mkEl('div', { class: 'msg-role' }, role)
+    ]),
+    mkEl('div', { class: 'msg-body' }, mkEl('div', { class: 'typing', html: '<span></span><span></span><span></span>' }))
+  ])
+  inner.appendChild(div)
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight
   return div
 }
 
@@ -3289,6 +3409,15 @@ function fmtDate(ts) {
   const d=new Date(ts), now=new Date()
   if (d.toDateString()===now.toDateString()) return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
   return d.toLocaleDateString([],{month:'short',day:'numeric'})
+}
+
+// Parse a trusted SVG/HTML string into a single DOM node, so icon markup can be
+// inserted as a real child element (e.g. a direct <svg> child) rather than via a
+// wrapper's innerHTML. Only ever called with static, in-source markup.
+function svgNode(s) {
+  const d = document.createElement('div')
+  d.innerHTML = s
+  return d.firstElementChild
 }
 
 function toggleFileChip(chip, filename) {
@@ -3552,7 +3681,7 @@ function renderSpSkillsList() {
 
 async function reloadSkillsFromUI() {
   try {
-    const r = await fetch('/skills/reload', { method: 'POST' })
+    const r = await httpPost('/skills/reload')
     if (!r.ok) throw new Error('HTTP ' + r.status)
     const data = await r.json()
     skillsCache = Array.isArray(data.skills) ? data.skills : []
@@ -3586,11 +3715,7 @@ async function uploadSkillFile(fileList) {
   }
   const body = await file.text()
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(slug), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body })
-    })
+    const r = await httpPut('/skills/' + encodeURIComponent(slug), { body })
     if (!r.ok) {
       const err = await r.json().catch(() => ({}))
       throw new Error(err.error || ('HTTP ' + r.status))
@@ -3690,7 +3815,7 @@ async function editSkill(id) {
     return
   }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(id))
+    const r = await httpGet('/skills/' + encodeURIComponent(id))
     if (!r.ok) throw new Error('HTTP ' + r.status)
     const data = await r.json()
     _editingSkillId = id
@@ -3718,11 +3843,7 @@ async function saveSkillEdit() {
     return
   }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(_editingSkillId), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body })
-    })
+    const r = await httpPut('/skills/' + encodeURIComponent(_editingSkillId), { body })
     if (!r.ok) {
       const err = await r.json().catch(() => ({}))
       throw new Error(err.error || ('HTTP ' + r.status))
@@ -3756,16 +3877,12 @@ async function renameSkill(oldId) {
     return
   }
   try {
-    let r = await fetch('/skills/' + encodeURIComponent(oldId))
+    let r = await httpGet('/skills/' + encodeURIComponent(oldId))
     if (!r.ok) throw new Error('Read old: HTTP ' + r.status)
     const data = await r.json()
-    r = await fetch('/skills/' + encodeURIComponent(slug), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: data.body })
-    })
+    r = await httpPut('/skills/' + encodeURIComponent(slug), { body: data.body })
     if (!r.ok) throw new Error('Write new: HTTP ' + r.status)
-    r = await fetch('/skills/' + encodeURIComponent(oldId), { method: 'DELETE' })
+    r = await httpDelete('/skills/' + encodeURIComponent(oldId))
     if (!r.ok) throw new Error('Delete old: HTTP ' + r.status)
     let touched = 0
     for (const cid of Object.keys(D.chats)) {
@@ -3797,7 +3914,7 @@ async function deleteSkillUI(id) {
     return
   }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(id), { method: 'DELETE' })
+    const r = await httpDelete('/skills/' + encodeURIComponent(id))
     if (!r.ok && r.status !== 404) {
       const err = await r.json().catch(() => ({}))
       throw new Error(err.error || ('HTTP ' + r.status))
@@ -3829,11 +3946,7 @@ function saveSP() {
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
   D.settings = credsToSettings(creds)
-  if (!(typeof demoOn === 'function' && demoOn())) {
-    try {
-      fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
-    } catch {}
-  }
+  saveSettings(D.settings)
   persist()
   closeSP(); toast('Settings saved','ok')
 }
@@ -4142,7 +4255,7 @@ function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1
 async function checkForUpdate(manual){
   if (typeof demoOn === 'function' && demoOn()) { if (manual) toast('Demo mode \u2014 update check simulated', 'info'); return }
   try{
-    const r = await fetch('/api/update/check')
+    const r = await httpGet('/api/update/check')
     const d = await r.json()
     lclUpdate = makeUpdateState(d)
   }catch(e){ lclUpdate = makeUpdateState({ channel:'stable', error:e.message }) }
@@ -4609,7 +4722,7 @@ function openUpdateDialog(){
     const notesEl = bd.querySelector('.msg-body')
     if (notesEl) {
       notesEl.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Loading release notes from GitHub\u2026</div>'
-      fetch('/api/update/check').then(r => r.json()).then(d => {
+      httpGet('/api/update/check').then(r => r.json()).then(d => {
         notesEl.innerHTML = fmt(d.notes || '_No release notes provided._')
       }).catch(e => { notesEl.innerHTML = '<div style="color:var(--red);padding:6px 0">Could not load notes: ' + esc(e.message) + '</div>' })
     }
@@ -4641,7 +4754,7 @@ async function applyUpdate(){
   if (btn){ btn.disabled=true; btn.textContent='Working…' }
   if (out) out.innerHTML='<div style="color:var(--tx3);padding:6px 0">Downloading and verifying…</div>'
   try{
-    const r = await fetch('/api/update/apply',{ method:'POST' })
+    const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){
       if (out) out.innerHTML='<div style="color:var(--red);padding:6px 0">'+esc(d.error)+'</div>'
@@ -4686,7 +4799,7 @@ async function setChannel(ch){
   }
   toast('Switching to ' + (ch==='alpha' ? 'experimental' : 'stable') + '\u2026', 'info')
   try{
-    const r = await fetch('/api/update/channel',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channel:ch}) })
+    const r = await httpPost('/api/update/channel', { channel: ch })
     const d = await r.json()
     if (d.error){ const stay = (d.channel === 'alpha') ? 'experimental' : 'stable'; toast('Channel switch failed: '+d.error+' \u2014 staying on '+stay,'err'); await checkForUpdate(true); return }
     if (d.sameAsStable){ toast('Experimental build is identical to stable \u2014 nothing to switch','info'); await checkForUpdate(true); return }
@@ -4696,7 +4809,7 @@ async function setChannel(ch){
         ? 'Experimental build applied'
         : (d.restoredFromBackup ? 'Offline \u2014 restored local stable backup' : ('Restored stable '+((d.restored&&d.restored.tag)||'')))
       toast(msg+' \u2014 restarting Node\u2026','ok')
-      try{ await fetch('/api/update/restart',{ method:'POST' }) }catch{}
+      try{ await httpPost('/api/update/restart') }catch{}
       waitForServerThenReload(); return
     }
     if (d.refreshNeeded){ toast('Experimental build applied \u2014 reloading\u2026','ok'); setTimeout(()=>location.reload(),700); return }
@@ -4745,13 +4858,13 @@ async function applyAlphaNow(){
   }
   try{
     toast('Downloading alpha update...','info')
-    const r = await fetch('/api/update/apply', { method:'POST' })
+    const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){ toast('Update failed: '+d.error,'err'); return }
     const applied = (d.applied||[]).join(', ') || 'no changes'
     if (d.restartNeeded){
       toast('Applied ('+applied+'). Restarting Node…','ok')
-      try { await fetch('/api/update/restart', { method:'POST' }) } catch {}
+      try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
     }
@@ -4768,7 +4881,7 @@ async function applyAlphaNow(){
 async function waitForServerThenReload(){
   for (let i=0;i<60;i++){
     await new Promise(r=>setTimeout(r,500))
-    try { const h = await fetch('/api/health',{cache:'no-store'}); if (h.ok){ location.reload(); return } } catch {}
+    try { const h = await httpGet('/api/health',{cache:'no-store'}); if (h.ok){ location.reload(); return } } catch {}
   }
   toast('Server still restarting — reload when ready','info')
 }
