@@ -183,6 +183,20 @@ function maybeDemo() {
     rb.onclick = function () { maybeDemo() }
     document.body.appendChild(rb)
   }
+  if (!document.getElementById('demo-more')) {
+    const mb = document.createElement('button')
+    mb.id = 'demo-more'; mb.type = 'button'
+    mb.innerHTML = '+ Many chats'
+    mb.onclick = function () { demoSeedMany(18) }
+    document.body.appendChild(mb)
+  }
+
+  // Demo: show the "update available" state so the update UI is visible.
+  lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e',
+                newer:true, notes:'### v0.67e\n\n- Condensed updates panel\n- New token presets\n- Comet easter egg', html_url:'',
+                error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+  if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 
   return true
 }
@@ -243,5 +257,31 @@ function demoCapFiles(files, target) {
     toast('Demo limit: max ' + cap + (target === 'docs' ? ' embedded files' : ' attachments'), 'info')
   }
   return okSize.slice(0, room)
+}
+
+// Demo helper: bulk-spawn sample chats (in-memory) to stress-test a long list —
+// date-spread so Today / Yesterday / Previous 7 days / Older grouping all show.
+const DEMO_BULK_TITLES = [
+  'SQLmap run notes','Firewall rule review','Phishing sim debrief','AD enumeration',
+  'S3 bucket audit','JWT token analysis','Burp macro setup','Nmap sweep — /24',
+  'OSINT — exec profiles','Wireless survey','Container escape PoC','CI/CD secrets scan',
+  'DNS exfil test','Privilege escalation path','SIEM alert triage','API fuzzing session',
+  'Threat model — payments','Red team retro','Mobile app teardown','Kerberoasting notes'
+]
+function demoSeedMany(n) {
+  n = n || 18
+  const now = Date.now(), day = 86400000
+  for (let i = 0; i < n; i++) {
+    const base = DEMO_BULK_TITLES[i % DEMO_BULK_TITLES.length]
+    const title = base + (i >= DEMO_BULK_TITLES.length ? ' ' + (Math.floor(i / DEMO_BULK_TITLES.length) + 1) : '')
+    const ts = now - Math.floor(Math.random() * 14 * day)
+    const id = 'demo_bulk_' + ts + '_' + i
+    D.chats[id] = { id, title, pinned: false, createdAt: ts, updatedAt: ts, docs: [], messages: [
+      { role: 'user', content: title + '?', ts: ts - 60000 },
+      { role: 'assistant', content: 'Noted — quick rundown on ' + base.toLowerCase() + '.', ts: ts - 30000 }
+    ] }
+  }
+  if (typeof renderAll === 'function') renderAll()
+  if (typeof toast === 'function') toast('Added ' + n + ' demo chats', 'ok')
 }
 
