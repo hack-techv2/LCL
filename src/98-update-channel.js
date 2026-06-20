@@ -7,8 +7,8 @@ async function setChannel(ch){
   if (typeof demoOn === 'function' && demoOn()) {
     // Demo: flip the in-memory state so both the version-based (stable) and
     // hash-based (experimental) update cards can be previewed. Touches nothing.
-    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67d', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
-    else lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e', newer:true, inSync:true, changed:[], hash:'', error:null }
+    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
+    else lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
     renderUpdateSettings()
     return
@@ -40,7 +40,15 @@ function unlockAlpha(){ try { localStorage.setItem('lcl_alpha_unlocked', '1') } 
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
 async function applyAlphaNow(){
-  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
+  if (typeof demoOn === 'function' && demoOn()) {
+    toast('Downloading alpha build\u2026 (demo)', 'info')
+    setTimeout(() => {
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', error:null }
+      renderUpdateBadge(); renderUpdateSettings()
+      toast('Alpha updated to #e4f5a6b (demo) \u2014 Reset demo to replay', 'ok')
+    }, 1200)
+    return
+  }
   try{
     toast('Downloading alpha update...','info')
     const r = await fetch('/api/update/apply', { method:'POST' })
