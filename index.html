@@ -615,6 +615,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-dev{font-size:9px;color:#fff;background:var(--bdr2);padding:1px 6px;border-radius:4px}
 .upd-sim-btns{display:flex;gap:6px}
 .upd-sim-btn{font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:7px}
+.upd-sim-btn.on{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
 .upd-metric{background:var(--bg2);border-radius:9px;padding:10px 12px}
 .upd-mk{font-size:11px;color:var(--tx3);margin-bottom:2px}
@@ -4253,7 +4254,7 @@ let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:''
 // Normalize any partial update payload into the full lclUpdate shape so every
 // assignment site carries the same keys (the error path used to drop most of
 // them, and `applied` could go stale). Always resets `applied` unless provided.
-function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', installedAt:d.installedAt||null, sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', installedAt:d.installedAt||null, simulated:!!d.simulated, sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
 
 // Compact "updated <date>" for the experimental build line (e.g. 21 Jun 2026).
 function fmtUpdated(ms){
@@ -4267,6 +4268,16 @@ function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1
 
 async function checkForUpdate(manual){
   if (typeof demoOn === 'function' && demoOn()) { if (manual) toast('Demo mode \u2014 update check simulated', 'info'); return }
+  // Dev/test: if a simulation is armed (armSimulate), report that file as an
+  // available alpha update instead of hitting the network. "Update & restart"
+  // then runs the real self-copy apply+restart (simulateUpdate).
+  if (typeof _simArmed !== 'undefined' && _simArmed && _simArmed.length) {
+    lclUpdate = makeUpdateState({ channel:'alpha', ref:'alpha', inSync:false, changed:_simArmed.slice(),
+      hash:'sim' + Date.now().toString(36).slice(-5), installedAt:Date.now(), simulated:true })
+    renderUpdateBadge(); renderUpdateSettings()
+    if (manual) toast('Simulated update available (' + _simArmed.join(', ') + ')', 'ok')
+    return
+  }
   try{
     const r = await httpGet('/api/update/check')
     const d = await r.json()
@@ -4669,9 +4680,9 @@ function renderUpdateSettings(){
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
   // Dev/test (alpha only): real apply+restart, reusing the current file (server
   // copies it onto itself). Exercises the reload (index.html) / restart (server.txt) flow.
+  const simBtn = (file)=> '<button class="upd-btn upd-sim-btn' + ((typeof _simArmed!=='undefined' && _simArmed.indexOf(file)>=0)?' on':'') + '" onclick="armSimulate(\''+file+'\')">'+file+'</button>'
   const simRow = ()=> '<div class="upd-row upd-sim"><span class="upd-sim-lbl">Simulate update <span class="upd-dev">dev</span></span>'
-    + '<span class="upd-sim-btns"><button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'index.html\')">index.html</button>'
-    + '<button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'server.txt\')">server.txt</button></span></div>'
+    + '<span class="upd-sim-btns">' + simBtn('index.html') + simBtn('server.txt') + '</span></div>'
   const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Alpha updates</label><span class="upd-exp">Experimental</span></div>'
 
   if (!u.checked){
@@ -4690,7 +4701,9 @@ function renderUpdateSettings(){
     if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
     else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
     else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
-    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
+    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when
+      const applyAct = u.simulated ? ('simulateUpdate([' + (u.changed||[]).map(fn => "'" + fn + "'").join(',') + '])') : 'applyAlphaNow()'
+      primary = '<button class="upd-btn pri" onclick="'+applyAct+'">Update &amp; restart</button>' }
     body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
       + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
       + expRow(true)
@@ -4899,23 +4912,36 @@ async function applyAlphaNow(){
   }catch(e){ toast('Update failed: '+e.message,'err') }
 }
 
-// Dev/test (alpha): run the REAL apply+restart pipeline but reuse the current file
-// (the server copies it onto itself instead of downloading), so the restart/reload
-// flow can be exercised on a live alpha build without a new build.
-async function simulateUpdate(file){
+// Dev/test (alpha): a two-step simulation that mirrors the real UX. Clicking a
+// file ARMS it (no apply yet); the next "Check now" reports it as an available
+// update; "Update & restart" then runs the real apply+restart, reusing the current
+// file (server copies it onto itself instead of downloading).
+let _simArmed = []   // set of files armed for simulation (multi-select)
+function armSimulate(file){
+  const i = _simArmed.indexOf(file)
+  if (i >= 0) _simArmed.splice(i, 1); else _simArmed.push(file)
+  if (typeof toast === 'function') toast(_simArmed.length ? ('Armed: ' + _simArmed.join(', ') + ' \u2014 click "Check now" to simulate') : 'Simulation cleared', 'info')
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+}
+
+async function simulateUpdate(files){
+  files = Array.isArray(files) ? files : (files ? [files] : [])
+  _simArmed = []
+  if (!files.length) return
   if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 simulate is a no-op','info'); return }
+  const label = files.join(', ')
   try{
-    toast('Simulating update (' + file + ')\u2026','info')
-    const r = await httpPost('/api/update/simulate', { file })
+    toast('Simulating update (' + label + ')\u2026','info')
+    const r = await httpPost('/api/update/simulate', { files })
     const d = await r.json()
     if (d.error){ toast('Simulate failed: ' + d.error,'err'); return }
     if (d.restartNeeded){
-      toast('Applied (' + file + '). Restarting Node.js\u2026','ok')
+      toast('Applied (' + label + '). Restarting Node.js\u2026','ok')
       try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
     }
-    if (d.refreshNeeded){ toast('Applied (' + file + '). Reloading\u2026','ok'); setTimeout(()=>location.reload(), 700); return }
+    if (d.refreshNeeded){ toast('Applied (' + label + '). Reloading\u2026','ok'); setTimeout(()=>location.reload(), 700); return }
     toast('Simulated apply done','ok')
   }catch(e){ toast('Simulate failed: ' + e.message,'err') }
 }
