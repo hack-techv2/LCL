@@ -96,6 +96,27 @@ async function applyAlphaNow(){
   }catch(e){ toast('Update failed: '+e.message,'err') }
 }
 
+// Dev/test (alpha): run the REAL apply+restart pipeline but reuse the current file
+// (the server copies it onto itself instead of downloading), so the restart/reload
+// flow can be exercised on a live alpha build without a new build.
+async function simulateUpdate(file){
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 simulate is a no-op','info'); return }
+  try{
+    toast('Simulating update (' + file + ')\u2026','info')
+    const r = await httpPost('/api/update/simulate', { file })
+    const d = await r.json()
+    if (d.error){ toast('Simulate failed: ' + d.error,'err'); return }
+    if (d.restartNeeded){
+      toast('Applied (' + file + '). Restarting Node.js\u2026','ok')
+      try { await httpPost('/api/update/restart') } catch {}
+      waitForServerThenReload()
+      return
+    }
+    if (d.refreshNeeded){ toast('Applied (' + file + '). Reloading\u2026','ok'); setTimeout(()=>location.reload(), 700); return }
+    toast('Simulated apply done','ok')
+  }catch(e){ toast('Simulate failed: ' + e.message,'err') }
+}
+
 // After a server restart request, poll /api/health until the new server answers,
 // then reload so the page picks up the new index.html.
 async function waitForServerThenReload(){
