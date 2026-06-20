@@ -19,7 +19,7 @@ function renderUpdateSettings(){
   if (!u.checked){
     body.innerHTML = verRow(v, pill('neutral','Not checked'))
       + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
-      + (alphaUnlocked() ? expRow(u.channel === 'alpha') : '')
+      + (alphaUnlocked() && !u.sameAsStable ? expRow(u.channel === 'alpha') : '')
     return
   }
 
@@ -43,14 +43,14 @@ function renderUpdateSettings(){
   if (u.error){
     body.innerHTML = verRow(v, pill('err','Check failed'))
       + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Retry</button>')
-      + (alphaUnlocked() ? expRow(false) : '')
+      + (alphaUnlocked() && !u.sameAsStable ? expRow(false) : '')
       + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
     return
   }
   const verHtml = u.newer ? (v + ' <span class="upd-arrow">&rarr;</span> <span class="upd-new">v'+esc(u.latest||'')+'</span>') : v
   body.innerHTML = verRow(verHtml, u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
     + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
-    + (alphaUnlocked() ? expRow(false) : '')
+    + (alphaUnlocked() && !u.sameAsStable ? expRow(false) : '')
 }
 
 function openUpdateDialog(){
