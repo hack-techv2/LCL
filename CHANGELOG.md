@@ -86,6 +86,10 @@ Misc
   restarts on demand.
 - REPL cosmetics: server.txt now exports a short status string so `require()`
   echoes a readable line instead of a bare {}.
+- UI wording: easter-egg unlock toast now reads "Developer mode enabled" (was
+  "Tester options unlocked"). Connected status pill shortened to "Chat + embed" /
+  "Chat only" (the green dot already signals connected); removed a dead duplicate
+  connectedLabel().
 - Startup logs tidied: the alpha update check prints below the main banner (not
   above it) and stays quiet when up to date — the routine "checking / index.html
   up to date / server.txt up to date / in sync" chatter collapses to a single
