@@ -13,6 +13,11 @@ Local-testable items from the deferred R-series, landing incrementally on `alpha
   run at the same height.
 - Footer ALPHA pill (.ver-alpha) dropped from weight 600 to 400 (less heavy);
   still solid red + white.
+- Easter-egg launched comet recoloured to match the ambient streak palette: the
+  canvas trail now interpolates orange (232,97,10) -> light peach (255,205,140)
+  (was orange -> yellow 232,200,80) and the head glow warms to (255,200,120), so
+  the launched streak reads the same colour as the ambient ones. (The 3 ambient
+  streaks were already identical colour + speed — only their start delay differs.)
 
 - Restart notice (server.txt console): when a boot-time update changes server.txt,
   the terse `Updates -> server.txt updated - restart Node to load the new server`
