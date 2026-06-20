@@ -1654,6 +1654,31 @@ function finishRestart() {
   }
 }
 
+// Dev/test (alpha): run the REAL apply+restart pipeline without a GitHub download
+// by copying the current file onto itself (atomic swap; bumps mtime so the
+// "updated" date moves). Lets the restart/reload flow be exercised on a live alpha
+// build. Restricted to the two known UPDATE_FILES.
+function handleUpdateSimulate(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: 'bad request body' }, 400)
+    const file = body && body.file
+    if (!UPDATE_FILES.includes(file)) return json(res, { error: 'unknown file' }, 400)
+    try {
+      const cur = fs.readFileSync(path.join(LCL_DIR, file))
+      const applied = swapInFiles({ [file]: cur })   // self-copy via the shared atomic swap
+      _alphaCache = { ts: 0, data: null }
+      ulog('simulate: rewrote ' + file + ' (self-copy) - exercising ' + (file === 'server.txt' ? 'restart' : 'reload') + ' flow')
+      json(res, {
+        ok: true, simulated: true, ref: 'simulate', applied,
+        restartNeeded: applied.includes('server.txt'),
+        refreshNeeded: applied.includes('index.html')
+      })
+    } catch (e) {
+      json(res, { error: updateClientErr('simulate', e) }, 500)
+    }
+  })
+}
+
 // Route table: 'METHOD path' -> handler. Dynamic /skills/:id and the static
 // fallback are handled below. Adding an endpoint is one entry here.
 const ROUTES = {
@@ -1671,6 +1696,7 @@ const ROUTES = {
   'POST /api/update/apply':   handleUpdateApply,
   'POST /api/update/channel': handleUpdateChannel,
   'POST /api/update/restart': handleUpdateRestart,
+  'POST /api/update/simulate': handleUpdateSimulate,
   'GET /api/health':          (req, res) => json(res, { ok: true, version: APP_VERSION }),
   'GET /skills':              handleSkillsList,
   'POST /skills/reload':      handleSkillsList,
