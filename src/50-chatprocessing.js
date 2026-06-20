@@ -79,7 +79,8 @@ function renderSkillChip() {
   const id = chat?.skillId
   if (!id) { el.className = 'skill-chip'; el.textContent = ''; return }
   el.className = 'skill-chip show'
-  el.textContent = 'Skill: ' + id
+  const sk = skillsCache.find(s => s.id === id)
+  el.textContent = 'Skill: ' + (sk ? sk.title : id)
 }
 
 // Build the message content for the API. With no attachments, send the plain
