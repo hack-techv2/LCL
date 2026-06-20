@@ -56,6 +56,15 @@ function fmtDate(ts) {
   return d.toLocaleDateString([],{month:'short',day:'numeric'})
 }
 
+// Parse a trusted SVG/HTML string into a single DOM node, so icon markup can be
+// inserted as a real child element (e.g. a direct <svg> child) rather than via a
+// wrapper's innerHTML. Only ever called with static, in-source markup.
+function svgNode(s) {
+  const d = document.createElement('div')
+  d.innerHTML = s
+  return d.firstElementChild
+}
+
 function toggleFileChip(chip, filename) {
   const chipsRow  = chip.closest('.msg-file-chips')
   const expandDiv = chipsRow.nextElementSibling  // .msg-file-expand
