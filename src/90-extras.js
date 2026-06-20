@@ -89,7 +89,7 @@ function launchComet(startX, startY) {
       ctx.beginPath()
       ctx.moveTo(trail[i].x, trail[i].y)
       ctx.lineTo(trail[i+1].x, trail[i+1].y)
-      ctx.strokeStyle = `rgba(255, ${160 + Math.floor(a*80)}, 60, ${a * 0.7})`
+      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
       ctx.lineWidth   = width
       ctx.lineCap     = 'round'
       ctx.stroke()
@@ -99,7 +99,7 @@ function launchComet(startX, startY) {
     if (trail.length) {
       const grd = ctx.createRadialGradient(x, y, 0, x, y, 18)
       grd.addColorStop(0,   'rgba(255, 255, 220, 1)')
-      grd.addColorStop(0.3, 'rgba(255, 180, 60, 0.9)')
+      grd.addColorStop(0.3, 'rgba(245, 124, 52, 0.92)')
       grd.addColorStop(1,   'rgba(232, 97, 10, 0)')
       ctx.beginPath()
       ctx.arc(x, y, 18, 0, Math.PI * 2)
