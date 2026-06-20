@@ -1198,7 +1198,10 @@ function serveStatic(req, res) {
     }
 
     res.writeHead(200, {
-      'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream'
+      'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream',
+      // Local dev server: never let the browser cache the app shell, otherwise
+      // rebuilds don't show up until a manual hard-refresh.
+      'Cache-Control': 'no-store, must-revalidate'
     })
     res.end(data)
   })
@@ -1412,6 +1415,7 @@ async function alphaBootstrap() {
                               : 'up to date ' + exp[f].slice(0, 7)))
   }
   if (!changed.length) { ulog('alpha: in sync, nothing to do'); return }
+  backupStable()   // snapshot current stable files before overwriting (offline fallback)
   // Download + verify ONLY the changed file(s) (the SHA-256 is the integrity gate;
   // build.js already syntax-checked before upload).
   const bufs = {}
@@ -1457,17 +1461,85 @@ async function restoreStable() {
   }
   return { tag, applied }
 }
+// .stable backup helpers — keep a verbatim copy of the stable files so a revert
+// can fall back to them when GitHub is unreachable.
+function stableBackupPath(f) { return path.join(LCL_DIR, f + '.stable') }
+function backupStable() {
+  for (const f of UPDATE_FILES) {
+    const src = path.join(LCL_DIR, f), bak = stableBackupPath(f)
+    try { if (fs.existsSync(src) && !fs.existsSync(bak)) fs.copyFileSync(src, bak) }
+    catch (e) { ulog('backup ' + f + ' failed: ' + (e.code || e.message)) }
+  }
+}
+function restoreFromBackup() {
+  const restored = []
+  for (const f of UPDATE_FILES) {
+    const dest = path.join(LCL_DIR, f), bak = stableBackupPath(f)
+    try { if (fs.existsSync(bak)) { const tmp = dest + '.tmp'; fs.copyFileSync(bak, tmp); fs.renameSync(tmp, dest); restored.push(f) } }
+    catch (e) { ulog('restore ' + f + ' failed: ' + (e.code || e.message)) }
+  }
+  return restored
+}
+function clearStableBackup() { for (const f of UPDATE_FILES) { try { fs.unlinkSync(stableBackupPath(f)) } catch {} } }
+
+// Download + verify + atomically swap UPDATE_FILES for a given git ref. The
+// SHA-256 from that ref's checksums.txt is the integrity gate. Returns
+// { applied, unchanged }; throws (applying nothing) if any file fails.
+async function applyRef(ref) {
+  const cs = await ghFetchFile(ref, 'checksums.txt')
+  if (cs.statusCode !== 200) throw new Error('checksums HTTP ' + cs.statusCode + (cs.msg ? ' - ' + cs.msg : ''))
+  const exp = parseChecksums(cs.buf.toString('utf8'))
+  const verified = {}, unchanged = []
+  for (const f of UPDATE_FILES) {
+    const want = exp[f]; if (!want) throw new Error('no checksum for ' + f)
+    let cur = null; try { cur = sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) } catch {}
+    if (cur === want) { unchanged.push(f); continue }
+    const dl = await ghFetchFile(ref, f)
+    if (dl.statusCode !== 200) throw new Error('download ' + f + ' HTTP ' + dl.statusCode)
+    if (sha256Buf(dl.buf) !== want) throw new Error('checksum mismatch ' + f)
+    verified[f] = dl.buf
+  }
+  const applied = []
+  for (const f of Object.keys(verified)) {
+    const dest = path.join(LCL_DIR, f), tmp = dest + '.tmp'
+    fs.writeFileSync(tmp, verified[f]); fs.renameSync(tmp, dest); applied.push(f)
+  }
+  _alphaCache = { ts: 0, data: null }
+  return { applied, unchanged }
+}
+
 function handleUpdateChannel(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: 'bad request body' }, 400)
     const ch = (body && body.channel === 'alpha') ? 'alpha' : 'stable'
-    writeChannel(ch)
-    if (ch === 'stable') {
-      restoreStable().then(r => json(res, { ok: true, channel: 'stable', restored: r, restartNeeded: true }))
-        .catch(e => json(res, { ok: true, channel: 'stable', restoreError: friendlyUpdateErr(e) }))
+
+    if (ch === 'alpha') {
+      // Snapshot stable (offline fallback), then download + swap the latest alpha
+      // build. On any failure, apply nothing and stay on stable.
+      backupStable()
+      applyRef(ALPHA_REF).then(r => {
+        writeChannel('alpha')
+        json(res, { ok: true, channel: 'alpha', applied: r.applied, unchanged: r.unchanged,
+                    restartNeeded: r.applied.includes('server.txt'),
+                    refreshNeeded: r.applied.includes('index.html') })
+      }).catch(e => {
+        clearStableBackup()   // nothing was applied; drop the just-made backup
+        json(res, { error: friendlyUpdateErr(e), channel: 'stable' }, 500)
+      })
       return
     }
-    json(res, { ok: true, channel: 'alpha', restartNeeded: true })
+
+    // Revert: pull the latest stable release from GitHub; if that fails (offline),
+    // fall back to the .stable backup. Drop the backup once back on stable.
+    writeChannel('stable')
+    restoreStable().then(r => {
+      clearStableBackup()
+      json(res, { ok: true, channel: 'stable', restored: r, restartNeeded: true })
+    }).catch(e => {
+      const fb = restoreFromBackup()
+      if (fb.length) { clearStableBackup(); json(res, { ok: true, channel: 'stable', restoredFromBackup: fb, restartNeeded: true }) }
+      else json(res, { ok: true, channel: 'stable', restoreError: friendlyUpdateErr(e) })
+    })
   })
 }
 
