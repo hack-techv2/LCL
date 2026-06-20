@@ -6,6 +6,21 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 ------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
+- Updates card polish + easter-egg fix (alpha):
+  - "Experimental" badge (.upd-exp) was grey-on-faint-orange (poor contrast) →
+    now solid accent with white text (matches the warn pill).
+  - ALPHA pills tidied to solid red + white: the footer .ver-alpha badge and the
+    legacy .upd-pill.alpha (dropped from the light-mode muted-text override).
+  - Build-hash line (.upd-build) shrunk 11px→10px and brightened (tx3→tx2), now
+    flexes to fit; the alpha line renders the #hash via .upd-build (not the big
+    18px version style).
+  - New "· updated <date>" on the experimental build line: server alphaStatus()
+    now returns installedAt (mtime of the on-disk index.html); client formats it
+    via fmtUpdated() in the user's locale (.upd-when, muted).
+  - Easter egg: unlockAlpha() now no-ops if already unlocked, so the "Developer
+    mode enabled" toast only fires on the FIRST 7-click unlock (not when already
+    on alpha). Demo seeds carry installedAt so the date shows in #demo.
+
 - Fix (R8 follow-up): the AI message role label rendered clsSuffix() literally
   (e.g. `... <span style="color:var(--tx3)">(CCE/SN)</span>` shown as text) because
   the R8 rewrite set msg-role as a DOM text node. The data-classification suffix is
