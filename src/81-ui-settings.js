@@ -12,7 +12,39 @@ function refreshSliderFill(el) {
   const max = parseFloat(el.max) || 100
   const val = parseFloat(el.value) || 0
   const pct = max === min ? 0 : ((val - min) / (max - min)) * 100
-  el.style.setProperty('--fill', pct + '%')
+  // Offset by the thumb radius so the filled portion lines up with the thumb
+  // centre at both ends (native range thumbs are inset by half their width, so a
+  // plain pct% gradient overshoots at max and shows under the thumb at min).
+  const T = 16 // thumb width incl. border
+  const off = (T / 2 - (pct / 100) * T).toFixed(2)
+  el.style.setProperty('--fill', 'calc(' + pct + '% + ' + off + 'px)')
+}
+
+// Max-tokens preset chips + custom field. The custom number input (#s-tok-v-input)
+// is the single source of truth that saveSP() reads; chips just write into it.
+function setTok(v){
+  const inp = document.getElementById('s-tok-v-input')
+  if (inp) inp.value = v
+  refreshTokChips()
+}
+function refreshTokChips(){
+  const inp = document.getElementById('s-tok-v-input')
+  const v = parseInt(inp && inp.value) || 0
+  document.querySelectorAll('#tok-presets .tok-chip').forEach(b => b.classList.toggle('on', parseInt(b.dataset.tok) === v))
+}
+
+// Two-way sync for the RAG sliders + their editable value fields.
+function onRangeIn(numId, range){
+  const n = document.getElementById(numId)
+  if (n) n.value = range.value
+  refreshSliderFill(range)
+}
+function onNumIn(rangeId, num){
+  const r = document.getElementById(rangeId)
+  if (!r) return
+  let v = parseInt(num.value)
+  if (!isNaN(v)) r.value = Math.max(+r.min, Math.min(+r.max, v))
+  refreshSliderFill(r)
 }
 
 // Settings
@@ -21,17 +53,15 @@ function openSP() {
   document.getElementById('s-key').value   = creds.apiKey||''
   document.getElementById('s-mdl').value   = creds.model||''
   document.getElementById('s-sys').value   = creds.systemPrompt||''
-  document.getElementById('s-tok').value   = Math.min(32768, creds.maxTokens||8192)
   document.getElementById('s-tok-v-input').value = creds.maxTokens||8192
   document.getElementById('s-chunk').value = creds.chunkSize||800
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
   document.getElementById('s-embm').value  = creds.embedModelId||''
-  document.getElementById('s-tok-v').textContent   = creds.maxTokens||8192
-  document.getElementById('s-chunk-v').textContent = creds.chunkSize||800
-  document.getElementById('s-topk-v').textContent  = creds.topK||5
+  document.getElementById('s-chunk-v').value = creds.chunkSize||800
+  document.getElementById('s-topk-v').value  = creds.topK||5
   // Paint the slider fills to match initial values
-  refreshSliderFill(document.getElementById('s-tok'))
+  refreshTokChips()
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
@@ -72,10 +102,10 @@ function renderSpSkillsList() {
     return
   }
   root.innerHTML = skillsCache.map(s => `
-    <div class="skill-row">
-      <div class="skill-row-main">
-        <div class="skill-row-title">${esc(s.title)}</div>
-        <div class="skill-row-meta">${esc(s.id)}.md &middot; ${s.bytes} B</div>
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;background:var(--bg3)">
+      <div style="flex:1;min-width:0;font-size:12px">
+        <div style="font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${esc(s.id)}.md &middot; ${s.bytes} B</div>
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
@@ -85,9 +115,6 @@ function renderSpSkillsList() {
 }
 
 async function reloadSkillsFromUI() {
-  if (typeof demoOn === 'function' && demoOn()) {
-    renderSpSkillsList(); renderSkillPicker(); toast('Skills reloaded', 'ok'); return
-  }
   try {
     const r = await fetch('/skills/reload', { method: 'POST' })
     if (!r.ok) throw new Error('HTTP ' + r.status)
@@ -122,14 +149,6 @@ async function uploadSkillFile(fileList) {
     if (!confirm('Skill "' + slug + '" already exists. Overwrite?')) return
   }
   const body = await file.text()
-  if (typeof demoOn === 'function' && demoOn()) {
-    const ex = skillsCache.find(s => s.id === slug)
-    if (ex) { ex.body = body; ex.bytes = body.length; ex.title = demoSkillTitle(body, slug); ex.mtime = Date.now() }
-    else { skillsCache.push({ id: slug, title: demoSkillTitle(body, slug), bytes: body.length, mtime: Date.now(), body }) }
-    renderSpSkillsList(); renderSkillPicker(); toast('Uploaded as "' + slug + '"', 'ok')
-    document.getElementById('sp-skill-upload').value = ''
-    return
-  }
   try {
     const r = await fetch('/skills/' + encodeURIComponent(slug), {
       method: 'PUT',
