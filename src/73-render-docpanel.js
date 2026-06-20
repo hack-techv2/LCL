@@ -6,17 +6,25 @@ function renderDocPanel() {
   const el   = document.getElementById('dp-body')
   const chat = curChat()
   const docs = chat?.docs||[]
-  if (!docs.length) { el.innerHTML='<div class="dp-empty">No files attached.<br>Upload files to use as context for this chat.</div>'; return }
-  el.innerHTML = docs.map(d=>`
-    <div class="doc-card">
-      <div class="doc-ext">${esc(d.name.split('.').pop().slice(0,4).toUpperCase())}</div>
-      <div class="doc-inf">
-        <div class="doc-name">${esc(d.name)}</div>
-        <div class="doc-sz">${fmtSz(d.size)} * ${d.chunks?.length||0} chunks</div>
-        <span class="doc-st ${d.status==='ready'?'ready':d.status==='error'?'error':'pending'}">${d.status||'pending'}</span>
-      </div>
-      <button class="doc-del" onclick="removeDoc('${d.id}',event)">x</button>
-    </div>`).join('')
+  el.innerHTML = ''
+  if (!docs.length) {
+    el.append(mkEl('div', { class: 'dp-empty', html: 'No files attached.<br>Upload files to use as context for this chat.' }))
+    return
+  }
+  for (const d of docs) {
+    const ext   = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
+    const status = d.status || 'pending'
+    const stCls = d.status === 'ready' ? 'ready' : d.status === 'error' ? 'error' : 'pending'
+    el.append(mkEl('div', { class: 'doc-card' }, [
+      mkEl('div', { class: 'doc-ext' }, ext),
+      mkEl('div', { class: 'doc-inf' }, [
+        mkEl('div', { class: 'doc-name' }, d.name),
+        mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
+        mkEl('span', { class: 'doc-st ' + stCls }, status),
+      ]),
+      mkEl('button', { class: 'doc-del', title: 'Remove', onclick: (e) => removeDoc(d.id, e) }, 'x'),
+    ]))
+  }
 }
 
 function updateDocsBtn() {
