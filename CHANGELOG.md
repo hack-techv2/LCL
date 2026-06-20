@@ -7,14 +7,18 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
 - Simulate-update dev controls (alpha channel only): the Updates card gains a
-  "Simulate update (dev)" row with two buttons — index.html / server.txt — that run
-  the REAL apply+restart pipeline without a GitHub download. New server endpoint
-  POST /api/update/simulate copies the chosen file onto itself via swapInFiles
+  "Simulate update (dev)" row with two ARM toggles — index.html / server.txt
+  (multi-select). The flow mirrors the real UX: arm one/both, then "Check now"
+  reports those file(s) as an available alpha update (armSimulate sets _simArmed;
+  checkForUpdate short-circuits when armed; none armed = a real network check),
+  then "Update & restart" runs the REAL apply+restart with no GitHub download —
+  POST /api/update/simulate copies the armed file(s) onto themselves via swapInFiles
   (atomic, bumps mtime so the "updated" date moves) and returns restartNeeded /
-  refreshNeeded; client simulateUpdate() (98) reuses the existing restart/reload
-  tail (server.txt -> /api/update/restart + waitForServerThenReload; index.html ->
-  reload). Lets the reload-vs-restart flow be exercised on a live alpha build.
-  Row renders only on the alpha channel (hidden on stable); no-op in #demo.
+  refreshNeeded; simulateUpdate(files) reuses the existing restart/reload tail
+  (server.txt -> /api/update/restart + waitForServerThenReload; index.html ->
+  reload; both -> restart, which also reloads). Apply button emits a single-quoted
+  array literal so the onclick attribute stays valid. Row renders only on the alpha
+  channel (hidden on stable); no-op in #demo.
 
 - Top-bar comet alignment: the ambient streaks (.tb-comets .h1/.h2/.h3) were
   top:50% (top-edge on the midline, so the 4px bar sat ~2px low) → now
