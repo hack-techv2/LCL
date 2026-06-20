@@ -63,6 +63,14 @@ Misc
   and clears reliably.
 - Setup guide refreshed with real in-app screenshots (open localhost, Connect
   modal, connected/ready view).
+- Ctrl+C / SIGINT (and SIGTERM) now reliably stop the server: a graceful
+  shutdown handler closes the HTTP server, destroys live + keep-alive sockets and
+  exits (2nd Ctrl+C or a 300ms timer forces exit). The handler had been lost in
+  the refactor, so when launched from inside the Node REPL its Ctrl+C was being
+  swallowed and the server could not be stopped.
+- Server console output unified: embedding logs now use the same aligned
+  "Embedding              ->  ..." format as the "Updates" logs (was a mix of
+  [embed] / [embed-cache] / [embed-batch] bracket tags).
 
 
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
