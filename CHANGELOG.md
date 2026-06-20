@@ -104,6 +104,10 @@ UI polish
 - Code styling: inline code + code blocks now use a neutral, theme-aware colour
   (light text on dark, dark text on light) for strong contrast in both modes —
   replaces the hardcoded mint green that washed out on the light background.
+- Theme refresh (warm): both palettes reworked to warm tones with deeper base,
+  better surface separation, and crisper borders (fixes the washed-out feel).
+  Comet orange kept subtle — active chat row now has an orange-tinted background
+  + accent border. Easter-egg comet trail re-anchored on the brand orange.
 
 Dev / infra
 - `#demo` no-API debug mode: seeds sample messages + a typing
