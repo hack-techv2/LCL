@@ -86,6 +86,11 @@ Misc
   restarts on demand.
 - REPL cosmetics: server.txt now exports a short status string so `require()`
   echoes a readable line instead of a bare {}.
+- #demo "Reset demo" now fully resets transient state: it supersedes any in-flight
+  demo stream (no dangling tick / stuck busy / stuck "Thinking"), clears the
+  composer, closes a stale update dialog / connect modal / search overlay,
+  re-locks the easter-egg Experimental channel, and repopulates the Settings panel
+  fields if it is open.
 - UI wording: easter-egg unlock toast now reads "Developer mode enabled" (was
   "Tester options unlocked"). Connected status pill shortened to "Chat + embed" /
   "Chat only" (the green dot already signals connected); removed a dead duplicate
