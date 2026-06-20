@@ -699,7 +699,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div class="sp-lbl">Defaults</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
       <div class="sf">
-        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="32768" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
         <div class="sl-ticks"><span>64</span><span>32768</span></div>
       </div>
@@ -903,6 +903,40 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 </div>
 
 <script>
+// SECTION: 00-config.js
+// =============================================================================
+// Central tunable constants (CFG)
+// =============================================================================
+// Single source of truth for limits, thresholds and magic numbers that were
+// previously scattered as inline literals across modules. Loaded first (sorts
+// before every other src module) so the whole bundle can read CFG values.
+// Namespaced under one object to stay collision-free in the concatenated scope.
+const CFG = {
+  // Tokens
+  MAX_TOKENS_CAP: 131072,   // hard ceiling accepted by Save (custom input)
+  MAX_TOKENS_SLIDER: 32768, // slider max (custom input may exceed, up to CAP)
+  DEFAULT_MAX_TOKENS: 8192,
+
+  // Chat / RAG
+  DOC_FULLTEXT_LIMIT: 200000, // chars; below this a doc is sent in full vs RAG
+  STICKY_CHUNK_RATIO: 0.3,    // share of topK reserved for previous-turn chunks
+  RATE_LIMIT_GRACE_MS: 2000,  // extra wait past a 429 reset before auto-retry
+
+  // Chunking / embeddings
+  DEFAULT_CHUNK_SIZE: 800,
+  CHUNK_OVERLAP_RATIO: 0.2,
+  MIN_CHUNK_CHARS: 40,
+  DEFAULT_TOP_K: 5,
+  HASH_LEN: 16,               // shared with server hashText() — keep in sync
+
+  // Files / OCR
+  SCAN_MIN_PAGES: 2,
+  SCAN_MIN_SHARE: 0.15,
+  OCR_SCALE: 2.0,
+
+  // Misc
+  DEMO_SENTINEL: 'demo',
+}
 
 // SECTION: 05-models.js
 // =============================================================================
@@ -1475,6 +1509,12 @@ async function disconnect() {
     D.settings.embedModelId = ''
   }
   await persist()
+  // Also clear the server-side /api/config (mirror of connect()'s write). init()
+  // prefers /api/config over D.settings, so a stale config would silently
+  // auto-reconnect on next launch. Push blank credentials to wipe it.
+  try {
+    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' }) })
+  } catch {}
   setHealth('off', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
@@ -2186,6 +2226,14 @@ async function send() {
 
   const chat = curChat(); if (!chat) return
 
+  // Claim the busy lock NOW — before any await — so a second send can't slip in
+  // during retrieveChunks()/resolveSystemPrompt() and orphan the inflight stream.
+  // runStream() also sets busy=true (idempotent). Reset on any early bail below.
+  busy = true
+  if (typeof updateSendBtn === 'function') updateSendBtn()
+
+  try {
+
   // auto-title after first message
   if (!chat.messages.length) {
     chat.title = text.slice(0,42)+(text.length>42?'...':'')
@@ -2231,6 +2279,8 @@ async function send() {
     chat.updatedAt = Date.now()
     renderMessages()
     toast(skillErr, 'err')
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
     return
   }
   let sys = sysBase
@@ -2246,6 +2296,14 @@ async function send() {
   const payload = { messages:msgs, max_tokens:creds.maxTokens||8192 }
 
   await runStream(chat, payload, ragSources)
+
+  } catch (e) {
+    // Bailing out before/around runStream — release the busy lock so the UI
+    // doesn't get stuck with Send disabled and Stop showing.
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
+    throw e
+  }
 }
 
 // Core send loop. Streams from /api/chat (stream:true) and writes tokens into
@@ -2961,7 +3019,7 @@ function setupChatTitleScroll() {
 }
 
 function chatItemHTML(c) {
-  return `<div class="chat-item ${c.id===chatId?'active':''} ${c.pinned?'pinned':''}" data-id="${c.id}" onclick="switchChat('${c.id}')">
+  return `<div class="chat-item ${c.id===chatId?'active':''} ${c.pinned?'pinned':''}" data-id="${c.id}" onclick="switchChat('${escJs(c.id)}')">
     <div class="chat-avatar" title="${esc(c.title)}">${esc((c.title||'').trim().charAt(0).toUpperCase()||'?')}</div>
     <div class="chat-item-inner">
       <div class="chat-pin-dot"></div>
@@ -2971,13 +3029,13 @@ function chatItemHTML(c) {
       </div>
     </div>
     <div class="chat-actions">
-      <button class="ca-btn pin-btn" onclick="togglePin('${c.id}',event)" data-tip="${c.pinned?'Unpin':'Pin'}">
+      <button class="ca-btn pin-btn" onclick="togglePin('${escJs(c.id)}',event)" data-tip="${c.pinned?'Unpin':'Pin'}">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="${c.pinned?'var(--pin)':'currentColor'}"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg>
       </button>
-      <button class="ca-btn" onclick="startRename('${c.id}',event)" data-tip="Rename">
+      <button class="ca-btn" onclick="startRename('${escJs(c.id)}',event)" data-tip="Rename">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064L11.189 6.25z"/></svg>
       </button>
-      <button class="ca-btn del-btn" onclick="deleteChat('${c.id}',event)" data-tip="Delete">
+      <button class="ca-btn del-btn" onclick="deleteChat('${escJs(c.id)}',event)" data-tip="Delete">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 0V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.149l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 011.492-.15z"/></svg>
       </button>
     </div>
@@ -3073,7 +3131,7 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
   const fileChips = (fileNames && fileNames.length)
     ? `<div class="msg-file-chips">${fileNames.map(f => {
         const hasContent = !!fileContentMap[f]
-        return `<span class="msg-chip" ${hasContent ? `onclick="toggleFileChip(this,'${esc(f)}')" title="Click to expand"` : ''}>
+        return `<span class="msg-chip" ${hasContent ? `onclick="toggleFileChip(this,'${escJs(f)}')" title="Click to expand"` : ''}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2z"/></svg>
           ${esc(f)}${hasContent ? ' <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.94L1.53 4.47a.75.75 0 011.06-1.06L8 8.81l5.41-5.4a.75.75 0 111.06 1.06L8 10.94z"/></svg>' : ''}
         </span>`
@@ -3167,9 +3225,9 @@ function renderDocPanel() {
   if (!docs.length) { el.innerHTML='<div class="dp-empty">No files attached.<br>Upload files to use as context for this chat.</div>'; return }
   el.innerHTML = docs.map(d=>`
     <div class="doc-card">
-      <div class="doc-ext">${d.name.split('.').pop().slice(0,4).toUpperCase()}</div>
+      <div class="doc-ext">${esc(d.name.split('.').pop().slice(0,4).toUpperCase())}</div>
       <div class="doc-inf">
-        <div class="doc-name">${d.name}</div>
+        <div class="doc-name">${esc(d.name)}</div>
         <div class="doc-sz">${fmtSz(d.size)} * ${d.chunks?.length||0} chunks</div>
         <span class="doc-st ${d.status==='ready'?'ready':d.status==='error'?'error':'pending'}">${d.status||'pending'}</span>
       </div>
@@ -3218,6 +3276,7 @@ function fmt(text) {
 }
 
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function escJs(s){ return esc(String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")) }
 
 function fmtSz(b) {
   if (!b) return '0 B'
@@ -3430,8 +3489,8 @@ function openSP() {
   document.getElementById('s-key').value   = creds.apiKey||''
   document.getElementById('s-mdl').value   = creds.model||''
   document.getElementById('s-sys').value   = creds.systemPrompt||''
-  document.getElementById('s-tok-v-input').value = Math.min(32768, creds.maxTokens||8192)
-  document.getElementById('s-tok').value = Math.min(32768, creds.maxTokens||8192)
+  document.getElementById('s-tok-v-input').value = Math.min(CFG.MAX_TOKENS_CAP, creds.maxTokens||8192)
+  document.getElementById('s-tok').value = Math.min(CFG.MAX_TOKENS_SLIDER, creds.maxTokens||8192)
   document.getElementById('s-chunk').value = creds.chunkSize||800
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
@@ -3763,7 +3822,7 @@ function saveSP() {
   creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
   creds.systemPrompt = document.getElementById('s-sys').value.trim()
   const tokInput = parseInt(document.getElementById('s-tok-v-input').value)
-  creds.maxTokens    = isNaN(tokInput) ? 8192 : Math.max(64, Math.min(131072, tokInput))
+  creds.maxTokens    = isNaN(tokInput) ? 8192 : Math.max(64, Math.min(CFG.MAX_TOKENS_CAP, tokInput))
   creds.chunkSize    = parseInt(document.getElementById('s-chunk').value)
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
@@ -4129,8 +4188,9 @@ function initUpdates(){ if (updateAutoOn()) checkForUpdate(false) }
 //   Settings ..... data-classification picker (light/dark contrast), Updates.
 //
 // Safe: persist() is a no-op while #demo is active, so nothing is written to
-// lcl_data.json. STRIP src/96-demo.js + the maybeDemo() guard in init() before
-// promoting alpha -> stable.
+// lcl_data.json. Demo now ships gated behind the #demo hash and is intentionally
+// NOT stripped before promoting alpha -> stable — do not remove src/96-demo.js or
+// the maybeDemo() guard in init() (see CLAUDE.md). Stripping them breaks the build.
 // =============================================================================
 function demoOn() {
   try { return (location.hash || '').toLowerCase() === '#demo' } catch { return false }
@@ -4200,9 +4260,9 @@ function demoChat(id, title, ts, pinned, messages) {
 // the browser doesn't reload, so init()/maybeDemo() never re-run. Reload when we
 // cross the demo boundary so entering or leaving #demo actually (de)activates it.
 ;(function () {
-  let wasDemo = location.hash === '#demo'
+  let wasDemo = demoOn()
   window.addEventListener('hashchange', () => {
-    const isDemo = location.hash === '#demo'
+    const isDemo = demoOn()
     if (isDemo !== wasDemo) { wasDemo = isDemo; location.reload() }
   })
 })()
@@ -4652,13 +4712,17 @@ function alphaUnlocked(){
   if (typeof demoOn === 'function' && demoOn()) return _demoAlphaUnlocked
   try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false }
 }
-function relockDemoAlpha(){ _demoAlphaUnlocked = false }
 function unlockAlpha(){
   if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = true }
   else { try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {} }
   if (typeof toast === 'function') toast('Developer mode enabled','ok')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
+
+// #demo only: re-lock the easter-egg alpha channel so a Reset demo starts
+// locked again. In-memory only (never touches localStorage), so it cannot
+// leak the unlocked state into normal mode.
+function relockDemoAlpha(){ _demoAlphaUnlocked = false }
 
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
