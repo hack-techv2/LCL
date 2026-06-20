@@ -586,10 +586,12 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
 .upd-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;margin-right:6px}
 .upd-pill.ok{background:rgba(52,211,153,.15);color:var(--ok)}
-.upd-pill.warn{background:rgba(240,165,0,.15);color:var(--pin)}
+.upd-pill.warn{background:var(--ac);color:#fff}
 .upd-pill.err{background:rgba(231,76,60,.15);color:var(--red)}
 .upd-pill.neutral{background:var(--bg4);color:var(--tx3)}
 .upd-pill.alpha{background:rgba(231,76,60,.15);color:var(--red)}
+[data-theme="light"] .upd-pill.ok{color:#0f6e56}
+[data-theme="light"] .upd-pill.err,[data-theme="light"] .upd-pill.alpha{color:#a32d2d}
 .upd-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
 .upd-build{font-family:var(--mono);font-size:11px;color:var(--tx3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
