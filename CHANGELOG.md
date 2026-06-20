@@ -6,6 +6,18 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 ------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
+- Update-flow polish (alpha):
+  - Console: an auto-restart now prints a clear bold-cyan ">> RESTART TRIGGERED -
+    reloading server.txt now ..." banner (finishRestart), distinct from the yellow
+    manual-restart-NEEDED banner.
+  - Arming/disarming a simulate file now clears any prior simulated "available"
+    result (drops back to "Up to date"), so a stale "Update & restart" button no
+    longer lingers after you change the selection — you re-run "Check now".
+  - "Update available" line now lists the changed filename(s) ("index.html changed"
+    / "index.html, server.txt changed") instead of a "N changed" count, and drops
+    the "· updated <date,time>" there; the date/time stays in the "Up to date"
+    state. Applies to real alpha updates too (alphaStatus already reports changed[]).
+
 - Simulate-update dev controls (alpha channel only): the Updates card gains a
   "Simulate update (dev)" row with two ARM toggles — index.html / server.txt
   (multi-select). The flow mirrors the real UX: arm one/both, then "Check now"
