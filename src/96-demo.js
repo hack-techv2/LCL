@@ -96,8 +96,17 @@ function demoChat(id, title, ts, pinned, messages) {
   })
 })()
 
+let _demoStreamSeq = 0   // bumped on Reset demo to cancel an in-flight demo stream
 function maybeDemo() {
   if (!demoOn()) return false
+
+  // Reset transient runtime state so a mid-action "Reset demo" starts clean:
+  _demoStreamSeq++                       // supersede any in-flight demo stream (its tick aborts)
+  busy = false; inflightCtl = null       // un-stick the composer / Stop button
+  try { const _mi = document.getElementById('msg-in'); if (_mi) { _mi.value = ''; if (typeof autoResize === 'function') autoResize(_mi) } } catch {}
+  if (typeof closeUpdateDialog === 'function') closeUpdateDialog()   // drop a stale update modal
+  if (typeof closeSearch === 'function') closeSearch()              // close search overlay
+  try { document.getElementById('modal-bd')?.classList.add('hidden') } catch {}  // close connect modal
 
   // Fake embed creds so the Embed panel reads as configured (green dot, no
   // "set embed key" banner) and upload->embed works via the mock — no real key.
@@ -211,12 +220,15 @@ function maybeDemo() {
   // Demo: show the "update available" state so the update UI is visible.
   // Demo pretends you're one version behind so the upgrade panel shows a real
   // pending update (installed v0.67c -> latest v0.67d).
+  if (typeof relockDemoAlpha === 'function') relockDemoAlpha()  // Reset demo re-locks the easter-egg channel
   const _vb = document.getElementById('ver-badge'); if (_vb) _vb.textContent = 'v0.67c'
   lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d',
                 newer:true, notes:'### v0.67d\n\n- Card-based settings\n- Token presets + editable RAG sliders\n- Condensed updates panel\n- Comet easter egg', html_url:'',
                 error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
   if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+  // If the Settings panel is open, repopulate its fields from the reset creds.
+  try { const _sp = document.getElementById('sp'); if (_sp && !_sp.classList.contains('hidden') && typeof openSP === 'function') openSP() } catch {}
 
   return true
 }
@@ -246,6 +258,7 @@ function demoSend(text, input) {
 // button -> token-by-token reply -> Stop/Regenerate/Edit all work. inflightCtl
 // is a stub so the real stopStreaming() can cancel the demo stream.
 function demoStream(chat) {
+  const seq = ++_demoStreamSeq
   const typingEl = appendTyping()
   busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
   if (typeof setHealth === 'function') setHealth('warn', 'Thinking')
@@ -270,6 +283,7 @@ function demoStream(chat) {
     chat.updatedAt = Date.now(); if (typeof renderChatList === 'function') renderChatList()
   }
   const tick = () => {
+    if (seq !== _demoStreamSeq) return   // superseded by Reset demo / a newer stream
     if (stopped) { done(true); return }
     if (!msgObj) swap()
     if (i < tokens.length) {
