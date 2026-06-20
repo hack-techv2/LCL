@@ -1661,13 +1661,15 @@ function finishRestart() {
 function handleUpdateSimulate(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: 'bad request body' }, 400)
-    const file = body && body.file
-    if (!UPDATE_FILES.includes(file)) return json(res, { error: 'unknown file' }, 400)
+    const reqFiles = (body && Array.isArray(body.files)) ? body.files : (body && body.file ? [body.file] : [])
+    const files = reqFiles.filter(x => UPDATE_FILES.includes(x))
+    if (!files.length) return json(res, { error: 'no valid files' }, 400)
     try {
-      const cur = fs.readFileSync(path.join(LCL_DIR, file))
-      const applied = swapInFiles({ [file]: cur })   // self-copy via the shared atomic swap
+      const bufs = {}
+      for (const fl of files) bufs[fl] = fs.readFileSync(path.join(LCL_DIR, fl))
+      const applied = swapInFiles(bufs)   // self-copy each via the shared atomic swap
       _alphaCache = { ts: 0, data: null }
-      ulog('simulate: rewrote ' + file + ' (self-copy) - exercising ' + (file === 'server.txt' ? 'restart' : 'reload') + ' flow')
+      ulog('simulate: rewrote ' + applied.join(', ') + ' (self-copy) - exercising ' + (applied.includes('server.txt') ? 'restart' : 'reload') + ' flow')
       json(res, {
         ok: true, simulated: true, ref: 'simulate', applied,
         restartNeeded: applied.includes('server.txt'),
