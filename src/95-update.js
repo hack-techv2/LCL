@@ -13,7 +13,7 @@ async function checkForUpdate(manual){
     const r = await fetch('/api/update/check')
     const d = await r.json()
     lclUpdate = { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'',
-                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null,
+                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, sameAsStable:!!d.sameAsStable,
                   ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'' }
   }catch(e){ lclUpdate = { checked:true, channel:'stable', error:e.message } }
   renderUpdateBadge(); renderUpdateSettings()
