@@ -30,6 +30,26 @@ const log = {
   debug: (...a) => { if (LOG_LEVEL >= LOG_LEVELS.debug) console.log(...a) }
 }
 function dlog(...a) { log.debug(...a) }
+
+// Bold-yellow console banner shown when an applied update changes server.txt, so
+// the "you must restart Node.js" step can't be missed among the boot logs. ANSI
+// renders on Win10+/PowerShell/Windows Terminal + macOS/Linux; on an old terminal
+// the box still prints, just without colour. Printed via console.log (always on,
+// independent of LCL_LOG_LEVEL) since it's a critical user instruction.
+const A_RESET = '\x1b[0m', A_YEL = '\x1b[1m\x1b[93m'
+function restartBanner() {
+  const y = (line) => A_YEL + line + A_RESET
+  const bar = '============================================================'
+  console.log('')
+  console.log(y('  ' + bar))
+  console.log(y('   LCL server updated - RESTART NODE.JS to load the new version'))
+  console.log(y('   1) Press Ctrl+C              (stops the server)'))
+  console.log(y('   2) Press Ctrl+C again, or type .exit   (closes Node.js)'))
+  console.log(y('   3) Start Node.js again - press the Up arrow for your usual'))
+  console.log(y('      start command, then Enter'))
+  console.log(y('  ' + bar))
+  console.log('')
+}
 const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
 const API_HOST = 'api.ai.tech.gov.sg'
 const CHAT_PATH = '/platform/models/chat/completions'
@@ -1478,7 +1498,7 @@ async function alphaBootstrap() {
   // ends the session. Instead, apply the file and ask the user to restart — the
   // REPL stays alive. (The explicit front-end 'Update & restart' button still
   // restarts on demand via handleUpdateRestart.)
-  if (changed.includes('server.txt')) ulog('server.txt updated - restart Node to load the new server')
+  if (changed.includes('server.txt')) restartBanner()
   if (changed.includes('index.html')) ulog('index.html updated - hard-refresh the browser (no restart needed)')
 }
 async function restoreStable() {
