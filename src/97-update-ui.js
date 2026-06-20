@@ -16,9 +16,9 @@ function renderUpdateSettings(){
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
   // Dev/test (alpha only): real apply+restart, reusing the current file (server
   // copies it onto itself). Exercises the reload (index.html) / restart (server.txt) flow.
+  const simBtn = (file)=> '<button class="upd-btn upd-sim-btn' + ((typeof _simArmed!=='undefined' && _simArmed.indexOf(file)>=0)?' on':'') + '" onclick="armSimulate(\''+file+'\')">'+file+'</button>'
   const simRow = ()=> '<div class="upd-row upd-sim"><span class="upd-sim-lbl">Simulate update <span class="upd-dev">dev</span></span>'
-    + '<span class="upd-sim-btns"><button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'index.html\')">index.html</button>'
-    + '<button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'server.txt\')">server.txt</button></span></div>'
+    + '<span class="upd-sim-btns">' + simBtn('index.html') + simBtn('server.txt') + '</span></div>'
   const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Alpha updates</label><span class="upd-exp">Experimental</span></div>'
 
   if (!u.checked){
@@ -37,7 +37,9 @@ function renderUpdateSettings(){
     if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
     else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
     else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
-    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
+    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when
+      const applyAct = u.simulated ? ('simulateUpdate([' + (u.changed||[]).map(fn => "'" + fn + "'").join(',') + '])') : 'applyAlphaNow()'
+      primary = '<button class="upd-btn pri" onclick="'+applyAct+'">Update &amp; restart</button>' }
     body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
       + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
       + expRow(true)
