@@ -6,6 +6,12 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 ------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
+- Fix (R8 follow-up): the AI message role label rendered clsSuffix() literally
+  (e.g. `... <span style="color:var(--tx3)">(CCE/SN)</span>` shown as text) because
+  the R8 rewrite set msg-role as a DOM text node. The data-classification suffix is
+  trusted HTML, so msg-role (buildMsgEl + appendTyping) now renders it via html:
+  while still esc()-escaping the model name. User label stays a plain text node.
+
 - R12 (client persistence seam): new src/18-store.js is the single owner of
   client<->server state I/O, built on the R11 transport. loadAppData/saveAppData
   (/api/data) + loadSettings/saveSettings (/api/config) replace the scattered raw
