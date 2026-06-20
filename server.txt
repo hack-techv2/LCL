@@ -1437,14 +1437,13 @@ async function alphaBootstrap() {
     fs.writeFileSync(tmp, bufs[f]); fs.renameSync(tmp, dest)
   }
   ulog('applied     ' + changed.join(', '))
-  if (changed.includes('server.txt')) {
-    if (process.env.LCL_ALPHA_BOOTED === '1') { ulog('server.txt changed again - restart Node to load'); return }
-    ulog('re-exec into new server.txt ...')
-    const r = require('child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: Object.assign({}, process.env, { LCL_ALPHA_BOOTED: '1' }) })
-    if (r.error) { ulog('applied; auto-restart blocked (' + r.error.code + ') - restart Node manually'); return }
-    process.exit(r.status == null ? 0 : r.status)
-  }
-  ulog('index.html updated - hard-refresh the browser (no Node restart needed)')
+  // Default: do NOT auto re-exec. A new server.txt can only load in a fresh Node
+  // process, and auto-spawning one freezes the parent REPL behind spawnSync and
+  // ends the session. Instead, apply the file and ask the user to restart — the
+  // REPL stays alive. (The explicit front-end 'Update & restart' button still
+  // restarts on demand via handleUpdateRestart.)
+  if (changed.includes('server.txt')) ulog('server.txt updated - restart Node to load the new server')
+  if (changed.includes('index.html')) ulog('index.html updated - hard-refresh the browser (no restart needed)')
 }
 async function restoreStable() {
   const rel = await fetchLatestRelease()
@@ -1699,3 +1698,8 @@ async function boot() {
   server.listen(PORT, BIND_HOST, startupLog)
 }
 boot()
+
+// In the Node REPL, `require('./server.txt')` echoes this module's exports as the
+// expression result. Export a short status line so that echo reads as a message
+// instead of a bare {}.
+module.exports = 'LCL server starting - http://' + BIND_HOST + ':' + PORT
