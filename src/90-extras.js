@@ -94,7 +94,7 @@ function launchComet(startX, startY) {
   const startA = Math.max(0, IMPACT - D_A)                       // launches later, fast enough to meet the streak
   const BURST  = 950
   const start = performance.now()
-  const trailA = [], trailB = [], TLEN = 34
+  const trailA = [], trailB = [], TRAIL_PX = 170  // match the ambient streak tail length
   let particles = null
 
   const drawTail = (ctx, tr, wMax = 4) => {
@@ -112,6 +112,15 @@ function launchComet(startX, startY) {
     ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill()
     ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill()
   }
+  // Trim a trail so its on-screen path length stays at TRAIL_PX (the ambient
+  // streak's tail length), regardless of the comet's speed. Keeps it bounded too.
+  const trimTrail = (tr) => {
+    let acc = 0
+    for (let i = tr.length - 1; i > 0; i--) {
+      acc += Math.hypot(tr[i].x - tr[i-1].x, tr[i].y - tr[i-1].y)
+      if (acc > TRAIL_PX) { tr.splice(0, i); return }
+    }
+  }
 
   function draw(now) {
     const el = now - start
@@ -122,13 +131,13 @@ function launchComet(startX, startY) {
       // Horizontal streak B (behind the bar content), linear like the ambient one.
       const eb = el / IMPACT
       const bx = bX0 + (bMx - bX0) * eb
-      trailB.push({ x: bx, y: bY }); if (trailB.length > 18) trailB.shift()
+      trailB.push({ x: bx, y: bY }); trimTrail(trailB)
       drawTail(ctxB, trailB); drawHead(ctxB, bx, bY)
       // Badge comet A (front), launches later, eases in; both reach the gap together.
       if (el >= startA) {
         const ta = (el - startA) / (IMPACT - startA), ea = ta * ta
         const ax = A0.x + (Mx - A0.x) * ea, ay = A0.y + (My - A0.y) * ea
-        trailA.push({ x: ax, y: ay }); if (trailA.length > 18) trailA.shift()
+        trailA.push({ x: ax, y: ay }); trimTrail(trailA)
         drawTail(ctxF, trailA); drawHead(ctxF, ax, ay)
       }
       requestAnimationFrame(draw)
