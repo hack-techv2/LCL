@@ -610,6 +610,11 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
 .upd-build{flex:1;min-width:0;font-family:var(--mono);font-size:10px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .upd-when{color:var(--tx3)}
+.upd-sim{border-top:1px dashed var(--bdr2)}
+.upd-sim-lbl{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--tx3)}
+.upd-dev{font-size:9px;color:#fff;background:var(--bdr2);padding:1px 6px;border-radius:4px}
+.upd-sim-btns{display:flex;gap:6px}
+.upd-sim-btn{font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:7px}
 .upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
 .upd-metric{background:var(--bg2);border-radius:9px;padding:10px 12px}
 .upd-mk{font-size:11px;color:var(--tx3);margin-bottom:2px}
@@ -4662,6 +4667,11 @@ function renderUpdateSettings(){
   // or "Installed" tile), then the two toggle rows.
   const verRow = (verHtml,p)=> '<div class="upd-top"><span class="upd-ver">'+verHtml+'</span>'+p+'</div>'
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
+  // Dev/test (alpha only): real apply+restart, reusing the current file (server
+  // copies it onto itself). Exercises the reload (index.html) / restart (server.txt) flow.
+  const simRow = ()=> '<div class="upd-row upd-sim"><span class="upd-sim-lbl">Simulate update <span class="upd-dev">dev</span></span>'
+    + '<span class="upd-sim-btns"><button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'index.html\')">index.html</button>'
+    + '<button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'server.txt\')">server.txt</button></span></div>'
   const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Alpha updates</label><span class="upd-exp">Experimental</span></div>'
 
   if (!u.checked){
@@ -4684,6 +4694,7 @@ function renderUpdateSettings(){
     body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
       + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
       + expRow(true)
+      + simRow()
       + (u.error ? '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>' : '')
     return
   }
@@ -4886,6 +4897,27 @@ async function applyAlphaNow(){
     renderUpdateBadge(); renderUpdateSettings()
     toast('Already current','ok')
   }catch(e){ toast('Update failed: '+e.message,'err') }
+}
+
+// Dev/test (alpha): run the REAL apply+restart pipeline but reuse the current file
+// (the server copies it onto itself instead of downloading), so the restart/reload
+// flow can be exercised on a live alpha build without a new build.
+async function simulateUpdate(file){
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 simulate is a no-op','info'); return }
+  try{
+    toast('Simulating update (' + file + ')\u2026','info')
+    const r = await httpPost('/api/update/simulate', { file })
+    const d = await r.json()
+    if (d.error){ toast('Simulate failed: ' + d.error,'err'); return }
+    if (d.restartNeeded){
+      toast('Applied (' + file + '). Restarting Node.js\u2026','ok')
+      try { await httpPost('/api/update/restart') } catch {}
+      waitForServerThenReload()
+      return
+    }
+    if (d.refreshNeeded){ toast('Applied (' + file + '). Reloading\u2026','ok'); setTimeout(()=>location.reload(), 700); return }
+    toast('Simulated apply done','ok')
+  }catch(e){ toast('Simulate failed: ' + e.message,'err') }
 }
 
 // After a server restart request, poll /api/health until the new server answers,
