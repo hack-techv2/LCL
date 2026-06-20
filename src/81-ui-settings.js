@@ -53,8 +53,8 @@ function openSP() {
   document.getElementById('s-key').value   = creds.apiKey||''
   document.getElementById('s-mdl').value   = creds.model||''
   document.getElementById('s-sys').value   = creds.systemPrompt||''
-  document.getElementById('s-tok-v-input').value = Math.min(32768, creds.maxTokens||8192)
-  document.getElementById('s-tok').value = Math.min(32768, creds.maxTokens||8192)
+  document.getElementById('s-tok-v-input').value = Math.min(CFG.MAX_TOKENS_CAP, creds.maxTokens||8192)
+  document.getElementById('s-tok').value = Math.min(CFG.MAX_TOKENS_SLIDER, creds.maxTokens||8192)
   document.getElementById('s-chunk').value = creds.chunkSize||800
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
