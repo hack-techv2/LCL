@@ -39,6 +39,9 @@ Update channel / flow
   `node server.txt` still re-execs a fresh process.
 - Opting out of the experimental channel now re-locks the easter egg (relockAlpha):
   the "Experimental" toggle hides again until the 7-click unlock is repeated.
+- index.html is now served `Cache-Control: no-store` (other files keep ETag/no-cache)
+  so an applied update is always picked up on the next load - no stale cached page
+  until a manual hard-refresh (the recurring "old UI after update" symptom).
 - relockDemoAlpha() was referenced by demo reset but undefined on alpha (the branch
   would not pass build.js's undefined-fn scan); now defined in 98-update-channel.
 
