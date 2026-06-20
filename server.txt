@@ -1563,20 +1563,34 @@ function handleUpdateChannel(req, res) {
 
 function handleUpdateRestart(req, res) {
   json(res, { ok: true, restarting: true })
-  // Flush the response, then release the port and re-exec into the (already-applied)
-  // server.txt in the same terminal. The browser polls /api/health and reloads.
+  // Flush the response, free the port, then restart. Direct `node server.txt`
+  // re-execs a fresh process; under the Node REPL (require) we reload in-process
+  // via finishRestart() so the REPL survives. Browser polls /api/health + reloads.
   setTimeout(() => {
+    let done = false
+    const go = () => { if (done) return; done = true; finishRestart() }
     try {
-      ulog('front-end requested restart - re-exec into server.txt ...')
-      try { server.close() } catch {}
       for (const sock of openSockets) { try { sock.destroy() } catch {} }
-      const r = require('child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: Object.assign({}, process.env, { LCL_ALPHA_BOOTED: '1' }) })
-      if (r.error) { ulog('restart spawn failed (' + r.error.code + ') - restart Node manually'); process.exit(1) }
-      process.exit(r.status == null ? 0 : r.status)
-    } catch (e) {
-      ulog('restart failed (' + (e.code || e.message) + ') - restart Node manually')
-    }
+      server.close(go)
+      setTimeout(go, 1200)   // fallback if close()'s callback never fires
+    } catch (e) { go() }
   }, 350)
+}
+function finishRestart() {
+  try { upstreamAgent.destroy() } catch {}
+  if (RUN_AS_MAIN) {
+    ulog('restart - re-exec into server.txt ...')
+    const r = require('child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: Object.assign({}, process.env, { LCL_ALPHA_BOOTED: '1' }) })
+    if (r.error) { ulog('restart spawn failed (' + r.error.code + ') - restart Node manually'); process.exit(1) }
+    process.exit(r.status == null ? 0 : r.status)
+  } else {
+    // REPL: reload the freshly-applied server.txt IN-PROCESS so the REPL stays up.
+    ulog('restart - reloading server.txt in-process (REPL stays alive) ...')
+    try { process.removeListener('SIGINT', onSigint) } catch {}
+    try { process.removeListener('SIGTERM', onSigterm) } catch {}
+    try { delete require.cache[__filename] } catch {}
+    try { require(__filename) } catch (e) { console.error('  reload failed: ' + e.message + ' - run require("./server.txt") again') }
+  }
 }
 
 const server = http.createServer((req, res) => {
@@ -1645,18 +1659,29 @@ server.on('connection', sock => { openSockets.add(sock); sock.on('close', () => 
 // whose own SIGINT handler otherwise swallows Ctrl+C, and under the alpha
 // re-exec supervisor. A 2nd Ctrl+C (or the 300ms timer) forces exit if a
 // keep-alive socket or other handle lingers.
+const RUN_AS_MAIN = require.main === module
 let _shuttingDown = false
 function shutdown(sig) {
-  if (_shuttingDown) { process.exit(0); return }
+  if (_shuttingDown) { if (RUN_AS_MAIN) process.exit(0); return }
   _shuttingDown = true
-  try { console.log('\n  Shutting down (' + sig + ') - bye.') } catch {}
+  try { console.log('\n  Stopping LCL server (' + sig + ')...') } catch {}
   try { server.close() } catch {}
   for (const sock of openSockets) { try { sock.destroy() } catch {} }
   try { upstreamAgent.destroy() } catch {}
-  setTimeout(() => process.exit(0), 300).unref()
+  if (RUN_AS_MAIN) {
+    setTimeout(() => process.exit(0), 300).unref()
+  } else {
+    // Launched via require() in the Node REPL: stop the server but DON'T exit, so
+    // the REPL stays alive. Drop our handlers so the next Ctrl+C is the REPL's own.
+    try { process.removeListener('SIGINT', onSigint) } catch {}
+    try { process.removeListener('SIGTERM', onSigterm) } catch {}
+    try { console.log('  LCL server stopped - back at the REPL.') } catch {}
+  }
 }
-process.on('SIGINT', () => shutdown('SIGINT'))
-process.on('SIGTERM', () => shutdown('SIGTERM'))
+const onSigint  = () => shutdown('SIGINT')
+const onSigterm = () => shutdown('SIGTERM')
+process.on('SIGINT', onSigint)
+process.on('SIGTERM', onSigterm)
 // The alpha auto-restart child is spawned (spawnSync, inherited stdio) from the
 // parent REPL, so it inherits the REPL's raw-mode TTY. In raw mode Ctrl+C is a
 // keystroke, not a SIGINT, and the child isn't a REPL — so it never stops, while
