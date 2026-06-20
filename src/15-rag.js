@@ -57,6 +57,7 @@ async function embedBatch(texts) {
       if (contentType.includes('application/json')) {
         const data = await res.json()
         if (!res.ok) return reject(new Error('Embed failed: ' + (data.error || res.status)))
+        if (!data || !Array.isArray(data.embeddings)) return reject(new Error('Embed response missing embeddings'))
         return resolve({ embeddings: data.embeddings, hashes: data.hashes })
       }
 
@@ -127,9 +128,11 @@ async function retrieveChunks(query, docs, topK, stickyChunks) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hashes: needLookup.map(c => c.embHash) })
       })
+      if (!r.ok) throw new Error('lookup HTTP ' + r.status)
       const data = await r.json()
+      const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
       for (let i = 0; i < needLookup.length; i++) {
-        needLookup[i].embedding = data.vectors[i]
+        if (Array.isArray(vecs[i])) needLookup[i].embedding = vecs[i]
       }
     } catch (e) {
       console.warn('[retrieveChunks] lookup failed:', e.message)
