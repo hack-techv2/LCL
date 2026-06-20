@@ -102,13 +102,13 @@ function launchComet(startX, startY) {
       const a = i / tr.length
       ctx.beginPath()
       ctx.moveTo(tr[i].x, tr[i].y); ctx.lineTo(tr[i+1].x, tr[i+1].y)
-      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
+      ctx.strokeStyle = `rgba(${232 + Math.floor(a*23)}, ${97 + Math.floor(a*108)}, ${10 + Math.floor(a*130)}, ${a * 0.75})`
       ctx.lineWidth = a * wMax; ctx.lineCap = 'round'; ctx.stroke()
     }
   }
   const drawHead = (ctx, x, y, glowR = 9, coreR = 3) => {
     const g = ctx.createRadialGradient(x, y, 0, x, y, glowR)
-    g.addColorStop(0, 'rgba(255,255,235,1)'); g.addColorStop(0.3, 'rgba(245,124,52,0.92)'); g.addColorStop(1, 'rgba(232,97,10,0)')
+    g.addColorStop(0, 'rgba(255,255,235,1)'); g.addColorStop(0.3, 'rgba(255,200,120,0.9)'); g.addColorStop(1, 'rgba(232,97,10,0)')
     ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill()
     ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill()
   }
