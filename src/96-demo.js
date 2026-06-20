@@ -85,6 +85,17 @@ function demoChat(id, title, ts, pinned, messages) {
 
 // Called at the top of init(); returns true if it took over the boot so init()
 // skips all network work.
+// Toggling the #demo hash on an already-loaded page only changes the fragment —
+// the browser doesn't reload, so init()/maybeDemo() never re-run. Reload when we
+// cross the demo boundary so entering or leaving #demo actually (de)activates it.
+;(function () {
+  let wasDemo = location.hash === '#demo'
+  window.addEventListener('hashchange', () => {
+    const isDemo = location.hash === '#demo'
+    if (isDemo !== wasDemo) { wasDemo = isDemo; location.reload() }
+  })
+})()
+
 function maybeDemo() {
   if (!demoOn()) return false
 
