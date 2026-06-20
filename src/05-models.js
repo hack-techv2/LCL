@@ -10,6 +10,9 @@ const CLS = {
   cce: { short: 'CCE/SN', full: 'Confidential Cloud Eligible (Sensitive Normal)' },
   rsn: { short: 'R/SN',  full: 'Restricted (Sensitive Normal)' },
 }
+// Default tier + the set of valid tiers both come from CLS, so adding a tier is a
+// CLS/MODEL_TIERS/EMBED_TIERS entry (+ a .seg-btn.on-<tier> CSS rule) - no logic edits.
+const CLS_DEFAULT = Object.keys(CLS)[0]
 
 const MODEL_TIERS = {
   cce: [
@@ -47,14 +50,14 @@ const EMBED_TIERS = {
 
 function tierGroups(kind, tier) {
   const src = (kind === 'embed') ? EMBED_TIERS : MODEL_TIERS
-  return src[tier] || src.cce
+  return src[tier] || src[CLS_DEFAULT]
 }
 function clsLabel(tier) { return (CLS[tier] || {}).short || '' }
 
 function inferTier(modelId) {
   const id = (modelId || '').trim()
   if (!id) return null
-  for (const t of ['cce', 'rsn']) {
+  for (const t of Object.keys(CLS)) {
     if (MODEL_TIERS[t].some(g => g.ids.includes(id)) || EMBED_TIERS[t].some(g => g.ids.includes(id))) return t
   }
   return null
@@ -115,8 +118,8 @@ function applyClsUI(scope, tier) {
   const seg = document.getElementById(scope === 'cfg' ? 'cls-seg-cfg' : 'cls-seg-sp')
   if (seg) seg.querySelectorAll('.seg-btn').forEach(b => {
     const on = b.dataset.cls === tier
-    b.classList.toggle('on-cce', on && tier === 'cce')
-    b.classList.toggle('on-rsn', on && tier === 'rsn')
+    Object.keys(CLS).forEach(k => b.classList.remove('on-' + k))
+    if (on) b.classList.add('on-' + tier)
   })
   if (scope === 'cfg') {
     wireModelField('cfg-mdl', tierGroups('model', tier))
@@ -127,13 +130,13 @@ function applyClsUI(scope, tier) {
 }
 
 function initClassification(scope, tier) {
-  tier = (tier === 'cce' || tier === 'rsn') ? tier : 'cce'
+  tier = CLS[tier] ? tier : CLS_DEFAULT
   _clsState[scope] = tier
   applyClsUI(scope, tier)
 }
 
 function setClassification(tier, scope) {
-  tier = (tier === 'cce' || tier === 'rsn') ? tier : 'cce'
+  tier = CLS[tier] ? tier : CLS_DEFAULT
   _clsState[scope] = tier
   if (scope === 'cfg') {
     ensureTierModel('cfg-mdl', tierGroups('model', tier))
