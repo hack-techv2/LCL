@@ -2,6 +2,85 @@ LCL CHANGELOG  —  v0.67d
 ========================
 
 
+R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
+------------------------------------------------------
+Local-testable items from the deferred R-series, landing incrementally on `alpha`.
+
+- R12 (client persistence seam): new src/18-store.js is the single owner of
+  client<->server state I/O, built on the R11 transport. loadAppData/saveAppData
+  (/api/data) + loadSettings/saveSettings (/api/config) replace the scattered raw
+  fetches in init/connect/disconnect (20), saveEmbedKey (40) and saveSP (82).
+  loadData()/persist() now delegate to the seam (the ~15 persist() callers are
+  unchanged). The #demo write-guard is single-sourced in saveAppData/saveSettings
+  (was duplicated inline at each write site) — which also closes a small leak where
+  disconnect() in demo still POSTed blank credentials to /api/config. The
+  data-vs-config split is now explicit in one module. Verified via JSDOM (12
+  assertions): demo write-guard on both stores, POST routing + body, load JSON
+  parse + null-on-error, and persist()/loadData() delegation. build now 31 JS
+  modules, 5/5 checks pass.
+
+- R11 (transport abstraction): new src/12-transport.js is the single client<->proxy
+  HTTP/SSE seam. httpGet/httpPost/httpPut/httpDelete centralize method + JSON
+  headers + body serialization and return the raw Response (so each migrated call
+  site keeps its own .ok/.json()/.text() handling — behaviour-preserving). A shared
+  streamSse(resp, onData, opts) replaces the two hand-rolled SSE loops (chat stream
+  in 51, embed-batch in 15): it splits on "\n", passes each "data:" payload to
+  onData ("[DONE]" passed through), and on abort returns {stopped:true} WITHOUT
+  throwing so the chat path keeps its "(stopped)" wrap-up. ~30 scattered fetch()
+  calls migrated across 15/40/50/51/52/81/82/95/97/98 (the /api/data + /api/config
+  persistence calls were intentionally left for R12). build now 30 JS modules;
+  build.js KNOWN_GLOBALS gains 'onData' (streamSse callback param, not a global).
+  Verified: streamSse framing/abort/done (8 assertions), http* request-init shape
+  (9), and a JSDOM runStream integration (token accumulation + Stop->(stopped)).
+
+- R4 (update-swap de-duplication, SAFE extraction — NOT the full fold): two shared
+  primitives were pulled out of the updater with ZERO behaviour change.
+  downloadVerified(ref, fname, want) does one fetch + SHA-256 verify (terse error
+  text, same as before); swapInFiles(bufs) does the atomic .tmp->rename for a set
+  of buffers and returns the written list. applyRef and restoreStable now use both;
+  handleUpdateApply adopts swapInFiles only and keeps its own distinct messages
+  ("No checksum published for…", "Download failed for…"), the checksums warn+HTTP
+  400 path, and its rich response. Deliberately preserved: applyRef still skips
+  unchanged files; restoreStable still force-applies BOTH files; restoreFromBackup
+  (local copy, no network/checksum) left untouched; each caller keeps its own
+  _alphaCache handling. The full fold of restoreStable/handleUpdateApply INTO
+  applyRef was NOT done — it would change restartNeeded semantics + error codes in
+  a path that can only be simulated in #demo. Verified by a standalone unit
+  harness (20 assertions, fake fs + ghFetchFile): atomic swap ordering, skip-vs-
+  force-apply, terse-vs-bespoke error text, warn+400, and _alphaCache reset.
+  server.txt node --check passes.
+
+- R8 (DOM / event-delegation rewrite of the sidebar + message renderers): the
+  two remaining string-template renderers are rebuilt with mkEl(). The sidebar
+  chat list (71) now renders item nodes carrying data-id / data-act and is driven
+  by ONE delegated click listener on #chat-list (installed once) — no per-row
+  binding and no inline onclick="fn('id')", so escJs string-interpolation is gone
+  from the row markup. The message renderer (72) builds headers, file chips, RAG
+  tags and the action row with mkEl + addEventListener closures; all dynamic text
+  (titles, filenames, sources, model label) goes through DOM text nodes
+  (auto-escaped), while only trusted/sanitised output (fmt(), statusBox(), static
+  icon SVG) uses html:. New svgNode() helper in 80-ui.js inserts trusted icon
+  markup as a real child node. File-chip expand wiring (chipsRow.nextElementSibling
+  -> .msg-file-expand, data-file-contents) preserved. Verified with a JSDOM
+  harness (35 assertions): render structure, delegated switch/pin/delete dispatch
+  (pin no longer also fires switch), chip expand/collapse, errored statusBox path,
+  refreshTailActions tail reveal, empty-state hint cards, and a literal-text XSS
+  check on a <script> chat title. build.js 5/5 checks pass.
+
+- R10 (leveled logger): server.txt's always-on verbose `dlog` firehose is now a
+  proper leveled logger. New `log` object with error(0)/warn(1)/info(2)/debug(3)
+  and an `LCL_LOG_LEVEL` env var (name or 0-3) to control console verbosity.
+  Default is `debug`, so the previous always-on verbose per-request logging is
+  unchanged unless an operator sets a lower level (e.g. LCL_LOG_LEVEL=info to
+  drop the per-request payload/header/body trace, =warn to show only problems).
+  Per-request trace (OUTBOUND/STREAMING banners, status, headers, body, rate-
+  limit, socket/TLS lifecycle) -> debug; TLS-rejected / stream / socket /
+  inactivity / total-budget / transient-failure -> warn; request errors ->
+  error. All console.error/console.warn routed through log.error/log.warn. Boot
+  banner, ulog/elog status and stop/restart messages stay always-on. `dlog()`
+  kept as a back-compat alias mapping to log.debug. node --check passes.
+
+
 Refactor, hardening & update-flow batch (20 Jun 2026, still v0.67d - alpha)
 ---------------------------------------------------------------------------
 On `alpha` only (main + the v0.67d release tag NOT updated). Full review of all
