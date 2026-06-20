@@ -1293,9 +1293,21 @@ function sha256Buf(buf) { return crypto.createHash('sha256').update(buf).digest(
 
 function handleUpdateCheck(req, res) {
   if (readChannel() === 'alpha') {
-    alphaStatus()
+    const alphaStat = () => alphaStatus()
       .then(st => json(res, Object.assign({ channel: 'alpha', current: APP_VERSION }, st)))
       .catch(e => json(res, { channel: 'alpha', current: APP_VERSION, error: updateClientErr('alpha check', e) }))
+    alphaMatchesStable().then(same => {
+      if (!same) return alphaStat()
+      // Experimental == stable: drop the flag and report stable so the UI stops
+      // showing an alpha state / offering alpha updates that do nothing.
+      writeChannel('stable')
+      return fetchLatestRelease().then(rel => {
+        const latest = (rel.tag || '').replace(/^v/i, '')
+        json(res, { channel: 'stable', current: APP_VERSION, latest, tag: rel.tag,
+                    newer: latest ? cmpVer(latest, APP_VERSION) > 0 : false,
+                    notes: rel.notes, html_url: rel.html_url, sameAsStable: true })
+      }).catch(e => json(res, { channel: 'stable', current: APP_VERSION, sameAsStable: true, error: updateClientErr('stable check', e) }))
+    }).catch(() => alphaStat())
     return
   }
   fetchLatestRelease().then(rel => {
@@ -1413,6 +1425,24 @@ async function alphaStatus() {
   _alphaCache = { ts: Date.now(), data: { ref: ALPHA_REF, inSync: changed.length === 0, changed, hash: (exp['index.html'] || '').slice(0, 7) } }
   return _alphaCache.data
 }
+// True when the @alpha build is byte-identical to the latest stable release
+// (same index.html + server.txt checksums). When they match there is no real
+// experimental build, so the alpha channel is pointless and we drop the flag.
+let _sameCache = { ts: 0, val: null }
+async function alphaMatchesStable() {
+  if (_sameCache.val !== null && Date.now() - _sameCache.ts < 30000) return _sameCache.val
+  try {
+    const ac = await ghFetchFile(ALPHA_REF, 'checksums.txt')
+    const rel = await fetchLatestRelease()
+    if (!rel || !rel.tag) return false
+    const rc = await ghFetchFile(rel.tag, 'checksums.txt')
+    if (ac.statusCode !== 200 || rc.statusCode !== 200) return false
+    const a = parseChecksums(ac.buf.toString('utf8')), b = parseChecksums(rc.buf.toString('utf8'))
+    const same = UPDATE_FILES.every(f => a[f] && b[f] && a[f] === b[f])
+    _sameCache = { ts: Date.now(), val: same }
+    return same
+  } catch { return false }
+}
 // All update log lines share one aligned label/column for a consistent console.
 function ulog(m) { console.log('  ' + 'Updates'.padEnd(23) + '->  ' + m) }
 function elog(m) { console.log('  ' + 'Embedding'.padEnd(23) + '->  ' + m) }
@@ -1528,31 +1558,40 @@ function handleUpdateChannel(req, res) {
     const ch = (body && body.channel === 'alpha') ? 'alpha' : 'stable'
 
     if (ch === 'alpha') {
-      // Snapshot stable (offline fallback), then download + swap the latest alpha
-      // build. On any failure, apply nothing and stay on stable.
-      backupStable()
-      applyRef(ALPHA_REF).then(r => {
-        writeChannel('alpha')
-        json(res, { ok: true, channel: 'alpha', applied: r.applied, unchanged: r.unchanged,
-                    restartNeeded: r.applied.includes('server.txt'),
-                    refreshNeeded: r.applied.includes('index.html') })
+      // If the experimental build is identical to the stable release there is
+      // nothing to switch to - keep stable and tell the client so the toggle
+      // stays off (avoids the pointless 'alpha == stable' state entirely).
+      alphaMatchesStable().then(same => {
+        if (same) { writeChannel('stable'); return json(res, { ok: true, channel: 'stable', sameAsStable: true }) }
+        // Snapshot stable (offline fallback), then download + swap the latest
+        // alpha build. writeChannel ONLY after a successful apply (no split-brain).
+        backupStable()
+        return applyRef(ALPHA_REF).then(r => {
+          writeChannel('alpha')
+          json(res, { ok: true, channel: 'alpha', applied: r.applied, unchanged: r.unchanged,
+                      restartNeeded: r.applied.includes('server.txt'),
+                      refreshNeeded: r.applied.includes('index.html') })
+        })
       }).catch(e => {
-        clearStableBackup()   // nothing was applied; drop the just-made backup
-        json(res, { error: friendlyUpdateErr(e), channel: 'stable' }, 500)
+        clearStableBackup()   // nothing applied; drop any just-made backup
+        json(res, { error: friendlyUpdateErr(e), channel: readChannel() }, 500)
       })
       return
     }
 
     // Revert: pull the latest stable release from GitHub; if that fails (offline),
-    // fall back to the .stable backup. Drop the backup once back on stable.
-    writeChannel('stable')
+    // fall back to the .stable backup. Flip the persisted channel ONLY after the
+    // files are actually back on stable - flipping first would split-brain (the
+    // flag reads stable while the alpha build is still on disk and running), which
+    // is why a rate-limited downgrade used to 'stay on alpha' until a second try.
     restoreStable().then(r => {
+      writeChannel('stable')
       clearStableBackup()
       json(res, { ok: true, channel: 'stable', restored: r, restartNeeded: true })
     }).catch(e => {
       const fb = restoreFromBackup()
-      if (fb.length) { clearStableBackup(); json(res, { ok: true, channel: 'stable', restoredFromBackup: fb, restartNeeded: true }) }
-      else json(res, { ok: true, channel: 'stable', restoreError: friendlyUpdateErr(e) })
+      if (fb.length) { writeChannel('stable'); clearStableBackup(); json(res, { ok: true, channel: 'stable', restoredFromBackup: fb, restartNeeded: true }) }
+      else json(res, { error: 'Could not fetch the stable build (' + friendlyUpdateErr(e) + ') and no local backup found - staying on the experimental build. Try again shortly (GitHub rate limit resets hourly).', channel: 'alpha' }, 502)
     })
   })
 }
