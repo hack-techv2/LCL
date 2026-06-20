@@ -98,6 +98,10 @@ async function regenerateLast() {
   if (!chat.messages.length) return
   renderMessages()
 
+  // #demo: skip the real RAG/skill payload build (which would hit the network)
+  // and just stream another canned reply.
+  if (typeof demoOn === 'function' && demoOn()) { demoStream(chat); return }
+
   // Rebuild payload from remaining history + RAG (same as send).
   const lastUser = chat.messages[chat.messages.length-1]
   const qText = typeof lastUser.content==='string' ? lastUser.content : lastUser.content?.find?.(b=>b.type==='text')?.text || ''
