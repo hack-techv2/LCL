@@ -37,7 +37,7 @@ function renderUpdateSettings(){
     if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
     else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
     else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
-    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when
+    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(u.changed||[]).map(esc).join(', ')+' changed</span>'
       const applyAct = u.simulated ? ('simulateUpdate([' + (u.changed||[]).map(fn => "'" + fn + "'").join(',') + '])') : 'applyAlphaNow()'
       primary = '<button class="upd-btn pri" onclick="'+applyAct+'">Update &amp; restart</button>' }
     body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
