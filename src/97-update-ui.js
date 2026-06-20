@@ -14,6 +14,11 @@ function renderUpdateSettings(){
   // or "Installed" tile), then the two toggle rows.
   const verRow = (verHtml,p)=> '<div class="upd-top"><span class="upd-ver">'+verHtml+'</span>'+p+'</div>'
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
+  // Dev/test (alpha only): real apply+restart, reusing the current file (server
+  // copies it onto itself). Exercises the reload (index.html) / restart (server.txt) flow.
+  const simRow = ()=> '<div class="upd-row upd-sim"><span class="upd-sim-lbl">Simulate update <span class="upd-dev">dev</span></span>'
+    + '<span class="upd-sim-btns"><button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'index.html\')">index.html</button>'
+    + '<button class="upd-btn upd-sim-btn" onclick="simulateUpdate(\'server.txt\')">server.txt</button></span></div>'
   const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Alpha updates</label><span class="upd-exp">Experimental</span></div>'
 
   if (!u.checked){
@@ -36,6 +41,7 @@ function renderUpdateSettings(){
     body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
       + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
       + expRow(true)
+      + simRow()
       + (u.error ? '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>' : '')
     return
   }
