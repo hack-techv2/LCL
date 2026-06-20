@@ -6,10 +6,30 @@ const os = require('os')
 const crypto = require('crypto')
 
 const PORT = 3000
-// Verbose per-request logging (payload / headers / body) is ALWAYS on and prints
-// to the Node console where the server runs. dlog() is a thin console.log alias,
-// kept only so the verbose call sites stay grep-able.
-function dlog(...a) { console.log(...a) }
+// ---------------------------------------------------------------------------
+// Leveled logger. Levels (most -> least severe): error(0) warn(1) info(2) debug(3).
+// Set LCL_LOG_LEVEL to a name (error|warn|info|debug) or 0-3 to control console
+// verbosity. Default is 'debug', which preserves the previous always-on verbose
+// per-request logging. dlog() stays as a back-compat alias mapping to log.debug
+// so existing grep-able verbose call sites keep working.
+// ---------------------------------------------------------------------------
+const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 }
+function resolveLogLevel() {
+  const raw = String(process.env.LCL_LOG_LEVEL || '').trim().toLowerCase()
+  if (raw === '') return LOG_LEVELS.debug            // default: verbose (unchanged behaviour)
+  if (Object.prototype.hasOwnProperty.call(LOG_LEVELS, raw)) return LOG_LEVELS[raw]
+  const n = parseInt(raw, 10)
+  return Number.isFinite(n) ? Math.max(0, Math.min(3, n)) : LOG_LEVELS.debug
+}
+const LOG_LEVEL = resolveLogLevel()
+const log = {
+  level: LOG_LEVEL,
+  error: (...a) => { if (LOG_LEVEL >= LOG_LEVELS.error) console.error(...a) },
+  warn:  (...a) => { if (LOG_LEVEL >= LOG_LEVELS.warn)  console.warn(...a) },
+  info:  (...a) => { if (LOG_LEVEL >= LOG_LEVELS.info)  console.log(...a) },
+  debug: (...a) => { if (LOG_LEVEL >= LOG_LEVELS.debug) console.log(...a) }
+}
+function dlog(...a) { log.debug(...a) }
 const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
 const API_HOST = 'api.ai.tech.gov.sg'
 const CHAT_PATH = '/platform/models/chat/completions'
@@ -90,7 +110,7 @@ function friendlyUpdateErr(e) {
 // (the HTTP code, if any) to the front end so the UI stays terse.
 function updateClientErr(ctx, e) {
   const full = friendlyUpdateErr(e)
-  console.warn('[update] ' + ctx + ': ' + full)
+  log.warn('[update] ' + ctx + ': ' + full)
   const m = String(full).match(/HTTP (\d{3})/)
   return m ? ('HTTP ' + m[1]) : 'update check failed'
 }
@@ -214,7 +234,7 @@ function ensureSkillsDir() {
   try {
     fs.mkdirSync(SKILLS_DIR, { recursive: true })
   } catch (e) {
-    console.error('[skills] mkdir failed:', e.message)
+    log.error('[skills] mkdir failed:', e.message)
   }
 }
 ensureSkillsDir()
@@ -250,7 +270,7 @@ function loadData() {
     if (!raw.trim()) return { chats: {} }
     return JSON.parse(raw)
   } catch (e) {
-    console.error('[loadData] error:', e.message)
+    log.error('[loadData] error:', e.message)
     return { chats: {} }
   }
 }
@@ -261,7 +281,7 @@ function saveData(data) {
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
     fs.renameSync(tmp, DATA_FILE)
   } catch (e) {
-    console.error('[saveData] error:', e.message)
+    log.error('[saveData] error:', e.message)
   }
 }
 
@@ -398,15 +418,15 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     }
   }
 
-  console.log('')
-  console.log('========== OUTBOUND REQUEST ==========')
-  console.log('[api] time       =', new Date().toISOString())
-  console.log('[api] hostname   =', opts.hostname)
-  console.log('[api] path       =', opts.path)
-  console.log('[api] auth       =', maskSecret(apiKey))
+  log.debug('')
+  log.debug('========== OUTBOUND REQUEST ==========')
+  log.debug('[api] time       =', new Date().toISOString())
+  log.debug('[api] hostname   =', opts.hostname)
+  log.debug('[api] path       =', opts.path)
+  log.debug('[api] auth       =', maskSecret(apiKey))
   dlog('[api] payload    =', previewText(bodyStr))
-  console.log('======================================')
-  console.log('')
+  log.debug('======================================')
+  log.debug('')
 
   // Guard against double-invocation: on timeout we'll destroy() the request,
   // which can race with 'end' or 'error' firing. done() ensures cb runs once
@@ -424,17 +444,17 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     if (tlsGateFails(upstreamRes.socket)) {
       const ae = String(upstreamRes.socket.authorizationError || 'TLS not trusted')
       upstreamRes.resume(); try { upstreamRes.socket.destroy() } catch {}
-      console.log('[api] TLS rejected =', ae)
+      log.warn('[api] TLS rejected =', ae)
       return done(Object.assign(new Error('TLS certificate not trusted: ' + ae), { code: ae }))
     }
     let body = ''
 
-    console.log('[api] response status  =', upstreamRes.statusCode)
+    log.debug('[api] response status  =', upstreamRes.statusCode)
     dlog('[api] response headers =', upstreamRes.headers)
 
     upstreamRes.on('data', chunk => {
       body += chunk
-      console.log('[api] chunk bytes =', Buffer.byteLength(chunk))
+      log.debug('[api] chunk bytes =', Buffer.byteLength(chunk))
     })
 
     upstreamRes.on('end', () => {
@@ -444,7 +464,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
       if (rl) {
         // One-line summary so console scans cleanly without dumping full headers.
         const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
-        console.log('[api] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
+        log.debug('[api] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
                     '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
         setLastRateLimit(apiKey, rl)
       }
@@ -457,7 +477,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     })
 
     upstreamRes.on('error', err => {
-      console.log('[api] response stream error =', err.message)
+      log.warn('[api] response stream error =', err.message)
       done(err)
     })
   })
@@ -466,27 +486,27 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   // Generous because Claude Opus 4.6 on a long prompt may take 60s+ to emit
   // its first byte when stream=false.
   req.setTimeout(90_000, () => {
-    console.log('[api] inactivity timeout (90s)')
+    log.warn('[api] inactivity timeout (90s)')
     req.destroy(new Error('Upstream inactivity timeout'))
   })
 
   // Hard overall budget: inactivity alone isn't enough - a trickling upstream
   // can keep a socket alive for minutes. 120s is the worst-case cap per attempt.
   totalBudgetTimer = setTimeout(() => {
-    console.log('[api] total-budget exceeded (120s), aborting')
+    log.warn('[api] total-budget exceeded (120s), aborting')
     req.destroy(new Error('Upstream total-budget exceeded'))
   }, 120_000)
 
   req.on('socket', socket => {
-    console.log('[api] socket assigned')
+    log.debug('[api] socket assigned')
     socket.on('secureConnect', () => {
-      console.log('[api] TLS connected')
-      console.log('[api] authorized =', socket.authorized)
-      console.log('[api] authorizationError =', socket.authorizationError || '(none)')
+      log.debug('[api] TLS connected')
+      log.debug('[api] authorized =', socket.authorized)
+      log.debug('[api] authorizationError =', socket.authorizationError || '(none)')
     })
     // Change 2: destroy socket on cert/TLS errors to force fresh connection on retry
     socket.on('error', err => {
-      console.log('[api] socket error =', err.message)
+      log.warn('[api] socket error =', err.message)
       if (/certificate|CERT|TLS|SSL|issuer/i.test(err.message)) {
         socket.destroy()
       }
@@ -498,7 +518,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   })
 
   req.on('error', err => {
-    console.log('[api] request error =', err.message)
+    log.error('[api] request error =', err.message)
     done(err)
   })
 
@@ -539,7 +559,7 @@ function callGccJson(pathName, apiKey, payload, cb, opts = {}) {
 
       const delay = Math.min(maxDelay, baseDelay * 2 ** (attempt - 1))
       const jitter = Math.floor(Math.random() * 200)
-      console.log(`[api] transient failure (attempt ${attempt}/${maxAttempts}) - retrying in ${delay + jitter}ms`)
+      log.warn(`[api] transient failure (attempt ${attempt}/${maxAttempts}) - retrying in ${delay + jitter}ms`)
       setTimeout(tryOnce, delay + jitter)
     })
   }
@@ -586,29 +606,29 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
     }
   }
 
-  console.log('')
-  console.log('========== STREAMING OUTBOUND ==========')
-  console.log('[stream] time     =', new Date().toISOString())
-  console.log('[stream] path     =', pathName)
-  console.log('[stream] auth     =', maskSecret(apiKey))
+  log.debug('')
+  log.debug('========== STREAMING OUTBOUND ==========')
+  log.debug('[stream] time     =', new Date().toISOString())
+  log.debug('[stream] path     =', pathName)
+  log.debug('[stream] auth     =', maskSecret(apiKey))
   dlog('[stream] payload  =', previewText(bodyStr))
-  console.log('========================================')
+  log.debug('========================================')
 
   const upReq = https.request(opts, upRes => {
     if (tlsGateFails(upRes.socket)) {
       const ae = String(upRes.socket.authorizationError || 'TLS not trusted')
       upRes.resume(); try { upRes.socket.destroy() } catch {}
-      console.log('[stream] TLS rejected =', ae)
+      log.warn('[stream] TLS rejected =', ae)
       if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: 'TLS certificate not trusted (' + ae + ')' }))
       return
     }
-    console.log('[stream] response status  =', upRes.statusCode)
+    log.debug('[stream] response status  =', upRes.statusCode)
     const rl = extractRateLimit(upRes.headers)
     if (rl) {
       setLastRateLimit(apiKey, rl)
       const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
-      console.log('[stream] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
+      log.debug('[stream] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
                   '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
     }
 
@@ -637,9 +657,9 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       'Connection':    'keep-alive'
     })
     upRes.on('data', chunk => res.write(chunk))
-    upRes.on('end', () => { console.log('[stream] upstream end'); try { res.end() } catch {} })
+    upRes.on('end', () => { log.debug('[stream] upstream end'); try { res.end() } catch {} })
     upRes.on('error', err => {
-      console.log('[stream] upstream stream error =', err.message)
+      log.warn('[stream] upstream stream error =', err.message)
       try { res.end() } catch {}
     })
   })
@@ -649,12 +669,12 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   // resets on every token, so it only fires on a genuine stall. Clamped 5s-120s.
   const inactivityMs = Math.min(120000, Math.max(5000, Number(timeoutMs) || 60000))
   upReq.setTimeout(inactivityMs, () => {
-    console.log('[stream] inactivity timeout (' + Math.round(inactivityMs / 1000) + 's)')
+    log.warn('[stream] inactivity timeout (' + Math.round(inactivityMs / 1000) + 's)')
     upReq.destroy(new Error('Upstream inactivity timeout'))
   })
 
   upReq.on('error', err => {
-    console.log('[stream] request error =', err.message)
+    log.error('[stream] request error =', err.message)
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify({ error: err.message, kind: 'upstream_unreachable' }))
@@ -670,7 +690,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   // keep burning tokens.
   res.on('close', () => {
     if (!upReq.destroyed) {
-      console.log('[stream] client disconnected, aborting upstream')
+      log.debug('[stream] client disconnected, aborting upstream')
       upReq.destroy()
     }
   })
@@ -1055,7 +1075,7 @@ function handleSkillsList(req, res) {
     if (!name.endsWith('.md')) continue
     const id = name.slice(0, -3)
     if (!isValidSlug(id)) {
-      console.warn('[skills] ignoring file with invalid slug:', name)
+      log.warn('[skills] ignoring file with invalid slug:', name)
       continue
     }
     const fp = path.join(SKILLS_DIR, name)
@@ -1309,7 +1329,7 @@ async function handleUpdateApply(req, res) {
     if (!ref) return json(res, { error: 'No release tag found' }, 400)
     const csRes = await ghFetchFile(ref, 'checksums.txt')
     if (csRes.statusCode !== 200) {
-      console.warn('[update] apply: checksums for ' + ref + ' HTTP ' + csRes.statusCode + (csRes.msg ? ' - ' + csRes.msg : ''))
+      log.warn('[update] apply: checksums for ' + ref + ' HTTP ' + csRes.statusCode + (csRes.msg ? ' - ' + csRes.msg : ''))
       return json(res, { error: 'HTTP ' + csRes.statusCode }, 400)
     }
     const expected = parseChecksums(csRes.buf.toString('utf8'))
@@ -1329,14 +1349,7 @@ async function handleUpdateApply(req, res) {
     }
     // Integrity gate is the SHA-256 above; server.txt was already syntax-checked
     // by build.js before upload, so no redundant runtime check here.
-    const applied = []
-    for (const fname of Object.keys(verified)) {
-      const dest = path.join(LCL_DIR, fname)
-      const tmp = dest + '.tmp'
-      fs.writeFileSync(tmp, verified[fname])
-      fs.renameSync(tmp, dest)
-      applied.push(fname)
-    }
+    const applied = swapInFiles(verified)
     _alphaCache = { ts: 0, data: null }
     json(res, {
       ok: true, channel: ch, ref, applied, unchanged,
@@ -1475,16 +1488,9 @@ async function restoreStable() {
   const bufs = {}
   for (const f of UPDATE_FILES) {
     const want = exp[f]; if (!want) throw new Error('no checksum for ' + f)
-    const dl = await ghFetchFile(tag, f)
-    if (dl.statusCode !== 200) throw new Error('download ' + f + ' HTTP ' + dl.statusCode)
-    if (sha256Buf(dl.buf) !== want) throw new Error('checksum mismatch ' + f)
-    bufs[f] = dl.buf
+    bufs[f] = await downloadVerified(tag, f, want)
   }
-  const applied = []
-  for (const f of UPDATE_FILES) {
-    const dest = path.join(LCL_DIR, f), tmp = dest + '.tmp'
-    fs.writeFileSync(tmp, bufs[f]); fs.renameSync(tmp, dest); applied.push(f)
-  }
+  const applied = swapInFiles(bufs)
   return { tag, applied }
 }
 // .stable backup helpers — keep a verbatim copy of the stable files so a revert
@@ -1508,6 +1514,29 @@ function restoreFromBackup() {
 }
 function clearStableBackup() { for (const f of UPDATE_FILES) { try { fs.unlinkSync(stableBackupPath(f)) } catch {} } }
 
+// --- shared update-swap primitives (R4 safe extraction) ----------------------
+// Download one file at `ref` and verify it matches the expected SHA-256, then
+// return its bytes. Throws (so the caller applies nothing) on a bad fetch or a
+// hash mismatch. Used by applyRef + restoreStable (handleUpdateApply keeps its
+// own messages). Same terse error text as the previous inline copies.
+async function downloadVerified(ref, fname, want) {
+  const dl = await ghFetchFile(ref, fname)
+  if (dl.statusCode !== 200) throw new Error('download ' + fname + ' HTTP ' + dl.statusCode)
+  if (sha256Buf(dl.buf) !== want) throw new Error('checksum mismatch ' + fname)
+  return dl.buf
+}
+// Atomically swap a {fname: Buffer} set into LCL_DIR (.tmp then rename) and
+// return the files written, in iteration order. Pure file I/O - no cache reset,
+// so each caller keeps its own _alphaCache handling exactly as before.
+function swapInFiles(bufs) {
+  const applied = []
+  for (const f of Object.keys(bufs)) {
+    const dest = path.join(LCL_DIR, f), tmp = dest + '.tmp'
+    fs.writeFileSync(tmp, bufs[f]); fs.renameSync(tmp, dest); applied.push(f)
+  }
+  return applied
+}
+
 // Download + verify + atomically swap UPDATE_FILES for a given git ref. The
 // SHA-256 from that ref's checksums.txt is the integrity gate. Returns
 // { applied, unchanged }; throws (applying nothing) if any file fails.
@@ -1520,16 +1549,9 @@ async function applyRef(ref) {
     const want = exp[f]; if (!want) throw new Error('no checksum for ' + f)
     let cur = null; try { cur = sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) } catch {}
     if (cur === want) { unchanged.push(f); continue }
-    const dl = await ghFetchFile(ref, f)
-    if (dl.statusCode !== 200) throw new Error('download ' + f + ' HTTP ' + dl.statusCode)
-    if (sha256Buf(dl.buf) !== want) throw new Error('checksum mismatch ' + f)
-    verified[f] = dl.buf
+    verified[f] = await downloadVerified(ref, f, want)
   }
-  const applied = []
-  for (const f of Object.keys(verified)) {
-    const dest = path.join(LCL_DIR, f), tmp = dest + '.tmp'
-    fs.writeFileSync(tmp, verified[f]); fs.renameSync(tmp, dest); applied.push(f)
-  }
+  const applied = swapInFiles(verified)
   _alphaCache = { ts: 0, data: null }
   return { applied, unchanged }
 }
@@ -1606,7 +1628,7 @@ function finishRestart() {
     try { process.removeListener('SIGINT', onSigint) } catch {}
     try { process.removeListener('SIGTERM', onSigterm) } catch {}
     try { delete require.cache[__filename] } catch {}
-    try { require(__filename) } catch (e) { console.error('  reload failed: ' + e.message + ' - run require("./server.txt") again') }
+    try { require(__filename) } catch (e) { log.error('  reload failed: ' + e.message + ' - run require("./server.txt") again') }
   }
 }
 
