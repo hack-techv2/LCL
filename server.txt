@@ -168,7 +168,7 @@ function saveEmbedCache() {
       const buf = Buffer.allocUnsafe(8)
       buf.writeUInt32BE(MAGIC, 0)
       buf.writeUInt32LE(0, 4)
-      fs.writeFileSync(EMBED_CACHE_FILE, buf)
+      const et = EMBED_CACHE_FILE + '.tmp'; fs.writeFileSync(et, buf); fs.renameSync(et, EMBED_CACHE_FILE)
       return
     }
     let totalSize = 8
@@ -188,7 +188,7 @@ function saveEmbedCache() {
         buf.writeUInt16LE(encodeFloat16(vec[j]), offset); offset += 2
       }
     }
-    fs.writeFileSync(EMBED_CACHE_FILE, buf)
+    const et = EMBED_CACHE_FILE + '.tmp'; fs.writeFileSync(et, buf); fs.renameSync(et, EMBED_CACHE_FILE)
   } catch (e) {
     elog('cache save error: ' + e.message)
   }
@@ -253,14 +253,19 @@ function loadData() {
 
 function saveData(data) {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8')
+    const tmp = DATA_FILE + '.tmp'
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
+    fs.renameSync(tmp, DATA_FILE)
   } catch (e) {
     console.error('[saveData] error:', e.message)
   }
 }
 
 let appData = loadData()
-pruneEmbedCache()   // drop cached vectors no longer referenced by any saved doc
+// Guard: only GC when there are saved chats. If loadData() returned an empty/
+// default object (e.g. a transiently malformed lcl_data.json), pruning would see
+// zero references and wipe the ENTIRE embed cache, forcing a full re-embed.
+if (appData && appData.chats && Object.keys(appData.chats).length) pruneEmbedCache()
 
 function json(res, data, status = 200) {
   res.writeHead(status, {
@@ -673,6 +678,28 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
 // ---------------------------------------------------------------------------
 // handleChat: routes to streaming or buffered path based on payload.stream.
 // ---------------------------------------------------------------------------
+// Shared buffered-upstream responder for the JSON (non-streaming) chat/embed
+// paths: transport error -> 504/502, empty body -> clean error, otherwise the
+// parsed JSON (or a clean non-JSON error), carrying the rate-limit snapshot.
+// Centralised so both callers stay in lock-step.
+function respondUpstreamJson(res, err, upstream) {
+  if (err) {
+    const isTimeout = /timeout|budget/i.test(err.message)
+    return json(res, { error: err.message, kind: 'upstream_unreachable' }, isTimeout ? 504 : 502)
+  }
+  const { statusCode, headers, body: respBody } = upstream
+  if (!respBody || !respBody.trim()) {
+    return json(res, { error: 'Empty response from upstream', status: statusCode, headers }, statusCode >= 400 ? statusCode : 502)
+  }
+  try {
+    const parsed = JSON.parse(respBody)
+    if (upstream.rateLimit) parsed._rateLimit = upstream.rateLimit
+    return json(res, parsed, statusCode)
+  } catch {
+    return json(res, { error: 'Upstream returned non-JSON response', status: statusCode, headers, raw: respBody, _rateLimit: upstream.rateLimit || null }, statusCode >= 400 ? statusCode : 502)
+  }
+}
+
 function handleChat(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
@@ -694,39 +721,7 @@ function handleChat(req, res) {
     }
 
     // Buffered path for short utility calls (auto-title, embed test, etc.)
-    callGccJson(CHAT_PATH, apiKey, finalPayload, (err, upstream) => {
-      if (err) {
-        // 504 = Gateway Timeout. Correct signal for "we couldn't reach upstream";
-        // lets clients distinguish network failure from a real server bug.
-        const isTimeout = /timeout|budget/i.test(err.message)
-        return json(res, { error: err.message, kind: 'upstream_unreachable' },
-                    isTimeout ? 504 : 502)
-      }
-
-      const { statusCode, headers, body: respBody } = upstream
-
-      if (!respBody || !respBody.trim()) {
-        return json(res, {
-          error: 'Empty response from upstream',
-          status: statusCode,
-          headers
-        }, statusCode >= 400 ? statusCode : 502)
-      }
-
-      try {
-        const parsed = JSON.parse(respBody)
-        if (upstream.rateLimit) parsed._rateLimit = upstream.rateLimit
-        return json(res, parsed, statusCode)
-      } catch {
-        return json(res, {
-          error: 'Upstream returned non-JSON response',
-          status: statusCode,
-          headers,
-          raw: respBody,
-          _rateLimit: upstream.rateLimit || null
-        }, statusCode >= 400 ? statusCode : 502)
-      }
-    })
+    callGccJson(CHAT_PATH, apiKey, finalPayload, (err, upstream) => respondUpstreamJson(res, err, upstream))
   })
 }
 
@@ -746,37 +741,7 @@ function handleEmbed(req, res) {
       input: finalInput
     }
 
-    callGccJson(EMBED_PATH, apiKey, finalPayload, (err, upstream) => {
-      if (err) {
-        const isTimeout = /timeout|budget/i.test(err.message)
-        return json(res, { error: err.message, kind: 'upstream_unreachable' },
-                    isTimeout ? 504 : 502)
-      }
-
-      const { statusCode, headers, body: respBody } = upstream
-
-      if (!respBody || !respBody.trim()) {
-        return json(res, {
-          error: 'Empty response from upstream',
-          status: statusCode,
-          headers
-        }, statusCode >= 400 ? statusCode : 502)
-      }
-
-      try {
-        const parsed = JSON.parse(respBody)
-        if (upstream.rateLimit) parsed._rateLimit = upstream.rateLimit
-        return json(res, parsed, statusCode)
-      } catch {
-        return json(res, {
-          error: 'Upstream returned non-JSON response',
-          status: statusCode,
-          headers,
-          raw: respBody,
-          _rateLimit: upstream.rateLimit || null
-        }, statusCode >= 400 ? statusCode : 502)
-      }
-    })
+    callGccJson(EMBED_PATH, apiKey, finalPayload, (err, upstream) => respondUpstreamJson(res, err, upstream))
   })
 }
 
