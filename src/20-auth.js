@@ -28,20 +28,17 @@ async function init() {
   }
   // Try to auto-connect from saved settings
   try {
-    const r = await fetch('/api/config')
-    if (r.ok) {
-      const cfg = await r.json()
-      // Primary: settings from /api/config. Fallback: settings embedded in D (from /api/data)
-      // Ignore the demo sentinel ('demo') so a prior #demo visit never looks
-      // connected in normal mode.
-      const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
-      const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
-      if (s) {
-        creds = makeCreds(s)
-        setHealth('ok', connectedLabel())
-        document.body.classList.remove('not-connected')
-        document.getElementById('connect-banner')?.classList.add('hidden')
-      }
+    const cfg = await loadSettings()
+    // Primary: settings from /api/config. Fallback: settings embedded in D (from /api/data)
+    // Ignore the demo sentinel ('demo') so a prior #demo visit never looks
+    // connected in normal mode.
+    const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
+    const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
+    if (s) {
+      creds = makeCreds(s)
+      setHealth('ok', connectedLabel())
+      document.body.classList.remove('not-connected')
+      document.getElementById('connect-banner')?.classList.add('hidden')
     }
   } catch {}
   await loadSkillsList()
@@ -54,18 +51,13 @@ async function init() {
 }
 
 async function loadData() {
-  try {
-    const r = await fetch('/api/data')
-    if (r.ok) { const d=await r.json(); if (d&&d.chats) D=d }
-  } catch {}
+  const d = await loadAppData()
+  if (d && d.chats) D = d
 }
 
 async function persist() {
-  // Demo mode (#demo) seeds throwaway chats — never write them to lcl_data.json.
-  if (typeof demoOn === 'function' && demoOn()) return
-  try {
-    await fetch('/api/data', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(D) })
-  } catch {}
+  // Persistence + the #demo write-guard live in saveAppData (18-store).
+  await saveAppData(D)
 }
 
 // =============================================================================
@@ -140,9 +132,7 @@ async function connect() {
   // Write settings into D directly — persist() will carry them to disk on every save
   D.settings = credsToSettings(creds)
   // Also save via /api/config for immediate server-side update
-  try {
-    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
-  } catch {}
+  await saveSettings(D.settings)
   await persist()  // write D (with settings) to disk right now
   await loadData()
   await loadSkillsList()
@@ -176,9 +166,7 @@ async function disconnect() {
   // Also clear the server-side /api/config (mirror of connect()'s write). init()
   // prefers /api/config over D.settings, so a stale config would silently
   // auto-reconnect on next launch. Push blank credentials to wipe it.
-  try {
-    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' }) })
-  } catch {}
+  await saveSettings({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' })
   setHealth('off', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
