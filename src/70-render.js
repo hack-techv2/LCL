@@ -18,6 +18,6 @@ function renderTopbar() {
 function connectedLabel() {
   if (!creds) return 'Idle'
   return (creds.embedApiKey && creds.embedModelId)
-    ? 'Connected · chat + embed'
-    : 'Connected · chat only'
+    ? 'Chat + embed'
+    : 'Chat only'
 }
