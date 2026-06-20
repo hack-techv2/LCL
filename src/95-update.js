@@ -7,7 +7,7 @@ let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:''
 // Normalize any partial update payload into the full lclUpdate shape so every
 // assignment site carries the same keys (the error path used to drop most of
 // them, and `applied` could go stale). Always resets `applied` unless provided.
-function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', installedAt:d.installedAt||null, sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', installedAt:d.installedAt||null, simulated:!!d.simulated, sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
 
 // Compact "updated <date>" for the experimental build line (e.g. 21 Jun 2026).
 function fmtUpdated(ms){
@@ -21,6 +21,16 @@ function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1
 
 async function checkForUpdate(manual){
   if (typeof demoOn === 'function' && demoOn()) { if (manual) toast('Demo mode \u2014 update check simulated', 'info'); return }
+  // Dev/test: if a simulation is armed (armSimulate), report that file as an
+  // available alpha update instead of hitting the network. "Update & restart"
+  // then runs the real self-copy apply+restart (simulateUpdate).
+  if (typeof _simArmed !== 'undefined' && _simArmed && _simArmed.length) {
+    lclUpdate = makeUpdateState({ channel:'alpha', ref:'alpha', inSync:false, changed:_simArmed.slice(),
+      hash:'sim' + Date.now().toString(36).slice(-5), installedAt:Date.now(), simulated:true })
+    renderUpdateBadge(); renderUpdateSettings()
+    if (manual) toast('Simulated update available (' + _simArmed.join(', ') + ')', 'ok')
+    return
+  }
   try{
     const r = await httpGet('/api/update/check')
     const d = await r.json()
