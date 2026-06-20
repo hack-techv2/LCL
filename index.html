@@ -1357,6 +1357,21 @@ async function gcEmbedCache() {
 // =============================================================================
 // Init & persistence
 // =============================================================================
+// Factory for the in-memory creds object so its shape + defaults live in ONE
+// place (was hand-built in init/connect/demo). Accepts `model` or `modelId`;
+// callers that compute classification pass it in.
+function makeCreds(o){ o=o||{}; return {
+  apiKey: o.apiKey||'', model: o.model||o.modelId||'',
+  maxTokens: o.maxTokens||CFG.DEFAULT_MAX_TOKENS, systemPrompt: o.systemPrompt||'',
+  chunkSize: o.chunkSize||CFG.DEFAULT_CHUNK_SIZE, topK: o.topK||CFG.DEFAULT_TOP_K,
+  embedApiKey: o.embedApiKey||'', embedModelId: o.embedModelId||'',
+  classification: o.classification||'' } }
+// Inverse mapping for the on-disk settings shape (model -> modelId).
+function credsToSettings(c){ return {
+  apiKey: c.apiKey, modelId: c.model, maxTokens: c.maxTokens, systemPrompt: c.systemPrompt,
+  chunkSize: c.chunkSize, topK: c.topK, embedApiKey: c.embedApiKey||'',
+  embedModelId: c.embedModelId||'', classification: c.classification } }
+
 async function init() {
   // Demo mode (?demo=1) seeds sample content and skips all network work.
   if (typeof maybeDemo === 'function' && maybeDemo()) return
@@ -1378,7 +1393,7 @@ async function init() {
       const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
       const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
       if (s) {
-        creds = { apiKey: s.apiKey, model: s.modelId || s.model, maxTokens: s.maxTokens||8192, systemPrompt: s.systemPrompt||'', chunkSize: s.chunkSize||800, topK: s.topK||5, embedApiKey: s.embedApiKey||'', embedModelId: s.embedModelId||'', classification: s.classification||'' }
+        creds = makeCreds(s)
         setHealth('ok', connectedLabel())
         document.body.classList.remove('not-connected')
         document.getElementById('connect-banner')?.classList.add('hidden')
@@ -1417,7 +1432,7 @@ async function connect() {
     // Demo: re-seed creds offline (no API ping, no /api/config write) so the
     // Connect modal / reconnect flow is exercisable.
     const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
-    creds = { apiKey:'demo', model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey:'demo', embedModelId:'cohere.embed-english-v3', classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') }
+    creds = makeCreds({ apiKey:'demo', model, embedApiKey:'demo', embedModelId:'cohere.embed-english-v3', classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
     if (typeof closeConnect==='function') closeConnect()
     if (typeof updateConnectedUI==='function') updateConnectedUI()
     if (typeof setHealth==='function') setHealth('ok','Demo')
@@ -1477,9 +1492,9 @@ async function connect() {
   // Preserve any already-saved embed settings when (re)connecting
   const prevEmbedApiKey  = creds?.embedApiKey  || D.settings?.embedApiKey  || ''
   const prevEmbedModelId = creds?.embedModelId || D.settings?.embedModelId || ''
-  creds = { apiKey, model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') }
+  creds = makeCreds({ apiKey, model, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
   // Write settings into D directly — persist() will carry them to disk on every save
-  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey, embedModelId: creds.embedModelId, classification: creds.classification }
+  D.settings = credsToSettings(creds)
   // Also save via /api/config for immediate server-side update
   try {
     await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
@@ -3820,7 +3835,7 @@ function saveSP() {
   creds.embedModelId = document.getElementById('s-embm').value.trim() || creds.embedModelId
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
-  D.settings = { apiKey: creds.apiKey, modelId: creds.model, maxTokens: creds.maxTokens, systemPrompt: creds.systemPrompt, chunkSize: creds.chunkSize, topK: creds.topK, embedApiKey: creds.embedApiKey||'', embedModelId: creds.embedModelId||'', classification: creds.classification }
+  D.settings = credsToSettings(creds)
   if (!(typeof demoOn === 'function' && demoOn())) {
     try {
       fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D.settings) })
@@ -4275,9 +4290,7 @@ function maybeDemo() {
 
   // Fake embed creds so the Embed panel reads as configured (green dot, no
   // "set embed key" banner) and upload->embed works via the mock — no real key.
-  creds = { apiKey: 'demo', model: 'cce.claude-opus-4-6', maxTokens: 8192,
-            systemPrompt: '', chunkSize: 800, topK: 5,
-            embedApiKey: 'demo', embedModelId: 'cohere.embed-english-v3', classification: 'cce' }
+  creds = makeCreds({ apiKey: 'demo', model: 'cce.claude-opus-4-6', embedApiKey: 'demo', embedModelId: 'cohere.embed-english-v3', classification: 'cce' })
   setHealth('ok', 'Demo')
   try { document.body.classList.remove('not-connected') } catch {}
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
