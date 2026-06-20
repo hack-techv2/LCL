@@ -1224,6 +1224,7 @@ async function embedBatch(texts) {
       if (contentType.includes('application/json')) {
         const data = await res.json()
         if (!res.ok) return reject(new Error('Embed failed: ' + (data.error || res.status)))
+        if (!data || !Array.isArray(data.embeddings)) return reject(new Error('Embed response missing embeddings'))
         return resolve({ embeddings: data.embeddings, hashes: data.hashes })
       }
 
@@ -1294,9 +1295,11 @@ async function retrieveChunks(query, docs, topK, stickyChunks) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hashes: needLookup.map(c => c.embHash) })
       })
+      if (!r.ok) throw new Error('lookup HTTP ' + r.status)
       const data = await r.json()
+      const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
       for (let i = 0; i < needLookup.length; i++) {
-        needLookup[i].embedding = data.vectors[i]
+        if (Array.isArray(vecs[i])) needLookup[i].embedding = vecs[i]
       }
     } catch (e) {
       console.warn('[retrieveChunks] lookup failed:', e.message)
@@ -2213,6 +2216,42 @@ function buildContent(text) {
   return blocks
 }
 
+// Shared by send() and regenerateLast(): builds the chat API payload for
+// `queryText` from the chat's ready docs (FULL text when they fit the budget,
+// else RAG chunk-retrieval) plus the resolved skill/system prompt. Returns
+// { payload, ragSources }, or { skillErr } when the chat's skill won't load.
+async function buildPayload(chat, queryText) {
+  let ragChunks=[], ragSources=[], fullDocText=''
+  const readyDocs   = (chat.docs||[]).filter(d=>d.status==='ready')
+  const docsForFull = readyDocs.filter(d=>d.content)
+  const totalChars  = docsForFull.reduce((n,d)=>n+d.content.length,0)
+  const fullLimit   = creds.docFullTextLimit || CFG.DOC_FULLTEXT_LIMIT
+  const useFullText = docsForFull.length>0 && totalChars<=fullLimit
+  if (useFullText) {
+    fullDocText = docsForFull.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
+    ragSources  = docsForFull.map(d=>d.name)
+  } else if (readyDocs.some(d=>d.chunks?.length)) {
+    try {
+      ragChunks = await retrieveChunks(queryText, chat.docs, creds.topK||10, ragStickyChunks)
+      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
+      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * CFG.STICKY_CHUNK_RATIO)))
+    }
+    catch(e) { console.warn('RAG:',e.message) }
+  }
+  const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
+  if (skillErr) return { skillErr }
+  let sys = sysBase
+  if (fullDocText) {
+    sys = 'The following document(s) are provided IN FULL. Use them to answer the user.\n\n'+fullDocText+(sys?'\n\n'+sys:'')
+  } else if (ragChunks.length) {
+    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
+    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
+  }
+  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
+  const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
+  return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
+}
+
 async function send() {
   if (!creds) { openConnect(); return }
   const input = document.getElementById('msg-in')
@@ -2250,50 +2289,17 @@ async function send() {
   const disp = typeof content==='string'?content:content.find(b=>b.type==='text')?.text||'[attachment]'
   appendMsg('user', disp, null, null, sentFileNames)
 
-  // Document context. If the chat's ready docs fit the model's window, send the
-  // FULL text of every doc (the model sees everything — best quality, and the
-  // reason small PDFs already "just work"). Only fall back to chunk-retrieval
-  // (RAG) when the combined text exceeds the char budget.
-  let ragChunks=[], ragSources=[], fullDocText=''
-  const readyDocs   = (chat.docs||[]).filter(d=>d.status==='ready')
-  const docsForFull = readyDocs.filter(d=>d.content)
-  const totalChars  = docsForFull.reduce((n,d)=>n+d.content.length,0)
-  const fullLimit   = creds.docFullTextLimit || 200000
-  const useFullText = docsForFull.length>0 && totalChars<=fullLimit
-
-  if (useFullText) {
-    fullDocText = docsForFull.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
-    ragSources  = docsForFull.map(d=>d.name)
-  } else if (readyDocs.some(d=>d.chunks?.length)) {
-    try {
-      ragChunks = await retrieveChunks(text, chat.docs, creds.topK||10, ragStickyChunks)
-      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
-      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * 0.3)))
-    }
-    catch(e) { console.warn('RAG:',e.message) }
-  }
-
-  const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
-  if (skillErr) {
+  const built = await buildPayload(chat, text)
+  if (built.skillErr) {
     chat.messages.pop()
     chat.updatedAt = Date.now()
     renderMessages()
-    toast(skillErr, 'err')
+    toast(built.skillErr, 'err')
     busy = false
     if (typeof updateSendBtn === 'function') updateSendBtn()
     return
   }
-  let sys = sysBase
-  if (fullDocText) {
-    sys = 'The following document(s) are provided IN FULL. Use them to answer the user.\n\n'+fullDocText+(sys?'\n\n'+sys:'')
-  } else if (ragChunks.length) {
-    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
-    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
-  }
-
-  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
-  const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
-  const payload = { messages:msgs, max_tokens:creds.maxTokens||8192 }
+  const { payload, ragSources } = built
 
   await runStream(chat, payload, ragSources)
 
@@ -2767,31 +2773,14 @@ async function regenerateLast() {
   // and just stream another canned reply.
   if (typeof demoOn === 'function' && demoOn()) { demoStream(chat); return }
 
-  // Rebuild payload from remaining history + RAG (same as send).
+  // Rebuild the payload from the remaining history. Shared with send() via
+  // buildPayload() so the full-text-vs-RAG doc logic is identical (regenerate
+  // previously did RAG-only and skipped the full-text path).
   const lastUser = chat.messages[chat.messages.length-1]
   const qText = typeof lastUser.content==='string' ? lastUser.content : lastUser.content?.find?.(b=>b.type==='text')?.text || ''
-
-  let ragChunks=[], ragSources=[]
-  const hasDocs = chat.docs?.some(d=>d.status==='ready'&&d.chunks?.length)
-  if (hasDocs) {
-    try {
-      ragChunks = await retrieveChunks(qText, chat.docs, creds.topK||10, ragStickyChunks)
-      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
-      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * 0.3)))
-    }
-    catch(e) { console.warn('RAG:',e.message) }
-  }
-  const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
-  if (skillErr) { toast(skillErr, 'err'); return }
-  let sys = sysBase
-  if (ragChunks.length) {
-    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
-    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
-  }
-  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
-  const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
-  const payload = { messages:msgs, max_tokens:creds.maxTokens||8192 }
-  await runStream(chat, payload, ragSources)
+  const built = await buildPayload(chat, qText)
+  if (built.skillErr) { toast(built.skillErr, 'err'); return }
+  await runStream(chat, built.payload, built.ragSources)
 }
 // Edit the last user turn: drop any trailing assistant reply and the last user
 // message, then put that message's text back into the composer for editing.
@@ -4132,6 +4121,11 @@ function initComposerPlaceholder() {
 // =============================================================================
 let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
 
+// Normalize any partial update payload into the full lclUpdate shape so every
+// assignment site carries the same keys (the error path used to drop most of
+// them, and `applied` could go stale). Always resets `applied` unless provided.
+function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+
 function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
 
@@ -4140,10 +4134,8 @@ async function checkForUpdate(manual){
   try{
     const r = await fetch('/api/update/check')
     const d = await r.json()
-    lclUpdate = { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'',
-                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, sameAsStable:!!d.sameAsStable,
-                  ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'' }
-  }catch(e){ lclUpdate = { checked:true, channel:'stable', error:e.message } }
+    lclUpdate = makeUpdateState(d)
+  }catch(e){ lclUpdate = makeUpdateState({ channel:'stable', error:e.message }) }
   renderUpdateBadge(); renderUpdateSettings()
   if (manual){
     if (lclUpdate.error) toast('Update check failed: '+lclUpdate.error,'err')
