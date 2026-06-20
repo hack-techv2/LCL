@@ -104,6 +104,13 @@ let _simArmed = []   // set of files armed for simulation (multi-select)
 function armSimulate(file){
   const i = _simArmed.indexOf(file)
   if (i >= 0) _simArmed.splice(i, 1); else _simArmed.push(file)
+  // Changing the armed set invalidates any prior simulated "available" result, so
+  // a stale "Update & restart" doesn't linger - drop back to a neutral state until
+  // the next "Check now".
+  if (typeof lclUpdate !== 'undefined' && lclUpdate && lclUpdate.simulated) {
+    lclUpdate = makeUpdateState({ channel:'alpha', ref:'alpha', inSync:true, hash:lclUpdate.hash, installedAt:lclUpdate.installedAt })
+    if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
+  }
   if (typeof toast === 'function') toast(_simArmed.length ? ('Armed: ' + _simArmed.join(', ') + ' \u2014 click "Check now" to simulate') : 'Simulation cleared', 'info')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
