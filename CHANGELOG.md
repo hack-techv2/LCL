@@ -32,6 +32,13 @@ Update channel / flow
   release checksums. When identical the update check drops the flag (reverts to
   stable), enabling Experimental is refused, and the toggle is hidden.
 - Channel-switch failure toast is now direction-aware.
+- Update restart + Ctrl+C are now REPL-aware (LCL is run via require() in the Node
+  REPL): Ctrl+C stops the server but keeps the REPL alive (was process.exit), and
+  "Update & restart" reloads server.txt IN-PROCESS (drop require.cache + re-require)
+  instead of a spawnSync re-exec, so the REPL survives a restart. Direct
+  `node server.txt` still re-execs a fresh process.
+- Opting out of the experimental channel now re-locks the easter egg (relockAlpha):
+  the "Experimental" toggle hides again until the 7-click unlock is repeated.
 - relockDemoAlpha() was referenced by demo reset but undefined on alpha (the branch
   would not pass build.js's undefined-fn scan); now defined in 98-update-channel.
 
