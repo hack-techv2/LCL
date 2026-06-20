@@ -35,7 +35,7 @@ async function checkForUpdate(manual){
     const r = await httpGet('/api/update/check')
     const d = await r.json()
     lclUpdate = makeUpdateState(d)
-  }catch(e){ lclUpdate = makeUpdateState({ channel:'stable', error:e.message }) }
+  }catch(e){ lclUpdate = makeUpdateState({ channel: lclUpdate.channel || 'stable', error:e.message, hash:lclUpdate.hash, installedAt:lclUpdate.installedAt }) }
   renderUpdateBadge(); renderUpdateSettings()
   if (manual){
     if (lclUpdate.error) toast('Update check failed: '+lclUpdate.error,'err')
