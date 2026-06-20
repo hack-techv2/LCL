@@ -117,7 +117,7 @@ function renderSpSkillsList() {
 
 async function reloadSkillsFromUI() {
   try {
-    const r = await fetch('/skills/reload', { method: 'POST' })
+    const r = await httpPost('/skills/reload')
     if (!r.ok) throw new Error('HTTP ' + r.status)
     const data = await r.json()
     skillsCache = Array.isArray(data.skills) ? data.skills : []
@@ -151,11 +151,7 @@ async function uploadSkillFile(fileList) {
   }
   const body = await file.text()
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(slug), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body })
-    })
+    const r = await httpPut('/skills/' + encodeURIComponent(slug), { body })
     if (!r.ok) {
       const err = await r.json().catch(() => ({}))
       throw new Error(err.error || ('HTTP ' + r.status))
