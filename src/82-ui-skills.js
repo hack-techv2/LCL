@@ -169,7 +169,7 @@ function saveSP() {
   creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
   creds.systemPrompt = document.getElementById('s-sys').value.trim()
   const tokInput = parseInt(document.getElementById('s-tok-v-input').value)
-  creds.maxTokens    = isNaN(tokInput) ? 8192 : Math.max(64, Math.min(131072, tokInput))
+  creds.maxTokens    = isNaN(tokInput) ? 8192 : Math.max(64, Math.min(CFG.MAX_TOKENS_CAP, tokInput))
   creds.chunkSize    = parseInt(document.getElementById('s-chunk').value)
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
