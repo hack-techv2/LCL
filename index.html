@@ -455,7 +455,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 #demo-reset:hover{opacity:1;transform:translateY(-1px)}
 #demo-more{position:fixed;right:24px;bottom:150px;z-index:120;background:var(--bg3);color:var(--tx2);border:1px solid var(--bdr2);border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:.9;transition:all .15s}
 #demo-more:hover{opacity:1;color:var(--tx);border-color:var(--ac);transform:translateY(-1px)}
-.ver-alpha{font-size:9px;font-family:var(--mono);color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap;line-height:1.4;cursor:pointer;min-width:48px;text-align:center}
+.ver-alpha{font-size:9px;font-weight:600;font-family:var(--mono);color:#fff;background:var(--red);border:1px solid var(--red);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap;line-height:1.4;cursor:pointer;min-width:48px;text-align:center}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
 .btn-sv{padding:8px 16px;background:var(--ac);border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:background .12s}
@@ -595,7 +595,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .seg-btn.on-cce .seg-full,.seg-btn.on-rsn .seg-full{opacity:1}
 .sp-contrib{font-size:11px;color:var(--tx3);margin-right:auto}
 .upd-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:13px}
-.upd-top{display:flex;align-items:center;justify-content:space-between}
+.upd-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
 .upd-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;margin-right:6px}
 .upd-pill.ok{background:rgba(52,211,153,.15);color:var(--ok)}
@@ -604,11 +604,12 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-pill.neutral{background:var(--bg4);color:var(--tx3)}
 .embed-dot{display:inline-block;width:6px;height:6px;border-radius:50%;vertical-align:middle;margin-right:6px;background:var(--pin);box-shadow:0 0 4px color-mix(in srgb, var(--pin) 55%, transparent)}
 .embed-dot.on{background:var(--ok);box-shadow:0 0 4px color-mix(in srgb, var(--ok) 60%, transparent)}
-.upd-pill.alpha{background:rgba(231,76,60,.15);color:var(--red)}
+.upd-pill.alpha{background:var(--red);color:#fff}
 [data-theme="light"] .upd-pill.ok{color:#0f6e56}
-[data-theme="light"] .upd-pill.err,[data-theme="light"] .upd-pill.alpha{color:#a32d2d}
+[data-theme="light"] .upd-pill.err{color:#a32d2d}
 .upd-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
-.upd-build{font-family:var(--mono);font-size:11px;color:var(--tx3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-build{flex:1;min-width:0;font-family:var(--mono);font-size:10px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-when{color:var(--tx3)}
 .upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
 .upd-metric{background:var(--bg2);border-radius:9px;padding:10px 12px}
 .upd-mk{font-size:11px;color:var(--tx3);margin-bottom:2px}
@@ -637,7 +638,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-sub{font-family:var(--mono);font-size:11px;color:var(--tx3);font-weight:400}
 .upd-arrow{color:var(--tx3);font-size:14px}
 .upd-new{color:var(--ok)}
-.upd-exp{font-size:11px;color:var(--tx3);background:rgba(232,97,10,.18);padding:2px 8px;border-radius:5px}
+.upd-exp{font-size:11px;font-weight:600;color:#fff;background:var(--ac);padding:2px 8px;border-radius:5px}
 
 </style>
 </head>
@@ -4242,12 +4243,19 @@ function initComposerPlaceholder() {
 // Auto-update — checks GitHub releases via the local server (server.txt does
 // the network + file work; this is the display + consent layer).
 // =============================================================================
-let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'', installedAt:null }
 
 // Normalize any partial update payload into the full lclUpdate shape so every
 // assignment site carries the same keys (the error path used to drop most of
 // them, and `applied` could go stale). Always resets `applied` unless provided.
-function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', installedAt:d.installedAt||null, sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+
+// Compact "updated <date>" for the experimental build line (e.g. 21 Jun 2026).
+function fmtUpdated(ms){
+  if (!ms) return ''
+  try { return new Date(ms).toLocaleDateString([], { day:'numeric', month:'short', year:'numeric' }) }
+  catch { return '' }
+}
 
 function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
@@ -4667,12 +4675,13 @@ function renderUpdateSettings(){
   // version number, so the line leads with #hash (not vX.Y).
   if (u.channel === 'alpha'){
     const h = u.hash ? ('#'+esc(u.hash)) : 'alpha'
-    let p, ver = h, primary = ''
-    if (u.error){ p = pill('err','Check failed'); ver = '\u2014' }
-    else if (u.applied){ p = pill('ok','Updated'); if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
-    else if (u.inSync){ p = pill('ok','Up to date') }
-    else { p = pill('warn','Update available'); ver = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>'; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
-    body.innerHTML = verRow(ver, p)
+    const when = u.installedAt ? ' <span class="upd-when">\u00b7 updated '+esc(fmtUpdated(u.installedAt))+'</span>' : ''
+    let p, build, primary = ''
+    if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
+    else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
+    else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
+    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
+    body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
       + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
       + expRow(true)
       + (u.error ? '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>' : '')
@@ -4790,7 +4799,7 @@ async function setChannel(ch){
   if (typeof demoOn === 'function' && demoOn()) {
     // Demo: flip the in-memory state so both the version-based (stable) and
     // hash-based (experimental) update cards can be previewed. Touches nothing.
-    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
+    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', installedAt:Date.now()-86400000, error:null }
     else lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
     if (ch !== 'alpha') relockAlpha()
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
@@ -4829,6 +4838,9 @@ function alphaUnlocked(){
   try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false }
 }
 function unlockAlpha(){
+  // Only announce on the first unlock. If already unlocked (e.g. already on the
+  // alpha channel), the 7-click egg is a no-op rather than re-popping the toast.
+  if (alphaUnlocked()) return
   if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = true }
   else { try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {} }
   if (typeof toast === 'function') toast('Developer mode enabled','ok')
@@ -4850,7 +4862,7 @@ async function applyAlphaNow(){
   if (typeof demoOn === 'function' && demoOn()) {
     toast('Downloading alpha build\u2026 (demo)', 'info')
     setTimeout(() => {
-      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', error:null }
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', installedAt:Date.now(), error:null }
       renderUpdateBadge(); renderUpdateSettings()
       toast('Alpha updated to #e4f5a6b (demo) \u2014 Reset demo to replay', 'ok')
     }, 1200)
