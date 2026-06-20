@@ -1,11 +1,11 @@
-async function extractText(file) {
-  const ext = getExt(file.name)
-
-  if (ext === 'pdf') {
+// File-type extractor registry: extension -> async (file) => { text, scanWarning, ... }.
+// Adding a new file type is a single entry here; preview/embed stay generic.
+const EXTRACTORS = {
+  pdf: async (file) => {
     const ab = await file.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: ab, verbosity: 0 }).promise
     const totalPages   = pdf.numPages
-    const pages        = []   // [{ pageNum, text }] — kept for OCR patching
+    const pages        = []
     const emptyPageNums = []
     for (let i = 1; i <= totalPages; i++) {
       const page = await pdf.getPage(i)
@@ -15,25 +15,19 @@ async function extractText(file) {
       pages.push({ pageNum: i, text: pageText })
     }
     const text = pages.map(p => p.text).join('\n').trim() || '[No text found in PDF]'
-    // Warn if any pages returned no text on a multi-page doc — likely scanned/image pages
-    // Only flag as scanned when a meaningful share of pages have no text
-    // (>=2 pages AND >=15% of the doc) so a lone blank/divider page won't nag.
     const emptyShare   = totalPages ? emptyPageNums.length / totalPages : 0
-    const looksScanned = emptyPageNums.length >= 2 && emptyShare >= 0.15
+    const looksScanned = emptyPageNums.length >= CFG.SCAN_MIN_PAGES && emptyShare >= CFG.SCAN_MIN_SHARE
     const scanWarning = looksScanned
-      ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text — this PDF may be partially or fully scanned. Embedded content will be incomplete.'
+      ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text \u2014 this PDF may be partially or fully scanned. Embedded content will be incomplete.'
       : null
-    // Keep pdfDoc reference only when we'll need it for OCR
     return { text, scanWarning, pdfDoc: scanWarning ? pdf : null, emptyPageNums, pages }
-  }
-
-  if (ext === 'docx') {
+  },
+  docx: async (file) => {
     const ab = await file.arrayBuffer()
     const result = await mammoth.extractRawText({ arrayBuffer: ab })
     return { text: result.value.trim() || '[No text found in DOCX]', scanWarning: null }
-  }
-
-  if (ext === 'xlsx' || ext === 'xls') {
+  },
+  xlsx: async (file) => {
     const ab = await file.arrayBuffer()
     const wb = XLSX.read(ab, { type: 'array' })
     let out = ''
@@ -43,15 +37,20 @@ async function extractText(file) {
       if (csv.trim()) out += '=== Sheet: ' + name + ' ===\n' + csv + '\n\n'
     }
     return { text: out.trim() || '[No data found in spreadsheet]', scanWarning: null }
-  }
-
-  // Plain text / code files
-  return new Promise((resolve, reject) => {
+  },
+  // Plain text / code files - default for any unlisted extension.
+  _default: (file) => new Promise((resolve, reject) => {
     const r = new FileReader()
     r.onload  = e => resolve({ text: e.target.result || '', scanWarning: null })
     r.onerror = () => reject(new Error('Read error'))
     r.readAsText(file)
-  })
+  }),
+}
+EXTRACTORS.xls = EXTRACTORS.xlsx   // legacy spreadsheet alias
+
+async function extractText(file) {
+  const ext = getExt(file.name)
+  return (EXTRACTORS[ext] || EXTRACTORS._default)(file)
 }
 
 // =============================================================================
