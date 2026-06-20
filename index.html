@@ -4036,9 +4036,11 @@ function demoChat(id, title, ts, pinned, messages) {
 function maybeDemo() {
   if (!demoOn()) return false
 
+  // Fake embed creds so the Embed panel reads as configured (green dot, no
+  // "set embed key" banner) and upload->embed works via the mock — no real key.
   creds = { apiKey: 'demo', model: 'cce.claude-opus-4-6', maxTokens: 8192,
             systemPrompt: '', chunkSize: 800, topK: 5,
-            embedApiKey: '', embedModelId: '', classification: 'cce' }
+            embedApiKey: 'demo', embedModelId: 'cohere.embed-english-v3', classification: 'cce' }
   setHealth('ok', 'Demo')
   try { document.body.classList.remove('not-connected') } catch {}
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
