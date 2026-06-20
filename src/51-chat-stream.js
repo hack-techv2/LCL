@@ -1,4 +1,6 @@
 async function runStream(chat, payload, ragSources) {
+  // #demo: stream a canned reply through the same busy/stop UI; no network.
+  if (typeof demoOn === 'function' && demoOn()) { demoStream(chat, ragSources); return }
   payload.stream = true   // enable server-side streaming proxy
 
   const typingEl = appendTyping()
