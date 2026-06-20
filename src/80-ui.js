@@ -19,6 +19,28 @@ function fmt(text) {
 
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function escJs(s){ return esc(String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")) }
+// Minimal DOM builder for renderers (avoids string-template innerHTML + inline
+// onclick). mkEl('div',{class:'x',onclick:fn,title:'t'},[child|string|node]).
+// Strings -> text nodes (auto-escaped by the DOM). Named mkEl, not el, because
+// renderers use `el` as the container local. Use {html:'...'} for trusted markup.
+function mkEl(tag, attrs, children) {
+  const n = document.createElement(tag)
+  if (attrs) for (const k in attrs) {
+    const v = attrs[k]
+    if (v == null || v === false) continue
+    if (k === 'class') n.className = v
+    else if (k === 'html') n.innerHTML = v
+    else if (k.slice(0, 2) === 'on' && typeof v === 'function') n.addEventListener(k.slice(2), v)
+    else n.setAttribute(k, v)
+  }
+  const add = (c) => {
+    if (c == null || c === false) return
+    if (Array.isArray(c)) { c.forEach(add); return }
+    n.append(c.nodeType ? c : document.createTextNode(String(c)))
+  }
+  add(children)
+  return n
+}
 
 function fmtSz(b) {
   if (!b) return '0 B'
