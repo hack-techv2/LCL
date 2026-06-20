@@ -41,7 +41,7 @@ function saveEmbedKey() {
   // Mirror into D.settings so persist() also carries these to disk
   if (D.settings) { D.settings.embedApiKey = keyVal; D.settings.embedModelId = modelVal }
   const settingsBody = { apiKey: creds?.apiKey||'', modelId: creds?.model||'', maxTokens: creds?.maxTokens||8192, systemPrompt: creds?.systemPrompt||'', embedApiKey: keyVal, embedModelId: modelVal }
-  if (!(typeof demoOn === 'function' && demoOn())) { try { fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(settingsBody) }) } catch {} }
+  saveSettings(settingsBody)
   persist()
   document.getElementById('embed-key-banner')?.remove()
   toast('Embedding settings saved', 'ok')
@@ -62,10 +62,7 @@ async function testEmbedConnection() {
   try {
     // /api/embed (single-shot) returns plain JSON. /api/embed/batch is SSE
     // and would make resp.json() throw — that was the previous bug here.
-    const resp = await fetch('/api/embed', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ apiKey: keyVal, modelId: modelVal, input: 'test' })
-    })
+    const resp = await httpPost('/api/embed', { apiKey: keyVal, modelId: modelVal, input: 'test' })
     const data = await resp.json().catch(() => ({}))
     const vec = data.data?.[0]?.embedding || data.embedding
     if (resp.ok && Array.isArray(vec) && vec.length) {
