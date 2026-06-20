@@ -4,6 +4,47 @@ LCL CHANGELOG  —  v0.67d
 Released: 17 Jun 2026
 
 
+UI, settings & experimental-channel batch (20 Jun 2026, still v0.67d)
+--------------------------------------------------------------------
+Look & feel
+- Crisp dark/light theme refresh; accent-orange scrollbars across chat list,
+  skills, messages and the doc panel, plus a slim rounded scrollbar on the
+  Settings panel. Dev server now sends Cache-Control: no-store so rebuilds show
+  up on a normal reload (no hard-refresh needed).
+- Data classification shown after the model name in AI reply headers (e.g.
+  cce.claude-opus-4-6 (CCE/SN)). Neutral, higher-contrast code blocks both modes.
+
+Settings redesign
+- Settings reworked as cards across both tabs (Connection, Embedding, Retrieval,
+  Defaults, Updates, Account); inputs inset on the darker surface.
+- Max Tokens: preset pills (1K-32K) + an editable custom field.
+- RAG controls: full-width sliders stacked one per row, each with an editable,
+  slider-synced value field and min/max ticks; the slider fill now lines up with
+  the thumb at both ends.
+- In-chat skill chip shows the skill's title (matching the sidebar) not the id.
+
+Updates panel
+- Condensed Updates card: a single version line + status pill (no separate
+  "Version" header / "Installed" tile). Stable shows v0.67d -> v0.67e; the
+  experimental channel is identified by its build #hash. "tester" badge renamed
+  to "Experimental". The footer "new" badge sits below the version and is hidden
+  on the experimental channel.
+
+Experimental channel = on-disk file swap
+- Enabling Experimental snapshots the live build to index.html.stable /
+  server.txt.stable, then downloads + SHA-256-verifies + atomically swaps in the
+  alpha-branch build (staying on stable if the download fails).
+- Reverting pulls the latest stable release from GitHub and swaps it in, falling
+  back to the .stable backup when GitHub is unreachable; the backup is cleared
+  once back on stable.
+
+Misc
+- Comet easter egg: the version-badge comet rises and clashes with the top-bar
+  streak in the gap right of the title, then bursts.
+- #demo mode showcases the "update available" state with no GitHub calls (all
+  update actions are simulated in demo).
+
+
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
 ---------------------------------------------------------------------
 
