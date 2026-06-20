@@ -60,7 +60,7 @@
       <div class="sp-lbl">Defaults</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
       <div class="sf">
-        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="32768" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
         <div class="sl-ticks"><span>64</span><span>32768</span></div>
       </div>
