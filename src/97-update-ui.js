@@ -8,46 +8,49 @@ function renderUpdateSettings(){
   const u = lclUpdate
   const vb = document.getElementById('ver-badge')
   const cur = u.current || (vb ? vb.textContent.replace(/^v/i,'') : '')
+  const v = cur ? ('v'+esc(cur)) : '\u2014'
   const pill = (cls,txt)=> '<span class="upd-pill '+cls+'">'+txt+'</span>'
-  const tile = (k,val,col)=> '<div class="upd-metric"><div class="upd-mk">'+k+'</div><div class="upd-mv"'+(col?(' style="color:'+col+'"'):'')+'>'+val+'</div></div>'
-  const top  = (lbl,p)=> '<div class="upd-top"><span style="font-size:12px;color:var(--tx2)">'+lbl+'</span>'+p+'</div>'
+  // Condensed: a single version line + status pill (no separate "Version" header
+  // or "Installed" tile), then the two toggle rows.
+  const verRow = (verHtml,p)=> '<div class="upd-top"><span class="upd-ver">'+verHtml+'</span>'+p+'</div>'
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
-  const testerRow = ()=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Try alpha updates</label><span style="font-size:11px;color:var(--tx3)">tester</span></div>'
-  if (!u.checked){ body.innerHTML = top('Updates', pill('neutral','Not checked')) + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>'); return }
+  const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Experimental updates</label><span class="upd-exp">Experimental</span></div>'
+
+  if (!u.checked){
+    body.innerHTML = verRow(v, pill('neutral','Not checked'))
+      + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
+      + (alphaUnlocked() ? expRow(u.channel === 'alpha') : '')
+    return
+  }
+
+  // ALPHA channel — experimental builds are identified by a commit hash, not a
+  // version number, so the line leads with #hash (not vX.Y).
   if (u.channel === 'alpha'){
-    if (u.error){
-      body.innerHTML = top('Channel', pill('err','Alpha · check failed'))
-        + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
-        + '<div class="upd-row"><span style="font-size:11px;color:var(--tx3)">tracking @'+esc(u.ref||'alpha')+'</span><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Retry</button><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></span></div>'
-      return
-    }
-    if (u.applied){
-      const ap = u.applied
-      const note = (ap.refreshNeeded?'Reload for new index':'') + (ap.refreshNeeded&&ap.restartNeeded?' · ':'') + (ap.restartNeeded?'restart Node for new server':'')
-      body.innerHTML = top('Channel', pill('ok','Alpha · updated'))
-        + '<div style="font-size:12px;color:var(--ok);margin-top:11px">Downloaded &amp; verified '+esc((ap.applied||[]).join(', ')||'(already current)')+'</div>'
-        + (note ? '<div style="font-size:11px;color:var(--pin);margin-top:6px">'+note+'</div>' : '')
-        + '<div class="upd-row">'+(ap.refreshNeeded?'<button class="upd-btn pri" onclick="location.reload()">Reload now</button>':'<span></span>')+'<button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
-      return
-    }
-    // Compact one-liner: Channel | Alpha · status · build/changed
-    const sPill = u.inSync ? pill('ok','Up to date') : pill('warn','Update available')
-    const buildBit = u.inSync
-      ? '<span class="upd-build">'+esc(u.hash||'—')+'</span>'
-      : '<span class="upd-build" title="'+esc((u.changed||[]).join(', '))+'">'+esc((u.changed||[]).join(', ')||'—')+'</span>'
-    body.innerHTML = top('Channel', '<span class="upd-line">'+pill('alpha','Alpha')+sPill+buildBit+'</span>')
-      + '<div class="upd-row"><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Check updates</button>'+(u.inSync?'':'<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>')+'</span><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
+    const h = u.hash ? ('#'+esc(u.hash)) : 'alpha'
+    let p, ver = h, primary = ''
+    if (u.error){ p = pill('err','Check failed'); ver = '\u2014' }
+    else if (u.applied){ p = pill('ok','Updated'); if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
+    else if (u.inSync){ p = pill('ok','Up to date') }
+    else { p = pill('warn','Update available'); ver = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>'; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
+    body.innerHTML = verRow(ver, p)
+      + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
+      + expRow(true)
+      + (u.error ? '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>' : '')
     return
   }
+
+  // STABLE channel
   if (u.error){
-    body.innerHTML = top('Version', pill('err','Check failed'))
-      + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
+    body.innerHTML = verRow(v, pill('err','Check failed'))
       + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Retry</button>')
+      + (alphaUnlocked() ? expRow(false) : '')
+      + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
     return
   }
-  body.innerHTML = top('Version', u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
-    + '<div class="upd-mets">'+tile('Installed', cur?('v'+esc(cur)):'—')+tile('Latest', u.latest?('v'+esc(u.latest)):'—', u.newer?'var(--ok)':'var(--tx)')+'</div>'
-    + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>') + (alphaUnlocked() ? testerRow() : '')
+  const verHtml = u.newer ? (v + ' <span class="upd-arrow">&rarr;</span> <span class="upd-new">v'+esc(u.latest||'')+'</span>') : v
+  body.innerHTML = verRow(verHtml, u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
+    + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
+    + (alphaUnlocked() ? expRow(false) : '')
 }
 
 function openUpdateDialog(){
@@ -79,6 +82,7 @@ function openUpdateDialog(){
 function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
 
 async function applyUpdate(){
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
   const btn = document.getElementById('update-apply-btn')
   const out = document.getElementById('update-result')
   if (btn){ btn.disabled=true; btn.textContent='Working…' }
