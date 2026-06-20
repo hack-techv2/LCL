@@ -11,19 +11,11 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   retry5xxCount++
   const delays = (typeof RETRY_STEPS_MS !== 'undefined') ? RETRY_STEPS_MS : [10000, 20000, 60000]
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
-  const retryAt = Date.now() + delayMs
-
   const statusLabels = { 500: 'Server error', 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
-  const statusLabel = statusLabels[status] || 'Server error'   // any other 5xx: show the number, still retry
+  const statusLabel = statusLabels[status] || 'Server error'
   const hint = status === 504
     ? 'The AI took too long to respond. If it keeps failing, try a shorter request.'
     : 'The AI service is temporarily unavailable.'
-
-  const bubble = appendMsg('ai', '', null, ragSources)
-  const bodyEl = bubble.querySelector('.msg-body')
-  const acts   = bubble.querySelector('.msg-acts')
-  if (acts) acts.style.display = 'none'
-
   const pad = (n) => String(n).padStart(2, '0')
   const formatCountdown = (ms) => {
     if (ms <= 0) return '0'
@@ -31,40 +23,20 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
     if (s >= 60) return pad(Math.floor(s/60)) + ':' + pad(s%60)
     return s + 's'
   }
-
-  const render = () => {
-    const remain = retryAt - Date.now()
-    bodyEl.innerHTML = statusBox('err', 'Error ' + status + ': ' + statusLabel,
+  scheduleRetry({
+    ragSources,
+    delayMs,
+    intervalMs: 500,
+    render: (bodyEl, remain) => { bodyEl.innerHTML = statusBox('err', 'Error ' + status + ': ' + statusLabel,
       '<div style="margin-bottom:4px">' + hint + '</div>' +
       '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(remain) + '</strong>' +
       '&nbsp;<span style="font-size:11px;opacity:.7">(attempt ' + retry5xxCount + ' of 3)</span></div>',
-      { icon: 'err', cancel: 'cancelRateLimitRetry()' })
-  }
-
-  render()
-  setHealth('warn', 'Retrying (' + retry5xxCount + '/3)')
-  const intervalId = setInterval(render, 500)
-
-  const timerId = setTimeout(() => {
-    clearInterval(intervalId)
-    try { bubble.remove() } catch {}
-    pendingRetry = null
-    setHealth('warn', 'Retrying')
-    runStream(chat, payload, ragSources)
-  }, delayMs)
-
-  pendingRetry = {
-    cancel() {
-      clearTimeout(timerId)
-      clearInterval(intervalId)
-      retry5xxCount = 0
-      bodyEl.innerHTML =
-        '<div style="font-size:12px;color:var(--tx2);padding:4px 0">Retry cancelled. ' +
-        '<em style="opacity:.7">Error ' + status + ': ' + statusLabel + '</em></div>'
-      pendingRetry = null
-      setHealth('err', 'Error ' + status)
-    }
-  }
+      { icon: 'err', cancel: 'cancelRateLimitRetry()' }) },
+    onFire: () => runStream(chat, payload, ragSources),
+    onCancel: () => { retry5xxCount = 0 },
+    onCancelHtml: () => '<div style="font-size:12px;color:var(--tx2);padding:4px 0">Retry cancelled. <em style="opacity:.7">Error ' + status + ': ' + statusLabel + '</em></div>',
+    healthWait: ['warn', 'Retrying (' + retry5xxCount + '/3)'], healthRetry: ['warn', 'Retrying'], healthCancel: ['err', 'Error ' + status],
+  })
 }
 
 function updateSendBtn() {
