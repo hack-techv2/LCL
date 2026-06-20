@@ -143,6 +143,12 @@ function maybeDemo() {
       { text: 'Q2 revenue rose 12% QoQ driven by cloud.', embHash: 'demo0' },
       { text: 'Two risks flagged: supply chain and FX exposure.', embHash: 'demo1' }
     ], status: 'ready', addedAt: now
+  }, {
+    id: 'demo_doc2', name: 'policy-handbook.docx', size: 96000,
+    content: '', chunks: [], status: 'embedding', addedAt: now
+  }, {
+    id: 'demo_doc3', name: 'scanned-invoice.pdf', size: 421000,
+    content: '', chunks: [], status: 'error', addedAt: now
   }]
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
@@ -192,8 +198,11 @@ function maybeDemo() {
   }
 
   // Demo: show the "update available" state so the update UI is visible.
-  lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e',
-                newer:true, notes:'### v0.67e\n\n- Condensed updates panel\n- New token presets\n- Comet easter egg', html_url:'',
+  // Demo pretends you're one version behind so the upgrade panel shows a real
+  // pending update (installed v0.67c -> latest v0.67d).
+  const _vb = document.getElementById('ver-badge'); if (_vb) _vb.textContent = 'v0.67c'
+  lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d',
+                newer:true, notes:'### v0.67d\n\n- Card-based settings\n- Token presets + editable RAG sliders\n- Condensed updates panel\n- Comet easter egg', html_url:'',
                 error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
   if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
@@ -219,13 +228,47 @@ function demoSend(text, input) {
   input.value = ''; if (typeof autoResize === 'function') autoResize(input)
   const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
   appendMsg('user', text, null, null, [])
-  const typing = appendTyping()
-  setTimeout(() => {
-    try { typing.remove() } catch {}
-    const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
-    chat.messages.push({ role: 'assistant', content: reply, ts: Date.now() })
-    appendMsg('ai', reply, null, null, [])
-  }, 600)
+  demoStream(chat)
+}
+
+// Faithful offline copy of runStream's UX: typing indicator -> busy + Stop
+// button -> token-by-token reply -> Stop/Regenerate/Edit all work. inflightCtl
+// is a stub so the real stopStreaming() can cancel the demo stream.
+function demoStream(chat) {
+  const typingEl = appendTyping()
+  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
+  if (typeof setHealth === 'function') setHealth('warn', 'Thinking')
+  let stopped = false
+  inflightCtl = { abort() { stopped = true } }
+  const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
+  const tokens = reply.match(/\S+\s*/g) || [reply]
+  let i = 0, acc = '', msgObj = null, bubble = null
+  const swap = () => {
+    try { typingEl.remove() } catch {}
+    msgObj = { role: 'assistant', content: '', ts: Date.now() }
+    chat.messages.push(msgObj)
+    bubble = appendMsg('ai', '', null, null)
+  }
+  const done = (wasStopped) => {
+    busy = false; inflightCtl = null; if (typeof updateSendBtn === 'function') updateSendBtn()
+    if (wasStopped) {
+      if (!msgObj) { try { typingEl.remove() } catch {}; chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true }); appendMsg('ai', '(stopped)', null, null) }
+      else { msgObj.stopped = true; msgObj.content = acc + (acc ? '\n\n' : '') + '(stopped)'; const b = bubble.querySelector('.msg-body'); if (b) b.innerHTML = fmt(msgObj.content) }
+      if (typeof setHealth === 'function') setHealth('ok', 'Stopped')
+    } else if (typeof setHealth === 'function') setHealth('ok', 'Demo')
+    chat.updatedAt = Date.now(); if (typeof renderChatList === 'function') renderChatList()
+  }
+  const tick = () => {
+    if (stopped) { done(true); return }
+    if (!msgObj) swap()
+    if (i < tokens.length) {
+      acc += tokens[i++]; msgObj.content = acc; bubble.dataset.raw = acc
+      const b = bubble.querySelector('.msg-body'); if (b) b.innerHTML = fmt(acc)
+      const m = document.getElementById('messages'); if (m) m.scrollTop = m.scrollHeight
+      setTimeout(tick, 38)
+    } else { done(false) }
+  }
+  setTimeout(tick, 350)
 }
 
 // Derive a skill title from its body (first markdown H1) or its id slug. Used by
