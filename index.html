@@ -1480,9 +1480,7 @@ async function disconnect() {
   toast('Disconnected', 'ok')
 }
 
-function connectedLabel() {
-  return creds ? (creds.model || 'Connected') : 'Not connected'
-}
+// connectedLabel() is defined in 70-render.js (chat+embed vs chat only).
 
 function openConnect() {
   if (typeof initClassification === 'function') initClassification('cfg', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce')
@@ -2893,8 +2891,8 @@ function renderTopbar() {
 function connectedLabel() {
   if (!creds) return 'Idle'
   return (creds.embedApiKey && creds.embedModelId)
-    ? 'Connected · chat + embed'
-    : 'Connected · chat only'
+    ? 'Chat + embed'
+    : 'Chat only'
 }
 
 // SECTION: 71-render-chatlist.js
@@ -4643,7 +4641,7 @@ function alphaUnlocked(){
 function unlockAlpha(){
   if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = true }
   else { try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {} }
-  if (typeof toast === 'function') toast('Tester options unlocked - Open Settings','ok')
+  if (typeof toast === 'function') toast('Developer mode enabled','ok')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
