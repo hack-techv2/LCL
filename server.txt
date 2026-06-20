@@ -1406,21 +1406,19 @@ async function alphaStatus() {
 function ulog(m) { console.log('  ' + 'Updates'.padEnd(23) + '->  ' + m) }
 function elog(m) { console.log('  ' + 'Embedding'.padEnd(23) + '->  ' + m) }
 async function alphaBootstrap() {
-  ulog('alpha: checking @' + ALPHA_REF + ' ...')
   const cs = await ghFetchFile(ALPHA_REF, 'checksums.txt')
-  if (cs.statusCode !== 200) { ulog('@' + ALPHA_REF + ' checksums HTTP ' + cs.statusCode + (cs.msg ? ' (' + cs.msg + ')' : '')); return }
+  if (cs.statusCode !== 200) { ulog('alpha: check failed - checksums HTTP ' + cs.statusCode + (cs.msg ? ' (' + cs.msg + ')' : '')); return }
   const exp = parseChecksums(cs.buf.toString('utf8'))
-  // Per-file hash compare — log clearly which file differs.
+  // Per-file hash compare. Stay quiet when up to date — only files that actually
+  // differ are logged (below), so the routine "in sync" case is a single line.
   const changed = []
   for (const f of UPDATE_FILES) {
-    if (!exp[f]) { ulog('no checksum for ' + f + ' on @' + ALPHA_REF + ' - skipping'); return }
+    if (!exp[f]) { ulog('alpha: no checksum for ' + f + ' - skipping'); return }
     let cur = null; try { cur = sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) } catch {}
-    const diff = cur !== exp[f]
-    if (diff) changed.push(f)
-    ulog(f.padEnd(11) + (diff ? 'changed    ' + (cur ? cur.slice(0, 7) : 'missing') + ' -> ' + exp[f].slice(0, 7)
-                              : 'up to date ' + exp[f].slice(0, 7)))
+    if (cur !== exp[f]) changed.push(f)
   }
-  if (!changed.length) { ulog('alpha: in sync, nothing to do'); return }
+  if (!changed.length) { ulog('alpha: in sync (v' + APP_VERSION + ')'); return }
+  ulog('alpha: updating ' + changed.join(', '))
   backupStable()   // snapshot current stable files before overwriting (offline fallback)
   // Download + verify ONLY the changed file(s) (the SHA-256 is the integrity gate;
   // build.js already syntax-checked before upload).
@@ -1691,11 +1689,14 @@ function startupLog() {
 }
 
 async function boot() {
-  if (readChannel() === 'alpha') {
-    try { await alphaBootstrap() }
-    catch (e) { console.log('  Alpha update           ->  skipped (' + e.message + ')') }
-  }
-  server.listen(PORT, BIND_HOST, startupLog)
+  // Print the startup banner first, then run the alpha check so its lines appear
+  // beneath the banner rather than scrolling above it.
+  server.listen(PORT, BIND_HOST, () => {
+    startupLog()
+    if (readChannel() === 'alpha') {
+      alphaBootstrap().catch(e => ulog('alpha: check skipped (' + e.message + ')'))
+    }
+  })
 }
 boot()
 
