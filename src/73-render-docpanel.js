@@ -9,9 +9,9 @@ function renderDocPanel() {
   if (!docs.length) { el.innerHTML='<div class="dp-empty">No files attached.<br>Upload files to use as context for this chat.</div>'; return }
   el.innerHTML = docs.map(d=>`
     <div class="doc-card">
-      <div class="doc-ext">${d.name.split('.').pop().slice(0,4).toUpperCase()}</div>
+      <div class="doc-ext">${esc(d.name.split('.').pop().slice(0,4).toUpperCase())}</div>
       <div class="doc-inf">
-        <div class="doc-name">${d.name}</div>
+        <div class="doc-name">${esc(d.name)}</div>
         <div class="doc-sz">${fmtSz(d.size)} * ${d.chunks?.length||0} chunks</div>
         <span class="doc-st ${d.status==='ready'?'ready':d.status==='error'?'error':'pending'}">${d.status||'pending'}</span>
       </div>
