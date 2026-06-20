@@ -1322,6 +1322,12 @@ async function init() {
   // Demo mode (?demo=1) seeds sample content and skips all network work.
   if (typeof maybeDemo === 'function' && maybeDemo()) return
   await loadData()
+  // Scrub any leaked #demo sentinel ('demo') from saved settings so a prior demo
+  // visit never looks connected or "embeddings ready" in normal mode.
+  if (D.settings) {
+    if (D.settings.apiKey === 'demo') D.settings.apiKey = ''
+    if (D.settings.embedApiKey === 'demo') D.settings.embedApiKey = ''
+  }
   // Try to auto-connect from saved settings
   try {
     const r = await fetch('/api/config')
@@ -4192,6 +4198,17 @@ function demoChat(id, title, ts, pinned, messages) {
 
 // Called at the top of init(); returns true if it took over the boot so init()
 // skips all network work.
+// Toggling the #demo hash on an already-loaded page only changes the fragment —
+// the browser doesn't reload, so init()/maybeDemo() never re-run. Reload when we
+// cross the demo boundary so entering or leaving #demo actually (de)activates it.
+;(function () {
+  let wasDemo = location.hash === '#demo'
+  window.addEventListener('hashchange', () => {
+    const isDemo = location.hash === '#demo'
+    if (isDemo !== wasDemo) { wasDemo = isDemo; location.reload() }
+  })
+})()
+
 function maybeDemo() {
   if (!demoOn()) return false
 
