@@ -1645,6 +1645,25 @@ function shutdown(sig) {
 }
 process.on('SIGINT', () => shutdown('SIGINT'))
 process.on('SIGTERM', () => shutdown('SIGTERM'))
+// The alpha auto-restart child is spawned (spawnSync, inherited stdio) from the
+// parent REPL, so it inherits the REPL's raw-mode TTY. In raw mode Ctrl+C is a
+// keystroke, not a SIGINT, and the child isn't a REPL — so it never stops, while
+// the parent is blocked in spawnSync (which ignores SIGINT). Restore cooked mode
+// so Ctrl+C raises a real SIGINT (handled above); the child exiting unblocks the
+// parent. A keypress watch is kept as a fallback. Scoped to the spawned child
+// (LCL_ALPHA_BOOTED) so the parent REPL's own input handling is left untouched.
+if (process.env.LCL_ALPHA_BOOTED === '1') {
+  try {
+    const stdin = process.stdin
+    if (stdin && stdin.isTTY) {
+      try { if (stdin.isRaw) stdin.setRawMode(false) } catch {}
+      require('readline').emitKeypressEvents(stdin)
+      stdin.on('keypress', (ch, key) => {
+        if (key && key.ctrl && (key.name === 'c' || key.name === 'd')) shutdown('Ctrl+' + key.name.toUpperCase())
+      })
+    }
+  } catch {}
+}
 
 function startupLog() {
   console.log('')
