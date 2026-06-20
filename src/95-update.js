@@ -4,6 +4,11 @@
 // =============================================================================
 let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
 
+// Normalize any partial update payload into the full lclUpdate shape so every
+// assignment site carries the same keys (the error path used to drop most of
+// them, and `applied` could go stale). Always resets `applied` unless provided.
+function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+
 function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
 
@@ -12,10 +17,8 @@ async function checkForUpdate(manual){
   try{
     const r = await fetch('/api/update/check')
     const d = await r.json()
-    lclUpdate = { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'',
-                  newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, sameAsStable:!!d.sameAsStable,
-                  ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'' }
-  }catch(e){ lclUpdate = { checked:true, channel:'stable', error:e.message } }
+    lclUpdate = makeUpdateState(d)
+  }catch(e){ lclUpdate = makeUpdateState({ channel:'stable', error:e.message }) }
   renderUpdateBadge(); renderUpdateSettings()
   if (manual){
     if (lclUpdate.error) toast('Update check failed: '+lclUpdate.error,'err')
