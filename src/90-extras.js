@@ -47,76 +47,133 @@ function eggClick(e) {
 }
 
 function launchComet(startX, startY) {
-  // Create full-screen canvas overlay
-  const canvas = document.createElement('canvas')
-  canvas.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none'
-  canvas.width  = window.innerWidth
-  canvas.height = window.innerHeight
-  document.body.appendChild(canvas)
-  const ctx = canvas.getContext('2d')
+  // A horizontal streak sweeps left->right along the top bar, BEHIND the bar's
+  // content (logo/title/controls) exactly like the ambient 10s streak. A moment
+  // later the version-badge comet (the click) rises up from below, and the two
+  // clash in the open gap between the LCL title and the right-side controls,
+  // then burst. The ambient top-bar streak is left running.
+  const tb  = document.getElementById('topbar')
+  const tbr = tb ? tb.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: 48 }
+  const topY = tbr.top + tbr.height / 2
 
-  const duration = 3000  // ms
-  const start    = performance.now()
+  // Clash point: midway between the LCL title's right edge and the right-side
+  // controls (the Demo pill / Search), i.e. the open gap to the right of LCL.
+  const brand = document.querySelector('.tb-brand-name')
+  const right = document.querySelector('.tb-right')
+  const br = brand ? brand.getBoundingClientRect() : null
+  const rr = right ? right.getBoundingClientRect() : null
+  const clashX = (br && rr) ? (br.right + rr.left) / 2 : window.innerWidth * 0.62
 
-  // Travel vector: from click point toward top-right, far enough to exit viewport
-  const dist  = Math.max(canvas.width, canvas.height) * 1.6
-  const angle = -Math.PI / 4   // 45° toward top-right
-  const endX  = startX + Math.cos(angle) * dist
-  const endY  = startY + Math.sin(angle) * dist
+  // BACK layer: a canvas inside .tb-comets (z-index 0, clipped to the bar) so the
+  // streak is occluded by the bar's opaque content plates, like the ambient one.
+  const host  = (tb && tb.querySelector('.tb-comets')) || tb || document.body
+  const cBack = document.createElement('canvas')
+  cBack.style.cssText = 'position:absolute;inset:0;pointer-events:none'
+  cBack.width  = Math.round(tbr.width)
+  cBack.height = Math.round(tbr.height)
+  host.appendChild(cBack)
+  const ctxB = cBack.getContext('2d')
+  const bX0 = -170, bY = tbr.height / 2, bMx = clashX - tbr.left   // back-canvas local coords
 
-  // Trail history
-  const trail = []
-  const TRAIL_LEN = 38
+  // FRONT layer: a full-screen overlay for the rising badge comet and the burst.
+  const cFront = document.createElement('canvas')
+  cFront.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none'
+  cFront.width  = window.innerWidth
+  cFront.height = window.innerHeight
+  document.body.appendChild(cFront)
+  const ctxF = cFront.getContext('2d')
+
+  const A0 = { x: startX, y: startY }
+  const Mx = clashX, My = topY
+  // The horizontal streak cruises at the SAME speed as the ambient top-bar comet
+  // (derived from the tbStreak keyframes: -180px -> 110vw over 17% of 30s = 5.1s).
+  // The badge comet then travels faster so it arrives at the clash at the same time.
+  const ambientSpeed = (1.10 * window.innerWidth + 180) / 5100   // px per ms
+  const IMPACT = (bMx - bX0) / ambientSpeed                      // streak reaches the clash at ambient pace
+  const D_A    = 900                                             // badge-comet travel time (sped up)
+  const startA = Math.max(0, IMPACT - D_A)                       // launches later, fast enough to meet the streak
+  const BURST  = 950
+  const start = performance.now()
+  const trailA = [], trailB = [], TLEN = 34
+  let particles = null
+
+  const drawTail = (ctx, tr, wMax = 4) => {
+    for (let i = 0; i < tr.length - 1; i++) {
+      const a = i / tr.length
+      ctx.beginPath()
+      ctx.moveTo(tr[i].x, tr[i].y); ctx.lineTo(tr[i+1].x, tr[i+1].y)
+      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
+      ctx.lineWidth = a * wMax; ctx.lineCap = 'round'; ctx.stroke()
+    }
+  }
+  const drawHead = (ctx, x, y, glowR = 9, coreR = 3) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, glowR)
+    g.addColorStop(0, 'rgba(255,255,235,1)'); g.addColorStop(0.3, 'rgba(245,124,52,0.92)'); g.addColorStop(1, 'rgba(232,97,10,0)')
+    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill()
+    ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill()
+  }
 
   function draw(now) {
-    const t    = Math.min((now - start) / duration, 1)
-    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t  // ease in-out
+    const el = now - start
+    ctxB.clearRect(0, 0, cBack.width, cBack.height)
+    ctxF.clearRect(0, 0, cFront.width, cFront.height)
 
-    const x = startX + (endX - startX) * ease
-    const y = startY + (endY - startY) * ease
-
-    trail.push({ x, y })
-    if (trail.length > TRAIL_LEN) trail.shift()
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Draw tail segments from oldest to newest
-    for (let i = 0; i < trail.length - 1; i++) {
-      const a = i / trail.length        // 0 = oldest, 1 = newest
-      const p = trail[i]
-      const width = a * 6
-
-      ctx.beginPath()
-      ctx.moveTo(trail[i].x, trail[i].y)
-      ctx.lineTo(trail[i+1].x, trail[i+1].y)
-      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
-      ctx.lineWidth   = width
-      ctx.lineCap     = 'round'
-      ctx.stroke()
-    }
-
-    // Glow head
-    if (trail.length) {
-      const grd = ctx.createRadialGradient(x, y, 0, x, y, 18)
-      grd.addColorStop(0,   'rgba(255, 255, 220, 1)')
-      grd.addColorStop(0.3, 'rgba(245, 124, 52, 0.92)')
-      grd.addColorStop(1,   'rgba(232, 97, 10, 0)')
-      ctx.beginPath()
-      ctx.arc(x, y, 18, 0, Math.PI * 2)
-      ctx.fillStyle = grd
-      ctx.fill()
-
-      // Bright core
-      ctx.beginPath()
-      ctx.arc(x, y, 4, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(255,255,255,0.95)'
-      ctx.fill()
-    }
-
-    if (t < 1) {
+    if (el < IMPACT) {
+      // Horizontal streak B (behind the bar content), linear like the ambient one.
+      const eb = el / IMPACT
+      const bx = bX0 + (bMx - bX0) * eb
+      trailB.push({ x: bx, y: bY }); if (trailB.length > 18) trailB.shift()
+      drawTail(ctxB, trailB); drawHead(ctxB, bx, bY)
+      // Badge comet A (front), launches later, eases in; both reach the gap together.
+      if (el >= startA) {
+        const ta = (el - startA) / (IMPACT - startA), ea = ta * ta
+        const ax = A0.x + (Mx - A0.x) * ea, ay = A0.y + (My - A0.y) * ea
+        trailA.push({ x: ax, y: ay }); if (trailA.length > 18) trailA.shift()
+        drawTail(ctxF, trailA); drawHead(ctxF, ax, ay)
+      }
+      requestAnimationFrame(draw)
+    } else if (el < IMPACT + BURST) {
+      // Burst at the clash point (front layer). The gap has little to occlude it.
+      if (!particles) {
+        particles = []
+        const N = 40
+        for (let i = 0; i < N; i++) {
+          const ang = (i / N) * Math.PI * 2
+          const sp  = (i % 2 === 0) ? 9 : 5.5
+          particles.push({ x: Mx, y: My, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: (i % 2 === 0) ? 2.6 : 1.8 })
+        }
+      }
+      const b = (el - IMPACT) / BURST
+      const fade = 1 - b
+      const bloom = ctxF.createRadialGradient(Mx, My, 0, Mx, My, 44 + b * 130)
+      bloom.addColorStop(0,   `rgba(255,250,235,${fade * 0.9})`)
+      bloom.addColorStop(0.4, `rgba(255,170,80,${fade * 0.5})`)
+      bloom.addColorStop(1,   'rgba(232,97,10,0)')
+      ctxF.beginPath(); ctxF.arc(Mx, My, 44 + b * 130, 0, Math.PI*2); ctxF.fillStyle = bloom; ctxF.fill()
+      for (let k = 0; k < 3; k++) {
+        const rb = b - k * 0.12
+        if (rb <= 0) continue
+        ctxF.beginPath(); ctxF.arc(Mx, My, 8 + rb * 165, 0, Math.PI*2)
+        ctxF.strokeStyle = `rgba(255,${180 - k*30},${100 - k*20},${(1 - rb) * 0.55})`
+        ctxF.lineWidth = 3 - k; ctxF.stroke()
+      }
+      if (b < 0.28) {
+        const f = (0.28 - b) / 0.28
+        ctxF.beginPath(); ctxF.arc(Mx, My, f * 30, 0, Math.PI*2)
+        ctxF.fillStyle = `rgba(255,255,255,${f * 0.95})`; ctxF.fill()
+      }
+      for (const p of particles) {
+        const px = p.x, py = p.y
+        p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.vx *= 0.985; p.vy *= 0.985
+        ctxF.beginPath(); ctxF.moveTo(px, py); ctxF.lineTo(p.x, p.y)
+        ctxF.strokeStyle = `rgba(255, ${150 + Math.floor(fade * 90)}, 70, ${fade * 0.9})`
+        ctxF.lineWidth = p.r * fade; ctxF.lineCap = 'round'; ctxF.stroke()
+        ctxF.beginPath(); ctxF.arc(p.x, p.y, p.r * fade, 0, Math.PI*2)
+        ctxF.fillStyle = `rgba(255,235,190,${fade * 0.9})`; ctxF.fill()
+      }
       requestAnimationFrame(draw)
     } else {
-      canvas.remove()
+      cBack.remove(); cFront.remove()
       unlockSmiley()
     }
   }
