@@ -34,7 +34,7 @@ function renderUpdateSettings(){
     const h = u.hash ? ('#'+esc(u.hash)) : 'alpha'
     const when = u.installedAt ? ' <span class="upd-when">\u00b7 updated '+esc(fmtUpdated(u.installedAt))+'</span>' : ''
     let p, build, primary = ''
-    if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
+    if (u.error){ p = pill('err','Check failed'); build = (u.hash ? '#'+esc(u.hash) : '\u2014') + when }
     else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
     else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
     else { p = pill('warn','Update available'); build = '<span class="upd-sub">'+(u.changed||[]).map(esc).join(', ')+' changed</span>'
