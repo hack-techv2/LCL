@@ -86,6 +86,10 @@ Misc
   restarts on demand.
 - REPL cosmetics: server.txt now exports a short status string so `require()`
   echoes a readable line instead of a bare {}.
+- Startup logs tidied: the alpha update check prints below the main banner (not
+  above it) and stays quiet when up to date — the routine "checking / index.html
+  up to date / server.txt up to date / in sync" chatter collapses to a single
+  "alpha: in sync (vX)" line; only files that actually change are listed.
 
 
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
