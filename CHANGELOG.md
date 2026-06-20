@@ -45,6 +45,23 @@ Update channel / flow
 - relockDemoAlpha() was referenced by demo reset but undefined on alpha (the branch
   would not pass build.js's undefined-fn scan); now defined in 98-update-channel.
 
+Registries & further de-duplication (R5/R8/R9/R10)
+- Model tiers are now driven by the CLS registry: inferTier + classification
+  validation/UI iterate Object.keys(CLS), so adding a tier is a CLS/MODEL_TIERS/
+  EMBED_TIERS entry (+ a .seg-btn.on-<tier> CSS rule) - no logic edits.
+- File extraction is a registry: EXTRACTORS[ext] -> async extractor (pdf/docx/
+  xlsx/_default). Adding a file type is one entry. Scan thresholds use CFG.
+- scheduleRetry(): one helper for the 429 + 5xx transient bubble/countdown/auto-
+  retry/cancel (was triplicated across 52 + 53).
+- mkEl() DOM builder added; renderDocPanel rebuilt with it + addEventListener
+  (no inline onclick; text auto-escaped by the DOM). Sidebar/message renderers
+  left on the existing escJs-safe approach by design.
+- Server: leveled logger - per-request payload/header/body dumps are DEBUG-only
+  (LCL_LOG=debug); a ROUTES table replaces the request-dispatch if-ladder.
+- NOT done by design: folding the 4 update-swap impls into applyRef (R4) - too
+  risky to re-touch the just-stabilised updater with no demo validation; and the
+  full DOM rewrite of the SVG-heavy sidebar/message renderers (XSS already fixed).
+
 De-duplication & internals
 - New src/00-config.js: central CFG constants (token caps, RAG/chunk defaults, doc
   full-text limit, OCR thresholds) - replaces scattered magic numbers. Build is now
