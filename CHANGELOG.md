@@ -9,8 +9,9 @@ UI, settings & experimental-channel batch (20 Jun 2026, still v0.67d)
 Look & feel
 - Crisp dark/light theme refresh; accent-orange scrollbars across chat list,
   skills, messages and the doc panel, plus a slim rounded scrollbar on the
-  Settings panel. Dev server now sends Cache-Control: no-store so rebuilds show
-  up on a normal reload (no hard-refresh needed).
+  Settings panel. Dev server now serves with an ETag + Cache-Control: no-cache
+  (revalidate-on-request): unchanged files return 304 from cache, but any
+  rebuild is picked up on a normal reload — no hard-refresh needed.
 - Data classification shown after the model name in AI reply headers (e.g.
   cce.claude-opus-4-6 (CCE/SN)). Neutral, higher-contrast code blocks both modes.
 
@@ -51,6 +52,17 @@ Misc
   centred thumb; RAG (chunk size / Top-K) and Max Tokens use editable,
   slider-synced value fields; footer version / "new" / ALPHA badges unified in
   size; "Alpha updates" toggle with an "Experimental" tag (alpha never shows "new").
+- Caching switched from no-store to ETag + no-cache revalidation. The dev server
+  hashes each response (sha1) and answers If-None-Match with 304 when unchanged,
+  so files are cached but a rebuild is always served fresh. (no-store could not be
+  scoped to demo only — the #demo hash never reaches the server.)
+- #demo isolation hardened: demo no longer writes the 'demo' sentinel creds to
+  lcl_data.json, the sentinel is ignored/scrubbed on load, and the "Embeddings
+  ready" empty-state no longer leaks demo embed config into normal mode. Toggling
+  #demo in the address bar now reloads (a hashchange watcher), so demo activates
+  and clears reliably.
+- Setup guide refreshed with real in-app screenshots (open localhost, Connect
+  modal, connected/ready view).
 
 
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
