@@ -27,58 +27,58 @@
   --display: 'Space Grotesk', 'Inter', sans-serif;
 }
 [data-theme="dark"], :root {
-  --bg:     #0d0b0a;
-  --bg2:    #1a1613;
-  --bg3:    #241f1b;
-  --bg4:    #302a25;
-  --bdr:    #3a322c;
-  --bdr2:   #4f463e;
-  --tx:     #f8f5f1;
-  --tx2:    #d3cabf;
-  --tx3:    #9c9389;
-  --acbg:   #2e1606;
+  --bg:     #07080c;
+  --bg2:    #14161e;
+  --bg3:    #1e212b;
+  --bg4:    #2a2f3c;
+  --bdr:    #353c4b;
+  --bdr2:   #525b6e;
+  --tx:     #f6f9fd;
+  --tx2:    #ccd5e3;
+  --tx3:    #99a3b4;
+  --acbg:   #2e1500;
   --pinbg:  #2a2000;
-  --redbg:  #2a0f0c;
+  --redbg:  #2a0f0f;
   --info:   #7dd3fc;
   --infobg: #0c2330;
   --ok:     #4ade9f;
   --okbg:   #0d2320;
-  --pre-bg: #0a0807;
-  --code-c: #ece7e1;
+  --pre-bg: #06080d;
+  --code-c: #e6edf5;
   --modal-shadow: rgba(0,0,0,.7);
-  --sidebar-bg:   rgba(22,18,15,.7);
-  --focus-ring:   rgba(232,97,10,.24);
-  --body-gradient: radial-gradient(at 0% 0%, #2c170880 0%, transparent 55%),
-                   radial-gradient(at 100% 100%, #20161080 0%, transparent 55%);
-  --hairline:     rgba(255,240,230,.04);
-  --hairline-2:   rgba(255,240,230,.06);
+  --sidebar-bg:   rgba(15,17,23,.7);
+  --focus-ring:   rgba(232,97,10,.22);
+  --body-gradient: radial-gradient(at 0% 0%, #14182480 0%, transparent 55%),
+                   radial-gradient(at 100% 100%, #181c2880 0%, transparent 55%);
+  --hairline:     rgba(255,255,255,.04);
+  --hairline-2:   rgba(255,255,255,.06);
 }
 [data-theme="light"] {
-  --bg:     #f4f1ec;
-  --bg2:    #fffdfa;
-  --bg3:    #efeae3;
-  --bg4:    #e4ddd2;
-  --bdr:    #ddd4c8;
-  --bdr2:   #c2b8a9;
-  --tx:     #1c1611;
-  --tx2:    #463d33;
-  --tx3:    #6f655a;
-  --acbg:   #fdebdd;
-  --pinbg:  #fef6e8;
-  --redbg:  #fdece9;
+  --bg:     #eceef3;
+  --bg2:    #ffffff;
+  --bg3:    #e3e7f0;
+  --bg4:    #d4dae6;
+  --bdr:    #c2c9d6;
+  --bdr2:   #97a2b8;
+  --tx:     #0f1320;
+  --tx2:    #293050;
+  --tx3:    #4e5a72;
+  --acbg:   #fff1e8;
+  --pinbg:  #fef9ec;
+  --redbg:  #fdecea;
   --info:   #0284c7;
   --infobg: #e8f4fc;
   --ok:     #059669;
   --okbg:   #e6f8f1;
-  --pre-bg: #efeae3;
-  --code-c: #2a2017;
-  --modal-shadow: rgba(60,40,20,.16);
-  --sidebar-bg:   rgba(244,241,236,.82);
+  --pre-bg: #e8ebf2;
+  --code-c: #1a2238;
+  --modal-shadow: rgba(20,28,50,.16);
+  --sidebar-bg:   rgba(255,255,255,.82);
   --focus-ring:   rgba(232,97,10,.22);
-  --body-gradient: radial-gradient(at 0% 0%, #f6ead880 0%, transparent 55%),
-                   radial-gradient(at 100% 100%, #efe7db80 0%, transparent 55%);
-  --hairline:     rgba(60,40,20,.05);
-  --hairline-2:   rgba(60,40,20,.08);
+  --body-gradient: radial-gradient(at 0% 0%, #dde3f080 0%, transparent 55%),
+                   radial-gradient(at 100% 100%, #e6eaf280 0%, transparent 55%);
+  --hairline:     rgba(0,0,0,.05);
+  --hairline-2:   rgba(0,0,0,.08);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
@@ -122,13 +122,16 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 
 /* Chat list */
 .chat-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px}
+.chat-list,.sb-skills,#messages,.dp-body{scrollbar-width:thin;scrollbar-color:var(--ac) transparent}
 .chat-list::-webkit-scrollbar{width:3px}
-.chat-list::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
+.chat-list::-webkit-scrollbar-thumb{background:var(--ac);border-radius:2px}
+.chat-list::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
 
 .section-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding:10px 8px 4px}
 .sb-skills{border-top:1px solid var(--bdr);padding:6px 6px 8px;max-height:30vh;overflow-y:auto;overflow-x:hidden;flex-shrink:0}
 .sb-skills::-webkit-scrollbar{width:3px}
-.sb-skills::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
+.sb-skills::-webkit-scrollbar-thumb{background:var(--ac);border-radius:2px}
+.sb-skills::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
 .sb-skills-hd{padding:6px 8px 4px}
 .sb-skills-hd-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3)}
 .sb-skill-item{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:var(--r);cursor:pointer;font-size:12px;color:var(--tx2);transition:background .12s;border:1px solid transparent}
@@ -181,15 +184,28 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 #main{flex:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
 /* Topbar */
-#topbar{height:52px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;overflow:visible}
-.tb-brand{display:flex;align-items:center;gap:10px}
+#topbar{position:relative;height:52px;background:var(--bg);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;overflow:visible}
+#topbar > :not(.tb-comets){position:relative;z-index:1}
+/* Top-bar ambience: a comet streaks left->right behind all the content, ~every 10s, at varying heights. */
+.tb-comets{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.tb-comets i{position:absolute;left:0;width:170px;height:4px;border-radius:3px;filter:blur(0.8px);opacity:0;animation-fill-mode:backwards;background:linear-gradient(to right, rgba(232,97,10,0), rgba(232,97,10,.5) 78%, rgba(255,205,140,.9))}
+.tb-comets i::after{content:'';position:absolute;right:-1px;top:-1.5px;width:7px;height:7px;border-radius:50%;background:#fffdf4;box-shadow:0 0 6px 2px rgba(255,200,120,.85), 0 0 14px 5px rgba(232,97,10,.4)}
+.tb-comets .h1{top:50%;animation:tbStreak 30s linear infinite}
+.tb-comets .h2{top:50%;animation:tbStreak 30s linear infinite 10s}
+.tb-comets .h3{top:50%;animation:tbStreak 30s linear infinite 20s}
+@keyframes tbStreak{0%{transform:translateX(-180px);opacity:0}2%{opacity:1}15%{opacity:1}17%{transform:translateX(110vw);opacity:0}100%{transform:translateX(110vw);opacity:0}}
+[data-theme="light"] .tb-comets i{background:linear-gradient(to right, rgba(232,97,10,0), rgba(232,97,10,.42) 78%, rgba(232,97,10,.65))}
+[data-theme="light"] .tb-comets i::after{background:#fff0d8;box-shadow:0 0 6px 2px rgba(232,97,10,.5), 0 0 12px 4px rgba(232,97,10,.28)}
+@media (prefers-reduced-motion: reduce){.tb-comets{display:none}}
+.tb-brand-name,.tb-brand-sub{text-shadow:0 0 6px var(--bg),0 0 4px var(--bg),0 0 2px var(--bg)}
+.tb-brand{display:flex;align-items:center;gap:10px;background:var(--bg);padding:3px 12px;border-radius:10px}
 .tb-brand-icon{width:32px;height:32px;background:var(--ac);border-radius:8px;display:flex;align-items:center;justify-content:center;padding:3px;flex-shrink:0}
 .tb-brand-icon svg{width:100%;height:100%}
 .tb-brand-text{display:flex;flex-direction:column;gap:1px}
 .tb-brand-name{font-size:19px;font-weight:600;color:var(--tx);line-height:1.2;letter-spacing:-.3px;font-family:var(--display)}
 .tb-brand-tag{font-weight:400;color:var(--tx2);font-size:19px}
 .tb-brand-sub{font-size:10px;color:var(--tx3);font-family:var(--mono);line-height:1.3}
-.tb-right{display:flex;align-items:center;gap:7px;flex-shrink:0;overflow:visible;position:relative}
+.tb-right{display:flex;align-items:center;gap:7px;flex-shrink:0;overflow:visible;position:relative;background:var(--bg);padding:3px 6px;border-radius:10px}
 .tb-btn{padding:5px 11px;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;color:var(--tx2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:var(--sans);white-space:nowrap}
 .tb-btn:hover{border-color:var(--bdr2);color:var(--tx)}
 .tb-btn.green{background:var(--acbg);border-color:rgba(232,97,10,.3);color:var(--ac)}
@@ -237,7 +253,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 /* Messages */
 #messages{flex:1;overflow-y:auto;padding:0}
 #messages::-webkit-scrollbar{width:4px}
-#messages::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
+#messages::-webkit-scrollbar-thumb{background:var(--ac);border-radius:2px}
+#messages::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
 
 .msgs-inner{max-width:none;margin:0;padding:24px 24px 8px 20px}
 
@@ -322,7 +339,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .dp-close:hover{background:var(--bg3);color:var(--tx)}
 .dp-body{flex:1;overflow-y:auto;padding:10px}
 .dp-body::-webkit-scrollbar{width:3px}
-.dp-body::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
+.dp-body::-webkit-scrollbar-thumb{background:var(--ac);border-radius:2px}
+.dp-body::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
 .doc-card{display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg3);margin-bottom:7px;transition:border-color .12s}
 .doc-card:hover{border-color:var(--bdr2)}
 .doc-ext{width:32px;height:32px;border-radius:6px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;color:var(--tx2);font-family:var(--mono)}
@@ -368,23 +386,29 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 #skills-mgr.hidden{display:none}
 #skill-edit-bd{position:fixed;inset:0;background:var(--modal-shadow);display:flex;align-items:center;justify-content:center;z-index:1100}
 #skill-edit-bd.hidden{display:none}
-.sp-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:480px;max-height:84vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative;scrollbar-color:var(--ac) var(--bg3);scrollbar-width:thin}
-.sp-box::-webkit-scrollbar{width:8px}
-.sp-box::-webkit-scrollbar-track{background:var(--bg3);border-radius:4px;margin:8px}
-.sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:4px;border:1px solid var(--bg3)}
+.sp-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:480px;max-height:84vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative;scrollbar-color:var(--ac) transparent;scrollbar-width:thin}
+.sp-box::-webkit-scrollbar{width:6px}
+.sp-box::-webkit-scrollbar-track{background:transparent}
+.sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:3px;background-clip:padding-box}
 .sp-box::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
 /* (bottom-fade hint removed - tabbed settings fits without scrolling) */
 .sp-title{font-size:17px;font-weight:600;margin-bottom:22px;letter-spacing:-.2px}
-.sp-sec{margin-bottom:22px}
+.sp-sec{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:14px 16px;margin-bottom:14px}
+.sp-sec .upd-card{background:transparent;border:none;padding:0}
 .sp-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);margin-bottom:10px}
-.sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sp-grid{display:grid;grid-template-columns:1fr;gap:16px}
 .sf{margin-bottom:12px}
 .sf label{display:block;font-size:11px;font-weight:500;color:var(--tx2);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
 .tip{font-size:10px;color:var(--tx3);cursor:help;font-style:normal;text-transform:none;letter-spacing:0;vertical-align:middle;opacity:.7}
 .tip:hover{opacity:1}
-.sf input,.sf textarea{width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;transition:border-color .15s,box-shadow .15s}
+.sf input,.sf textarea{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;transition:border-color .15s,box-shadow .15s}
 .sf input:focus,.sf textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sf textarea{resize:vertical;min-height:72px;line-height:1.5}
+.sf-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sf-head label{margin-bottom:0}
+.sf-num{width:64px;height:26px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bdr);border-radius:999px;padding:0 8px;color:var(--ac);font-family:var(--mono);font-size:12px;text-align:right;outline:none}
+.sf-num:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+.sl-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:6px}
 .sl{display:flex;align-items:center;gap:10px}
 .sl span{font-family:var(--mono);font-size:12px;color:var(--ac);min-width:38px;text-align:right}
 /* Custom slider: explicit gradient fill driven by --fill so the thumb sits
@@ -428,6 +452,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .skill-row .tb-btn{padding:4px 9px}
 #demo-reset{position:fixed;right:24px;bottom:104px;z-index:120;background:var(--ac);color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:.9;transition:all .15s}
 #demo-reset:hover{opacity:1;transform:translateY(-1px)}
+#demo-more{position:fixed;right:24px;bottom:150px;z-index:120;background:var(--bg3);color:var(--tx2);border:1px solid var(--bdr2);border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:.9;transition:all .15s}
+#demo-more:hover{opacity:1;color:var(--tx);border-color:var(--ac);transform:translateY(-1px)}
 .ver-alpha{font-size:8px;font-weight:700;letter-spacing:.1em;color:#ff5a4d;background:rgba(231,76,60,.16);border:1px solid rgba(231,76,60,.4);border-radius:20px;padding:1px 7px;line-height:1.5}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
 .btn-s:hover{color:var(--tx)}
@@ -538,14 +564,14 @@ body.sb-collapsed .app-footer{justify-content:center;padding:10px 0}
 body.sb-collapsed .footer-info,body.sb-collapsed .footer-ver{display:none}
 body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::after{top:calc(100% + 8px);bottom:auto;left:0;right:auto;transform:none}
 body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3px);bottom:auto;left:14px;right:auto;transform:none;border:5px solid transparent;border-bottom-color:var(--bdr2);border-top-color:transparent}
-.sb-toggle{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:none;border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;flex-shrink:0;margin-right:10px;transition:all .15s}
+.sb-toggle{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--bg);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;flex-shrink:0;margin-right:10px;transition:all .15s}
 .sb-toggle:hover{background:var(--bg3);color:var(--tx);border-color:var(--bdr2)}
 .sb-toggle svg{width:15px;height:15px}
 /* toggle sits at the sidebar/main boundary — anchor its tooltip to the button's
    left edge so it extends rightward into #main, never clipped over the sidebar */
 .sb-toggle[data-tip-bottom]:hover::after{left:0;right:auto;transform:none}
 .sb-toggle[data-tip-bottom]:hover::before{left:10px;right:auto;transform:none}
-select.model-sel{width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer;margin-bottom:6px}
+select.model-sel{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer;margin-bottom:6px}
 select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sp-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:5}
 .sp-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
@@ -556,7 +582,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .sp-pane{display:none}
 .sp-pane.on{display:block}
 .seg-cls{display:flex;gap:6px}
-.seg-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;font-size:13px;font-weight:600;padding:8px 6px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx3);cursor:pointer;transition:all .12s;font-family:var(--sans)}
+.seg-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;font-size:13px;font-weight:600;padding:8px 6px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--tx3);cursor:pointer;transition:all .12s;font-family:var(--sans)}
 .seg-code{font-size:13px;font-weight:600}
 .seg-full{font-size:10px;font-weight:400;opacity:.85;line-height:1.2}
 .seg-btn:hover{color:var(--tx2)}
@@ -592,6 +618,21 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-btn{font-size:12px;font-weight:500;padding:7px 14px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--tx2);cursor:pointer;transition:all .12s}
 .upd-btn:hover{background:var(--bg4);color:var(--tx)}
 .upd-btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+/* Token presets (Max tokens control) */
+.tok-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tok-chip{font-family:var(--mono);font-size:12px;height:32px;padding:0 11px;display:inline-flex;align-items:center;box-sizing:border-box;border-radius:999px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--tx3);cursor:pointer;transition:all .12s}
+.tok-chip:hover{color:var(--tx2)}
+.tok-chip.on{border-color:var(--ac);background:var(--acbg);color:var(--ac2)}
+.tok-custom-wrap{display:inline-flex;align-items:center;gap:6px;margin-left:4px}
+.tok-custom-lbl{font-size:11px;color:var(--tx3)}
+.tok-custom{width:72px;height:32px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bdr);border-radius:999px;padding:0 9px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right}
+.tok-custom:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+/* Condensed updates card */
+.upd-ver{font-family:var(--mono);font-size:18px;font-weight:500;color:var(--tx)}
+.upd-sub{font-family:var(--mono);font-size:11px;color:var(--tx3);font-weight:400}
+.upd-arrow{color:var(--tx3);font-size:14px}
+.upd-new{color:var(--ok)}
+.upd-exp{font-size:11px;color:var(--tx3);background:rgba(232,97,10,.18);padding:2px 8px;border-radius:5px}
 
 </style>
 </head>
@@ -640,11 +681,15 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <div class="sp-sec">
       <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
       <div class="sp-grid">
-        <div class="sf"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label>
-          <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="document.getElementById('s-chunk-v').textContent=this.value;refreshSliderFill(this)"><span id="s-chunk-v">800</span></div>
+        <div class="sf">
+          <div class="sf-head"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
+          <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="onRangeIn('s-chunk-v',this)"></div>
+          <div class="sl-ticks"><span>200</span><span>2000</span></div>
         </div>
-        <div class="sf"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label>
-          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="document.getElementById('s-topk-v').textContent=this.value;refreshSliderFill(this)"><span id="s-topk-v">5</span></div>
+        <div class="sf">
+          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="1" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
+          <div class="sl-ticks"><span>1</span><span>10</span></div>
         </div>
       </div>
     </div>
@@ -653,7 +698,15 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div class="sp-lbl">Defaults</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
       <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
-        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="document.getElementById('s-tok-v').textContent=this.value;document.getElementById('s-tok-v-input').value=this.value;refreshSliderFill(this)"><input type="number" id="s-tok-v-input" min="64" max="131072" style="width:84px;background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--ac);font-family:var(--mono);font-size:12px;outline:none;text-align:right" oninput="document.getElementById('s-tok').value=Math.min(32768,this.value||64);document.getElementById('s-tok-v').textContent=this.value;refreshSliderFill(document.getElementById('s-tok'))"> <span id="s-tok-v" style="display:none">8192</span></div>
+        <div class="tok-presets" id="tok-presets">
+          <button type="button" class="tok-chip" data-tok="1024" onclick="setTok(1024)">1K</button>
+          <button type="button" class="tok-chip" data-tok="2048" onclick="setTok(2048)">2K</button>
+          <button type="button" class="tok-chip" data-tok="4096" onclick="setTok(4096)">4K</button>
+          <button type="button" class="tok-chip" data-tok="8192" onclick="setTok(8192)">8K</button>
+          <button type="button" class="tok-chip" data-tok="16384" onclick="setTok(16384)">16K</button>
+          <button type="button" class="tok-chip" data-tok="32768" onclick="setTok(32768)">32K</button>
+          <span class="tok-custom-wrap"><span class="tok-custom-lbl">custom</span><input type="number" id="s-tok-v-input" min="64" max="131072" class="tok-custom" oninput="refreshTokChips()"></span>
+        </div>
       </div>
     </div>
     <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
@@ -745,12 +798,13 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span></span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
 </div>
 
 <!-- Main -->
 <div id="main">
   <div id="topbar">
+    <div class="tb-comets"><i class="h1"></i><i class="h2"></i><i class="h3"></i></div>
     <button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()" data-tip-bottom="Collapse sidebar" aria-label="Toggle sidebar">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><line x1="6" y1="2.75" x2="6" y2="13.25"/></svg>
     </button>
@@ -2092,7 +2146,8 @@ function renderSkillChip() {
   const id = chat?.skillId
   if (!id) { el.className = 'skill-chip'; el.textContent = ''; return }
   el.className = 'skill-chip show'
-  el.textContent = 'Skill: ' + id
+  const sk = skillsCache.find(s => s.id === id)
+  el.textContent = 'Skill: ' + (sk ? sk.title : id)
 }
 
 // Build the message content for the API. With no attachments, send the plain
@@ -3317,7 +3372,39 @@ function refreshSliderFill(el) {
   const max = parseFloat(el.max) || 100
   const val = parseFloat(el.value) || 0
   const pct = max === min ? 0 : ((val - min) / (max - min)) * 100
-  el.style.setProperty('--fill', pct + '%')
+  // Offset by the thumb radius so the filled portion lines up with the thumb
+  // centre at both ends (native range thumbs are inset by half their width, so a
+  // plain pct% gradient overshoots at max and shows under the thumb at min).
+  const T = 16 // thumb width incl. border
+  const off = (T / 2 - (pct / 100) * T).toFixed(2)
+  el.style.setProperty('--fill', 'calc(' + pct + '% + ' + off + 'px)')
+}
+
+// Max-tokens preset chips + custom field. The custom number input (#s-tok-v-input)
+// is the single source of truth that saveSP() reads; chips just write into it.
+function setTok(v){
+  const inp = document.getElementById('s-tok-v-input')
+  if (inp) inp.value = v
+  refreshTokChips()
+}
+function refreshTokChips(){
+  const inp = document.getElementById('s-tok-v-input')
+  const v = parseInt(inp && inp.value) || 0
+  document.querySelectorAll('#tok-presets .tok-chip').forEach(b => b.classList.toggle('on', parseInt(b.dataset.tok) === v))
+}
+
+// Two-way sync for the RAG sliders + their editable value fields.
+function onRangeIn(numId, range){
+  const n = document.getElementById(numId)
+  if (n) n.value = range.value
+  refreshSliderFill(range)
+}
+function onNumIn(rangeId, num){
+  const r = document.getElementById(rangeId)
+  if (!r) return
+  let v = parseInt(num.value)
+  if (!isNaN(v)) r.value = Math.max(+r.min, Math.min(+r.max, v))
+  refreshSliderFill(r)
 }
 
 // Settings
@@ -3326,17 +3413,15 @@ function openSP() {
   document.getElementById('s-key').value   = creds.apiKey||''
   document.getElementById('s-mdl').value   = creds.model||''
   document.getElementById('s-sys').value   = creds.systemPrompt||''
-  document.getElementById('s-tok').value   = Math.min(32768, creds.maxTokens||8192)
   document.getElementById('s-tok-v-input').value = creds.maxTokens||8192
   document.getElementById('s-chunk').value = creds.chunkSize||800
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
   document.getElementById('s-embm').value  = creds.embedModelId||''
-  document.getElementById('s-tok-v').textContent   = creds.maxTokens||8192
-  document.getElementById('s-chunk-v').textContent = creds.chunkSize||800
-  document.getElementById('s-topk-v').textContent  = creds.topK||5
+  document.getElementById('s-chunk-v').value = creds.chunkSize||800
+  document.getElementById('s-topk-v').value  = creds.topK||5
   // Paint the slider fills to match initial values
-  refreshSliderFill(document.getElementById('s-tok'))
+  refreshTokChips()
   refreshSliderFill(document.getElementById('s-chunk'))
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
@@ -3377,10 +3462,10 @@ function renderSpSkillsList() {
     return
   }
   root.innerHTML = skillsCache.map(s => `
-    <div class="skill-row">
-      <div class="skill-row-main">
-        <div class="skill-row-title">${esc(s.title)}</div>
-        <div class="skill-row-meta">${esc(s.id)}.md &middot; ${s.bytes} B</div>
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;background:var(--bg3)">
+      <div style="flex:1;min-width:0;font-size:12px">
+        <div style="font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${esc(s.id)}.md &middot; ${s.bytes} B</div>
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
@@ -3390,9 +3475,6 @@ function renderSpSkillsList() {
 }
 
 async function reloadSkillsFromUI() {
-  if (typeof demoOn === 'function' && demoOn()) {
-    renderSpSkillsList(); renderSkillPicker(); toast('Skills reloaded', 'ok'); return
-  }
   try {
     const r = await fetch('/skills/reload', { method: 'POST' })
     if (!r.ok) throw new Error('HTTP ' + r.status)
@@ -3427,14 +3509,6 @@ async function uploadSkillFile(fileList) {
     if (!confirm('Skill "' + slug + '" already exists. Overwrite?')) return
   }
   const body = await file.text()
-  if (typeof demoOn === 'function' && demoOn()) {
-    const ex = skillsCache.find(s => s.id === slug)
-    if (ex) { ex.body = body; ex.bytes = body.length; ex.title = demoSkillTitle(body, slug); ex.mtime = Date.now() }
-    else { skillsCache.push({ id: slug, title: demoSkillTitle(body, slug), bytes: body.length, mtime: Date.now(), body }) }
-    renderSpSkillsList(); renderSkillPicker(); toast('Uploaded as "' + slug + '"', 'ok')
-    document.getElementById('sp-skill-upload').value = ''
-    return
-  }
   try {
     const r = await fetch('/skills/' + encodeURIComponent(slug), {
       method: 'PUT',
@@ -3671,7 +3745,7 @@ function saveSP() {
   creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
   creds.systemPrompt = document.getElementById('s-sys').value.trim()
   const tokInput = parseInt(document.getElementById('s-tok-v-input').value)
-  creds.maxTokens    = isNaN(tokInput) ? parseInt(document.getElementById('s-tok').value) : Math.max(64, Math.min(131072, tokInput))
+  creds.maxTokens    = isNaN(tokInput) ? 8192 : Math.max(64, Math.min(131072, tokInput))
   creds.chunkSize    = parseInt(document.getElementById('s-chunk').value)
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
@@ -3781,76 +3855,133 @@ function eggClick(e) {
 }
 
 function launchComet(startX, startY) {
-  // Create full-screen canvas overlay
-  const canvas = document.createElement('canvas')
-  canvas.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none'
-  canvas.width  = window.innerWidth
-  canvas.height = window.innerHeight
-  document.body.appendChild(canvas)
-  const ctx = canvas.getContext('2d')
+  // A horizontal streak sweeps left->right along the top bar, BEHIND the bar's
+  // content (logo/title/controls) exactly like the ambient 10s streak. A moment
+  // later the version-badge comet (the click) rises up from below, and the two
+  // clash in the open gap between the LCL title and the right-side controls,
+  // then burst. The ambient top-bar streak is left running.
+  const tb  = document.getElementById('topbar')
+  const tbr = tb ? tb.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: 48 }
+  const topY = tbr.top + tbr.height / 2
 
-  const duration = 3000  // ms
-  const start    = performance.now()
+  // Clash point: midway between the LCL title's right edge and the right-side
+  // controls (the Demo pill / Search), i.e. the open gap to the right of LCL.
+  const brand = document.querySelector('.tb-brand-name')
+  const right = document.querySelector('.tb-right')
+  const br = brand ? brand.getBoundingClientRect() : null
+  const rr = right ? right.getBoundingClientRect() : null
+  const clashX = (br && rr) ? (br.right + rr.left) / 2 : window.innerWidth * 0.62
 
-  // Travel vector: from click point toward top-right, far enough to exit viewport
-  const dist  = Math.max(canvas.width, canvas.height) * 1.6
-  const angle = -Math.PI / 4   // 45° toward top-right
-  const endX  = startX + Math.cos(angle) * dist
-  const endY  = startY + Math.sin(angle) * dist
+  // BACK layer: a canvas inside .tb-comets (z-index 0, clipped to the bar) so the
+  // streak is occluded by the bar's opaque content plates, like the ambient one.
+  const host  = (tb && tb.querySelector('.tb-comets')) || tb || document.body
+  const cBack = document.createElement('canvas')
+  cBack.style.cssText = 'position:absolute;inset:0;pointer-events:none'
+  cBack.width  = Math.round(tbr.width)
+  cBack.height = Math.round(tbr.height)
+  host.appendChild(cBack)
+  const ctxB = cBack.getContext('2d')
+  const bX0 = -170, bY = tbr.height / 2, bMx = clashX - tbr.left   // back-canvas local coords
 
-  // Trail history
-  const trail = []
-  const TRAIL_LEN = 38
+  // FRONT layer: a full-screen overlay for the rising badge comet and the burst.
+  const cFront = document.createElement('canvas')
+  cFront.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none'
+  cFront.width  = window.innerWidth
+  cFront.height = window.innerHeight
+  document.body.appendChild(cFront)
+  const ctxF = cFront.getContext('2d')
+
+  const A0 = { x: startX, y: startY }
+  const Mx = clashX, My = topY
+  // The horizontal streak cruises at the SAME speed as the ambient top-bar comet
+  // (derived from the tbStreak keyframes: -180px -> 110vw over 17% of 30s = 5.1s).
+  // The badge comet then travels faster so it arrives at the clash at the same time.
+  const ambientSpeed = (1.10 * window.innerWidth + 180) / 5100   // px per ms
+  const IMPACT = (bMx - bX0) / ambientSpeed                      // streak reaches the clash at ambient pace
+  const D_A    = 900                                             // badge-comet travel time (sped up)
+  const startA = Math.max(0, IMPACT - D_A)                       // launches later, fast enough to meet the streak
+  const BURST  = 950
+  const start = performance.now()
+  const trailA = [], trailB = [], TLEN = 34
+  let particles = null
+
+  const drawTail = (ctx, tr, wMax = 4) => {
+    for (let i = 0; i < tr.length - 1; i++) {
+      const a = i / tr.length
+      ctx.beginPath()
+      ctx.moveTo(tr[i].x, tr[i].y); ctx.lineTo(tr[i+1].x, tr[i+1].y)
+      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
+      ctx.lineWidth = a * wMax; ctx.lineCap = 'round'; ctx.stroke()
+    }
+  }
+  const drawHead = (ctx, x, y, glowR = 9, coreR = 3) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, glowR)
+    g.addColorStop(0, 'rgba(255,255,235,1)'); g.addColorStop(0.3, 'rgba(245,124,52,0.92)'); g.addColorStop(1, 'rgba(232,97,10,0)')
+    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill()
+    ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill()
+  }
 
   function draw(now) {
-    const t    = Math.min((now - start) / duration, 1)
-    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t  // ease in-out
+    const el = now - start
+    ctxB.clearRect(0, 0, cBack.width, cBack.height)
+    ctxF.clearRect(0, 0, cFront.width, cFront.height)
 
-    const x = startX + (endX - startX) * ease
-    const y = startY + (endY - startY) * ease
-
-    trail.push({ x, y })
-    if (trail.length > TRAIL_LEN) trail.shift()
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Draw tail segments from oldest to newest
-    for (let i = 0; i < trail.length - 1; i++) {
-      const a = i / trail.length        // 0 = oldest, 1 = newest
-      const p = trail[i]
-      const width = a * 6
-
-      ctx.beginPath()
-      ctx.moveTo(trail[i].x, trail[i].y)
-      ctx.lineTo(trail[i+1].x, trail[i+1].y)
-      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
-      ctx.lineWidth   = width
-      ctx.lineCap     = 'round'
-      ctx.stroke()
-    }
-
-    // Glow head
-    if (trail.length) {
-      const grd = ctx.createRadialGradient(x, y, 0, x, y, 18)
-      grd.addColorStop(0,   'rgba(255, 255, 220, 1)')
-      grd.addColorStop(0.3, 'rgba(245, 124, 52, 0.92)')
-      grd.addColorStop(1,   'rgba(232, 97, 10, 0)')
-      ctx.beginPath()
-      ctx.arc(x, y, 18, 0, Math.PI * 2)
-      ctx.fillStyle = grd
-      ctx.fill()
-
-      // Bright core
-      ctx.beginPath()
-      ctx.arc(x, y, 4, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(255,255,255,0.95)'
-      ctx.fill()
-    }
-
-    if (t < 1) {
+    if (el < IMPACT) {
+      // Horizontal streak B (behind the bar content), linear like the ambient one.
+      const eb = el / IMPACT
+      const bx = bX0 + (bMx - bX0) * eb
+      trailB.push({ x: bx, y: bY }); if (trailB.length > 18) trailB.shift()
+      drawTail(ctxB, trailB); drawHead(ctxB, bx, bY)
+      // Badge comet A (front), launches later, eases in; both reach the gap together.
+      if (el >= startA) {
+        const ta = (el - startA) / (IMPACT - startA), ea = ta * ta
+        const ax = A0.x + (Mx - A0.x) * ea, ay = A0.y + (My - A0.y) * ea
+        trailA.push({ x: ax, y: ay }); if (trailA.length > 18) trailA.shift()
+        drawTail(ctxF, trailA); drawHead(ctxF, ax, ay)
+      }
+      requestAnimationFrame(draw)
+    } else if (el < IMPACT + BURST) {
+      // Burst at the clash point (front layer). The gap has little to occlude it.
+      if (!particles) {
+        particles = []
+        const N = 40
+        for (let i = 0; i < N; i++) {
+          const ang = (i / N) * Math.PI * 2
+          const sp  = (i % 2 === 0) ? 9 : 5.5
+          particles.push({ x: Mx, y: My, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: (i % 2 === 0) ? 2.6 : 1.8 })
+        }
+      }
+      const b = (el - IMPACT) / BURST
+      const fade = 1 - b
+      const bloom = ctxF.createRadialGradient(Mx, My, 0, Mx, My, 44 + b * 130)
+      bloom.addColorStop(0,   `rgba(255,250,235,${fade * 0.9})`)
+      bloom.addColorStop(0.4, `rgba(255,170,80,${fade * 0.5})`)
+      bloom.addColorStop(1,   'rgba(232,97,10,0)')
+      ctxF.beginPath(); ctxF.arc(Mx, My, 44 + b * 130, 0, Math.PI*2); ctxF.fillStyle = bloom; ctxF.fill()
+      for (let k = 0; k < 3; k++) {
+        const rb = b - k * 0.12
+        if (rb <= 0) continue
+        ctxF.beginPath(); ctxF.arc(Mx, My, 8 + rb * 165, 0, Math.PI*2)
+        ctxF.strokeStyle = `rgba(255,${180 - k*30},${100 - k*20},${(1 - rb) * 0.55})`
+        ctxF.lineWidth = 3 - k; ctxF.stroke()
+      }
+      if (b < 0.28) {
+        const f = (0.28 - b) / 0.28
+        ctxF.beginPath(); ctxF.arc(Mx, My, f * 30, 0, Math.PI*2)
+        ctxF.fillStyle = `rgba(255,255,255,${f * 0.95})`; ctxF.fill()
+      }
+      for (const p of particles) {
+        const px = p.x, py = p.y
+        p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.vx *= 0.985; p.vy *= 0.985
+        ctxF.beginPath(); ctxF.moveTo(px, py); ctxF.lineTo(p.x, p.y)
+        ctxF.strokeStyle = `rgba(255, ${150 + Math.floor(fade * 90)}, 70, ${fade * 0.9})`
+        ctxF.lineWidth = p.r * fade; ctxF.lineCap = 'round'; ctxF.stroke()
+        ctxF.beginPath(); ctxF.arc(p.x, p.y, p.r * fade, 0, Math.PI*2)
+        ctxF.fillStyle = `rgba(255,235,190,${fade * 0.9})`; ctxF.fill()
+      }
       requestAnimationFrame(draw)
     } else {
-      canvas.remove()
+      cBack.remove(); cFront.remove()
       unlockSmiley()
     }
   }
@@ -3917,6 +4048,7 @@ function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0'
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
 
 async function checkForUpdate(manual){
+  if (typeof demoOn === 'function' && demoOn()) { if (manual) toast('Demo mode \u2014 update check simulated', 'info'); return }
   try{
     const r = await fetch('/api/update/check')
     const d = await r.json()
@@ -3938,8 +4070,10 @@ function renderUpdateBadge(){
   if (va) va.style.display = (lclUpdate.channel === 'alpha') ? 'inline-block' : 'none'
   const el = document.getElementById('footer-upd')
   if (!el) return
-  const show = lclUpdate.channel==='alpha' ? (lclUpdate.checked && !lclUpdate.error && !lclUpdate.inSync) : !!lclUpdate.newer
-  if (show){ el.style.display='inline-block'; el.setAttribute('data-tip', lclUpdate.channel==='alpha' ? ('Alpha changes on @'+(lclUpdate.ref||'alpha')+' — restart Node') : ('Update available: '+lclUpdate.tag)) }
+  // Stable only: the footer "new" badge shows for a version update. Alpha tracks
+  // a build hash and doesn't surface the green footer badge.
+  const show = lclUpdate.channel === 'alpha' ? false : !!lclUpdate.newer
+  if (show){ el.style.display='inline-block'; el.setAttribute('data-tip', 'Update available: '+lclUpdate.tag) }
   else el.style.display='none'
 }
 
@@ -4131,6 +4265,20 @@ function maybeDemo() {
     rb.onclick = function () { maybeDemo() }
     document.body.appendChild(rb)
   }
+  if (!document.getElementById('demo-more')) {
+    const mb = document.createElement('button')
+    mb.id = 'demo-more'; mb.type = 'button'
+    mb.innerHTML = '+ Many chats'
+    mb.onclick = function () { demoSeedMany(18) }
+    document.body.appendChild(mb)
+  }
+
+  // Demo: show the "update available" state so the update UI is visible.
+  lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e',
+                newer:true, notes:'### v0.67e\n\n- Condensed updates panel\n- New token presets\n- Comet easter egg', html_url:'',
+                error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+  if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 
   return true
 }
@@ -4193,6 +4341,32 @@ function demoCapFiles(files, target) {
   return okSize.slice(0, room)
 }
 
+// Demo helper: bulk-spawn sample chats (in-memory) to stress-test a long list —
+// date-spread so Today / Yesterday / Previous 7 days / Older grouping all show.
+const DEMO_BULK_TITLES = [
+  'SQLmap run notes','Firewall rule review','Phishing sim debrief','AD enumeration',
+  'S3 bucket audit','JWT token analysis','Burp macro setup','Nmap sweep — /24',
+  'OSINT — exec profiles','Wireless survey','Container escape PoC','CI/CD secrets scan',
+  'DNS exfil test','Privilege escalation path','SIEM alert triage','API fuzzing session',
+  'Threat model — payments','Red team retro','Mobile app teardown','Kerberoasting notes'
+]
+function demoSeedMany(n) {
+  n = n || 18
+  const now = Date.now(), day = 86400000
+  for (let i = 0; i < n; i++) {
+    const base = DEMO_BULK_TITLES[i % DEMO_BULK_TITLES.length]
+    const title = base + (i >= DEMO_BULK_TITLES.length ? ' ' + (Math.floor(i / DEMO_BULK_TITLES.length) + 1) : '')
+    const ts = now - Math.floor(Math.random() * 14 * day)
+    const id = 'demo_bulk_' + ts + '_' + i
+    D.chats[id] = { id, title, pinned: false, createdAt: ts, updatedAt: ts, docs: [], messages: [
+      { role: 'user', content: title + '?', ts: ts - 60000 },
+      { role: 'assistant', content: 'Noted — quick rundown on ' + base.toLowerCase() + '.', ts: ts - 30000 }
+    ] }
+  }
+  if (typeof renderAll === 'function') renderAll()
+  if (typeof toast === 'function') toast('Added ' + n + ' demo chats', 'ok')
+}
+
 // SECTION: 97-update-ui.js
 // =============================================================================
 // Auto-update — Settings card UI + stable update dialog
@@ -4204,46 +4378,49 @@ function renderUpdateSettings(){
   const u = lclUpdate
   const vb = document.getElementById('ver-badge')
   const cur = u.current || (vb ? vb.textContent.replace(/^v/i,'') : '')
+  const v = cur ? ('v'+esc(cur)) : '\u2014'
   const pill = (cls,txt)=> '<span class="upd-pill '+cls+'">'+txt+'</span>'
-  const tile = (k,val,col)=> '<div class="upd-metric"><div class="upd-mk">'+k+'</div><div class="upd-mv"'+(col?(' style="color:'+col+'"'):'')+'>'+val+'</div></div>'
-  const top  = (lbl,p)=> '<div class="upd-top"><span style="font-size:12px;color:var(--tx2)">'+lbl+'</span>'+p+'</div>'
+  // Condensed: a single version line + status pill (no separate "Version" header
+  // or "Installed" tile), then the two toggle rows.
+  const verRow = (verHtml,p)=> '<div class="upd-top"><span class="upd-ver">'+verHtml+'</span>'+p+'</div>'
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
-  const testerRow = ()=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Try alpha updates</label><span style="font-size:11px;color:var(--tx3)">tester</span></div>'
-  if (!u.checked){ body.innerHTML = top('Updates', pill('neutral','Not checked')) + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>'); return }
+  const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Experimental updates</label><span class="upd-exp">Experimental</span></div>'
+
+  if (!u.checked){
+    body.innerHTML = verRow(v, pill('neutral','Not checked'))
+      + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
+      + (alphaUnlocked() ? expRow(u.channel === 'alpha') : '')
+    return
+  }
+
+  // ALPHA channel — experimental builds are identified by a commit hash, not a
+  // version number, so the line leads with #hash (not vX.Y).
   if (u.channel === 'alpha'){
-    if (u.error){
-      body.innerHTML = top('Channel', pill('err','Alpha · check failed'))
-        + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
-        + '<div class="upd-row"><span style="font-size:11px;color:var(--tx3)">tracking @'+esc(u.ref||'alpha')+'</span><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Retry</button><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></span></div>'
-      return
-    }
-    if (u.applied){
-      const ap = u.applied
-      const note = (ap.refreshNeeded?'Reload for new index':'') + (ap.refreshNeeded&&ap.restartNeeded?' · ':'') + (ap.restartNeeded?'restart Node for new server':'')
-      body.innerHTML = top('Channel', pill('ok','Alpha · updated'))
-        + '<div style="font-size:12px;color:var(--ok);margin-top:11px">Downloaded &amp; verified '+esc((ap.applied||[]).join(', ')||'(already current)')+'</div>'
-        + (note ? '<div style="font-size:11px;color:var(--pin);margin-top:6px">'+note+'</div>' : '')
-        + '<div class="upd-row">'+(ap.refreshNeeded?'<button class="upd-btn pri" onclick="location.reload()">Reload now</button>':'<span></span>')+'<button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
-      return
-    }
-    // Compact one-liner: Channel | Alpha · status · build/changed
-    const sPill = u.inSync ? pill('ok','Up to date') : pill('warn','Update available')
-    const buildBit = u.inSync
-      ? '<span class="upd-build">'+esc(u.hash||'—')+'</span>'
-      : '<span class="upd-build" title="'+esc((u.changed||[]).join(', '))+'">'+esc((u.changed||[]).join(', ')||'—')+'</span>'
-    body.innerHTML = top('Channel', '<span class="upd-line">'+pill('alpha','Alpha')+sPill+buildBit+'</span>')
-      + '<div class="upd-row"><span style="display:flex;gap:8px"><button class="upd-btn" onclick="checkForUpdate(true)">Check updates</button>'+(u.inSync?'':'<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>')+'</span><button class="upd-btn" onclick="setChannel(\'stable\')">Switch to stable</button></div>'
+    const h = u.hash ? ('#'+esc(u.hash)) : 'alpha'
+    let p, ver = h, primary = ''
+    if (u.error){ p = pill('err','Check failed'); ver = '\u2014' }
+    else if (u.applied){ p = pill('ok','Updated'); if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
+    else if (u.inSync){ p = pill('ok','Up to date') }
+    else { p = pill('warn','Update available'); ver = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>'; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
+    body.innerHTML = verRow(ver, p)
+      + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
+      + expRow(true)
+      + (u.error ? '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>' : '')
     return
   }
+
+  // STABLE channel
   if (u.error){
-    body.innerHTML = top('Version', pill('err','Check failed'))
-      + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
+    body.innerHTML = verRow(v, pill('err','Check failed'))
       + autoRow('<button class="upd-btn" onclick="checkForUpdate(true)">Retry</button>')
+      + (alphaUnlocked() ? expRow(false) : '')
+      + '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>'
     return
   }
-  body.innerHTML = top('Version', u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
-    + '<div class="upd-mets">'+tile('Installed', cur?('v'+esc(cur)):'—')+tile('Latest', u.latest?('v'+esc(u.latest)):'—', u.newer?'var(--ok)':'var(--tx)')+'</div>'
-    + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>') + (alphaUnlocked() ? testerRow() : '')
+  const verHtml = u.newer ? (v + ' <span class="upd-arrow">&rarr;</span> <span class="upd-new">v'+esc(u.latest||'')+'</span>') : v
+  body.innerHTML = verRow(verHtml, u.newer ? pill('warn','Update available') : pill('ok','Up to date'))
+    + autoRow(u.newer ? '<button class="upd-btn pri" onclick="openUpdateDialog()">Update to v'+esc(u.latest||'')+'</button>' : '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
+    + (alphaUnlocked() ? expRow(false) : '')
 }
 
 function openUpdateDialog(){
@@ -4275,6 +4452,7 @@ function openUpdateDialog(){
 function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
 
 async function applyUpdate(){
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
   const btn = document.getElementById('update-apply-btn')
   const out = document.getElementById('update-result')
   if (btn){ btn.disabled=true; btn.textContent='Working…' }
@@ -4313,14 +4491,32 @@ async function applyUpdate(){
 
 // Channel switch (alpha tester channel <-> stable). Persisted server-side.
 async function setChannel(ch){
+  if (typeof demoOn === 'function' && demoOn()) {
+    // Demo: flip the in-memory state so both the version-based (stable) and
+    // hash-based (experimental) update cards can be previewed. Touches nothing.
+    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67d', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
+    else lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e', newer:true, inSync:true, changed:[], hash:'', error:null }
+    if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
+    renderUpdateSettings()
+    return
+  }
+  toast('Switching to ' + (ch==='alpha' ? 'experimental' : 'stable') + '\u2026', 'info')
   try{
     const r = await fetch('/api/update/channel',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channel:ch}) })
     const d = await r.json()
-    if (ch==='stable' && d.restored) toast('Restored stable '+(d.restored.tag||'')+' — restart Node & refresh','ok')
-    else if (ch==='stable' && d.restoreError) toast('Switched to stable; restore failed: '+d.restoreError,'err')
-    else if (ch==='alpha') toast('Alpha on — restart Node to begin auto-updating','ok')
+    if (d.error){ toast('Experimental switch failed: '+d.error+' \u2014 staying on stable','err'); await checkForUpdate(true); return }
+    if (d.restartNeeded){
+      const msg = ch==='alpha'
+        ? 'Experimental build applied'
+        : (d.restoredFromBackup ? 'Offline \u2014 restored local stable backup' : ('Restored stable '+((d.restored&&d.restored.tag)||'')))
+      toast(msg+' \u2014 restarting Node\u2026','ok')
+      try{ await fetch('/api/update/restart',{ method:'POST' }) }catch{}
+      waitForServerThenReload(); return
+    }
+    if (d.refreshNeeded){ toast('Experimental build applied \u2014 reloading\u2026','ok'); setTimeout(()=>location.reload(),700); return }
+    if (d.restoreError){ toast('Switched to stable; restore failed: '+d.restoreError,'err') }
+    await checkForUpdate(true)
   }catch(e){ toast('Channel switch failed: '+e.message,'err') }
-  await checkForUpdate(true)
 }
 
 // Alpha enrolment is gated behind the easter egg: 7 clicks on the version badge
@@ -4331,6 +4527,7 @@ function unlockAlpha(){ try { localStorage.setItem('lcl_alpha_unlocked', '1') } 
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
 async function applyAlphaNow(){
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
   try{
     toast('Downloading alpha update...','info')
     const r = await fetch('/api/update/apply', { method:'POST' })
