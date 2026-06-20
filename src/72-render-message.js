@@ -86,7 +86,7 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
   const fileChips = (fileNames && fileNames.length)
     ? `<div class="msg-file-chips">${fileNames.map(f => {
         const hasContent = !!fileContentMap[f]
-        return `<span class="msg-chip" ${hasContent ? `onclick="toggleFileChip(this,'${esc(f)}')" title="Click to expand"` : ''}>
+        return `<span class="msg-chip" ${hasContent ? `onclick="toggleFileChip(this,'${escJs(f)}')" title="Click to expand"` : ''}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2z"/></svg>
           ${esc(f)}${hasContent ? ' <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.94L1.53 4.47a.75.75 0 011.06-1.06L8 8.81l5.41-5.4a.75.75 0 111.06 1.06L8 10.94z"/></svg>' : ''}
         </span>`
