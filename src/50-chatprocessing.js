@@ -95,6 +95,42 @@ function buildContent(text) {
   return blocks
 }
 
+// Shared by send() and regenerateLast(): builds the chat API payload for
+// `queryText` from the chat's ready docs (FULL text when they fit the budget,
+// else RAG chunk-retrieval) plus the resolved skill/system prompt. Returns
+// { payload, ragSources }, or { skillErr } when the chat's skill won't load.
+async function buildPayload(chat, queryText) {
+  let ragChunks=[], ragSources=[], fullDocText=''
+  const readyDocs   = (chat.docs||[]).filter(d=>d.status==='ready')
+  const docsForFull = readyDocs.filter(d=>d.content)
+  const totalChars  = docsForFull.reduce((n,d)=>n+d.content.length,0)
+  const fullLimit   = creds.docFullTextLimit || CFG.DOC_FULLTEXT_LIMIT
+  const useFullText = docsForFull.length>0 && totalChars<=fullLimit
+  if (useFullText) {
+    fullDocText = docsForFull.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
+    ragSources  = docsForFull.map(d=>d.name)
+  } else if (readyDocs.some(d=>d.chunks?.length)) {
+    try {
+      ragChunks = await retrieveChunks(queryText, chat.docs, creds.topK||10, ragStickyChunks)
+      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
+      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * CFG.STICKY_CHUNK_RATIO)))
+    }
+    catch(e) { console.warn('RAG:',e.message) }
+  }
+  const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
+  if (skillErr) return { skillErr }
+  let sys = sysBase
+  if (fullDocText) {
+    sys = 'The following document(s) are provided IN FULL. Use them to answer the user.\n\n'+fullDocText+(sys?'\n\n'+sys:'')
+  } else if (ragChunks.length) {
+    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
+    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
+  }
+  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
+  const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
+  return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
+}
+
 async function send() {
   if (!creds) { openConnect(); return }
   const input = document.getElementById('msg-in')
@@ -132,50 +168,17 @@ async function send() {
   const disp = typeof content==='string'?content:content.find(b=>b.type==='text')?.text||'[attachment]'
   appendMsg('user', disp, null, null, sentFileNames)
 
-  // Document context. If the chat's ready docs fit the model's window, send the
-  // FULL text of every doc (the model sees everything — best quality, and the
-  // reason small PDFs already "just work"). Only fall back to chunk-retrieval
-  // (RAG) when the combined text exceeds the char budget.
-  let ragChunks=[], ragSources=[], fullDocText=''
-  const readyDocs   = (chat.docs||[]).filter(d=>d.status==='ready')
-  const docsForFull = readyDocs.filter(d=>d.content)
-  const totalChars  = docsForFull.reduce((n,d)=>n+d.content.length,0)
-  const fullLimit   = creds.docFullTextLimit || 200000
-  const useFullText = docsForFull.length>0 && totalChars<=fullLimit
-
-  if (useFullText) {
-    fullDocText = docsForFull.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
-    ragSources  = docsForFull.map(d=>d.name)
-  } else if (readyDocs.some(d=>d.chunks?.length)) {
-    try {
-      ragChunks = await retrieveChunks(text, chat.docs, creds.topK||10, ragStickyChunks)
-      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
-      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * 0.3)))
-    }
-    catch(e) { console.warn('RAG:',e.message) }
-  }
-
-  const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
-  if (skillErr) {
+  const built = await buildPayload(chat, text)
+  if (built.skillErr) {
     chat.messages.pop()
     chat.updatedAt = Date.now()
     renderMessages()
-    toast(skillErr, 'err')
+    toast(built.skillErr, 'err')
     busy = false
     if (typeof updateSendBtn === 'function') updateSendBtn()
     return
   }
-  let sys = sysBase
-  if (fullDocText) {
-    sys = 'The following document(s) are provided IN FULL. Use them to answer the user.\n\n'+fullDocText+(sys?'\n\n'+sys:'')
-  } else if (ragChunks.length) {
-    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
-    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
-  }
-
-  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
-  const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
-  const payload = { messages:msgs, max_tokens:creds.maxTokens||8192 }
+  const { payload, ragSources } = built
 
   await runStream(chat, payload, ragSources)
 
