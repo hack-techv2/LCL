@@ -49,6 +49,11 @@ function unlockAlpha(){
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
+// #demo only: re-lock the easter-egg alpha channel so a Reset demo starts
+// locked again. In-memory only (never touches localStorage), so it cannot
+// leak the unlocked state into normal mode.
+function relockDemoAlpha(){ _demoAlphaUnlocked = false }
+
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
 async function applyAlphaNow(){
