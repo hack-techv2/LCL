@@ -71,6 +71,14 @@ Misc
 - Server console output unified: embedding logs now use the same aligned
   "Embedding              ->  ..." format as the "Updates" logs (was a mix of
   [embed] / [embed-cache] / [embed-batch] bracket tags).
+- Ctrl+C after an alpha auto-update: the re-exec child (spawned with inherited
+  stdio) inherited the parent REPL's raw-mode TTY, where Ctrl+C is a keystroke,
+  not a SIGINT, so the restarted server couldn't be stopped. The child now
+  restores cooked mode (Ctrl+C -> real SIGINT) with a keypress fallback, scoped to
+  the spawned child so the parent REPL is untouched.
+- #demo: the Experimental (alpha) channel now starts locked in demo regardless of
+  the real profile's unlock state — the easter egg unlocks it for the demo session
+  only (in-memory), with no write to localStorage and no leak into normal mode.
 
 
 Alpha tester batch (20 Jun 2026, still v0.67d — on the `alpha` branch)
