@@ -45,7 +45,7 @@ function alphaUnlocked(){
 function unlockAlpha(){
   if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = true }
   else { try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {} }
-  if (typeof toast === 'function') toast('Tester options unlocked - Open Settings','ok')
+  if (typeof toast === 'function') toast('Developer mode enabled','ok')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
