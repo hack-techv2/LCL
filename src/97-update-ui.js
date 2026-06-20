@@ -27,12 +27,13 @@ function renderUpdateSettings(){
   // version number, so the line leads with #hash (not vX.Y).
   if (u.channel === 'alpha'){
     const h = u.hash ? ('#'+esc(u.hash)) : 'alpha'
-    let p, ver = h, primary = ''
-    if (u.error){ p = pill('err','Check failed'); ver = '\u2014' }
-    else if (u.applied){ p = pill('ok','Updated'); if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
-    else if (u.inSync){ p = pill('ok','Up to date') }
-    else { p = pill('warn','Update available'); ver = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>'; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
-    body.innerHTML = verRow(ver, p)
+    const when = u.installedAt ? ' <span class="upd-when">\u00b7 updated '+esc(fmtUpdated(u.installedAt))+'</span>' : ''
+    let p, build, primary = ''
+    if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
+    else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
+    else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
+    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when; primary = '<button class="upd-btn pri" onclick="applyAlphaNow()">Update &amp; restart</button>' }
+    body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
       + autoRow(primary || '<button class="upd-btn" onclick="checkForUpdate(true)">Check now</button>')
       + expRow(true)
       + (u.error ? '<div style="font-size:11px;color:var(--tx3);margin-top:9px">'+esc(u.error)+'</div>' : '')
@@ -82,7 +83,7 @@ function openUpdateDialog(){
     const notesEl = bd.querySelector('.msg-body')
     if (notesEl) {
       notesEl.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Loading release notes from GitHub\u2026</div>'
-      fetch('/api/update/check').then(r => r.json()).then(d => {
+      httpGet('/api/update/check').then(r => r.json()).then(d => {
         notesEl.innerHTML = fmt(d.notes || '_No release notes provided._')
       }).catch(e => { notesEl.innerHTML = '<div style="color:var(--red);padding:6px 0">Could not load notes: ' + esc(e.message) + '</div>' })
     }
@@ -114,7 +115,7 @@ async function applyUpdate(){
   if (btn){ btn.disabled=true; btn.textContent='Working…' }
   if (out) out.innerHTML='<div style="color:var(--tx3);padding:6px 0">Downloading and verifying…</div>'
   try{
-    const r = await fetch('/api/update/apply',{ method:'POST' })
+    const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){
       if (out) out.innerHTML='<div style="color:var(--red);padding:6px 0">'+esc(d.error)+'</div>'
