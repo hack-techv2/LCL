@@ -50,6 +50,17 @@ async function persist() {
 // Auth
 // =============================================================================
 async function connect() {
+  if (typeof demoOn === 'function' && demoOn()) {
+    // Demo: re-seed creds offline (no API ping, no /api/config write) so the
+    // Connect modal / reconnect flow is exercisable.
+    const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
+    creds = { apiKey:'demo', model, maxTokens:8192, systemPrompt:'', chunkSize:800, topK:5, embedApiKey:'demo', embedModelId:'cohere.embed-english-v3', classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') }
+    if (typeof closeConnect==='function') closeConnect()
+    if (typeof updateConnectedUI==='function') updateConnectedUI()
+    if (typeof setHealth==='function') setHealth('ok','Demo')
+    if (typeof toast==='function') toast('Connected (demo)','ok')
+    return
+  }
   const apiKey = document.getElementById('cfg-key').value.trim()
   const model  = document.getElementById('cfg-mdl').value.trim() || 'cce.claude-opus-4-6'
   const errEl  = document.getElementById('modal-err')
