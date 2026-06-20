@@ -28,12 +28,9 @@ async function runStream(chat, payload, ragSources) {
   }
 
   try {
-    const resp = await fetch('/api/chat', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      signal: inflightCtl.signal,
-      body: JSON.stringify({ apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload })
-    })
+    const resp = await httpPost('/api/chat',
+      { apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload },
+      { signal: inflightCtl.signal })
 
     // Non-200 responses from our proxy are JSON, not SSE.
     if (!resp.ok) {
@@ -75,56 +72,39 @@ async function runStream(chat, payload, ragSources) {
     }
     if (!resp.body) throw new Error('No response body for streaming')
 
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
     const msgsEl = document.getElementById('messages')
 
-    while (true) {
-      let chunk
-      try { chunk = await reader.read() }
-      catch (e) {
-        if (e.name === 'AbortError' || inflightCtl?.signal?.aborted) { stopped = true; break }
-        throw e
+    // SSE consumption is shared (streamSse, 12-transport). Each "data:" payload is
+    // one event; abort is reported via res.stopped (keeps the (stopped) wrap-up).
+    const res = await streamSse(resp, data => {
+      if (data === '[DONE]') return
+
+      let evt
+      try { evt = JSON.parse(data) } catch { return }
+
+      if (evt.error) {
+        streamErr = evt.error?.message || evt.error
+        return
       }
-      if (chunk.done) break
-      buf += decoder.decode(chunk.value, { stream: true })
 
-      // SSE frames are separated by \n\n. Each frame is "data: <json>".
-      const parts = buf.split('\n\n')
-      buf = parts.pop() || ''
-      for (const part of parts) {
-        const line = part.trim()
-        if (!line || !line.startsWith('data:')) continue
-        const data = line.slice(5).trim()
-        if (data === '[DONE]') continue
+      const choice = evt.choices?.[0]
+      if (!choice) return
+      const delta = choice.delta?.content || ''
 
-        let evt
-        try { evt = JSON.parse(data) } catch { continue }
+      if (delta || choice.finish_reason) swapBubble()
 
-        if (evt.error) {
-          streamErr = evt.error?.message || evt.error
-          continue
-        }
-
-        const choice = evt.choices?.[0]
-        if (!choice) continue
-        const delta = choice.delta?.content || ''
-
-        if (delta || choice.finish_reason) swapBubble()
-
-        if (delta && msgObj && bubble) {
-          accumulated += delta
-          msgObj.content = accumulated
-          bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
-          const bodyEl = bubble.querySelector('.msg-body')
-          if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
-          if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
-        }
-        if (choice.finish_reason === 'content_filter') filtered = true
-        if (choice.finish_reason === 'length') truncated = true
+      if (delta && msgObj && bubble) {
+        accumulated += delta
+        msgObj.content = accumulated
+        bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
+        const bodyEl = bubble.querySelector('.msg-body')
+        if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
+        if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
       }
-    }
+      if (choice.finish_reason === 'content_filter') filtered = true
+      if (choice.finish_reason === 'length') truncated = true
+    }, { aborted: () => inflightCtl?.signal?.aborted })
+    if (res.stopped) stopped = true
 
     // Wrap-up: handle stop / error / success states
     if (stopped) {
