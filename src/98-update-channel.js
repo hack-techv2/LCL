@@ -9,6 +9,7 @@ async function setChannel(ch){
     // hash-based (experimental) update cards can be previewed. Touches nothing.
     if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', error:null }
     else lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
+    if (ch !== 'alpha') relockAlpha()
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
     renderUpdateSettings()
     return
@@ -19,6 +20,7 @@ async function setChannel(ch){
     const d = await r.json()
     if (d.error){ const stay = (d.channel === 'alpha') ? 'experimental' : 'stable'; toast('Channel switch failed: '+d.error+' \u2014 staying on '+stay,'err'); await checkForUpdate(true); return }
     if (d.sameAsStable){ toast('Experimental build is identical to stable \u2014 nothing to switch','info'); await checkForUpdate(true); return }
+    if (ch === 'stable') relockAlpha()
     if (d.restartNeeded){
       const msg = ch==='alpha'
         ? 'Experimental build applied'
@@ -54,6 +56,10 @@ function unlockAlpha(){
 // locked again. In-memory only (never touches localStorage), so it cannot
 // leak the unlocked state into normal mode.
 function relockDemoAlpha(){ _demoAlphaUnlocked = false }
+// Opting out of alpha re-locks the easter egg: the 'Experimental' toggle
+// hides again until the 7-click unlock is repeated. Demo uses the in-memory
+// flag; real installs clear the localStorage unlock.
+function relockAlpha(){ if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = false } else { try { localStorage.removeItem('lcl_alpha_unlocked') } catch {} } }
 
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
