@@ -4701,7 +4701,7 @@ function renderUpdateSettings(){
     if (u.error){ p = pill('err','Check failed'); build = '\u2014' }
     else if (u.applied){ p = pill('ok','Updated'); build = h + when; if (u.applied.refreshNeeded) primary = '<button class="upd-btn pri" onclick="location.reload()">Reload now</button>' }
     else if (u.inSync){ p = pill('ok','Up to date'); build = h + when }
-    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(((u.changed||[]).length||'')+' changed')+'</span>' + when
+    else { p = pill('warn','Update available'); build = h + ' <span class="upd-sub">'+(u.changed||[]).map(esc).join(', ')+' changed</span>'
       const applyAct = u.simulated ? ('simulateUpdate([' + (u.changed||[]).map(fn => "'" + fn + "'").join(',') + '])') : 'applyAlphaNow()'
       primary = '<button class="upd-btn pri" onclick="'+applyAct+'">Update &amp; restart</button>' }
     body.innerHTML = '<div class="upd-top"><span class="upd-build">'+build+'</span>'+p+'</div>'
@@ -4920,6 +4920,13 @@ let _simArmed = []   // set of files armed for simulation (multi-select)
 function armSimulate(file){
   const i = _simArmed.indexOf(file)
   if (i >= 0) _simArmed.splice(i, 1); else _simArmed.push(file)
+  // Changing the armed set invalidates any prior simulated "available" result, so
+  // a stale "Update & restart" doesn't linger - drop back to a neutral state until
+  // the next "Check now".
+  if (typeof lclUpdate !== 'undefined' && lclUpdate && lclUpdate.simulated) {
+    lclUpdate = makeUpdateState({ channel:'alpha', ref:'alpha', inSync:true, hash:lclUpdate.hash, installedAt:lclUpdate.installedAt })
+    if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
+  }
   if (typeof toast === 'function') toast(_simArmed.length ? ('Armed: ' + _simArmed.join(', ') + ' \u2014 click "Check now" to simulate') : 'Simulation cleared', 'info')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
