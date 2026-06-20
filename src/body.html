@@ -59,16 +59,10 @@
     <div class="sp-pane" data-pane="settings"><div class="sp-sec">
       <div class="sp-lbl">Defaults</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
-      <div class="sf"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label>
-        <div class="tok-presets" id="tok-presets">
-          <button type="button" class="tok-chip" data-tok="1024" onclick="setTok(1024)">1K</button>
-          <button type="button" class="tok-chip" data-tok="2048" onclick="setTok(2048)">2K</button>
-          <button type="button" class="tok-chip" data-tok="4096" onclick="setTok(4096)">4K</button>
-          <button type="button" class="tok-chip" data-tok="8192" onclick="setTok(8192)">8K</button>
-          <button type="button" class="tok-chip" data-tok="16384" onclick="setTok(16384)">16K</button>
-          <button type="button" class="tok-chip" data-tok="32768" onclick="setTok(32768)">32K</button>
-          <span class="tok-custom-wrap"><span class="tok-custom-lbl">custom</span><input type="number" id="s-tok-v-input" min="64" max="131072" class="tok-custom" oninput="refreshTokChips()"></span>
-        </div>
+      <div class="sf">
+        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="32768" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
+        <div class="sl-ticks"><span>64</span><span>32768</span></div>
       </div>
     </div>
     <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
