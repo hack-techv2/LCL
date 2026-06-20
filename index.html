@@ -27,58 +27,58 @@
   --display: 'Space Grotesk', 'Inter', sans-serif;
 }
 [data-theme="dark"], :root {
-  --bg:     #080a0e;
-  --bg2:    #161922;
-  --bg3:    #1f232e;
-  --bg4:    #2a3040;
-  --bdr:    #353b49;
-  --bdr2:   #4a5263;
-  --tx:     #f6f9fd;
-  --tx2:    #c8d1de;
-  --tx3:    #8a93a4;
-  --acbg:   #2e1500;
+  --bg:     #0d0b0a;
+  --bg2:    #1a1613;
+  --bg3:    #241f1b;
+  --bg4:    #302a25;
+  --bdr:    #3a322c;
+  --bdr2:   #4f463e;
+  --tx:     #f8f5f1;
+  --tx2:    #d3cabf;
+  --tx3:    #9c9389;
+  --acbg:   #2e1606;
   --pinbg:  #2a2000;
-  --redbg:  #2a0f0f;
+  --redbg:  #2a0f0c;
   --info:   #7dd3fc;
   --infobg: #0c2330;
   --ok:     #4ade9f;
   --okbg:   #0d2320;
-  --pre-bg: #06080d;
-  --code-c: #e6edf5;
+  --pre-bg: #0a0807;
+  --code-c: #ece7e1;
   --modal-shadow: rgba(0,0,0,.7);
-  --sidebar-bg:   rgba(17,20,28,.7);
-  --focus-ring:   rgba(232,97,10,.20);
-  --body-gradient: radial-gradient(at 0% 0%, #15182280 0%, transparent 55%),
-                   radial-gradient(at 100% 100%, #1a1d2880 0%, transparent 55%);
-  --hairline:     rgba(255,255,255,.04);
-  --hairline-2:   rgba(255,255,255,.06);
+  --sidebar-bg:   rgba(22,18,15,.7);
+  --focus-ring:   rgba(232,97,10,.24);
+  --body-gradient: radial-gradient(at 0% 0%, #2c170880 0%, transparent 55%),
+                   radial-gradient(at 100% 100%, #20161080 0%, transparent 55%);
+  --hairline:     rgba(255,240,230,.04);
+  --hairline-2:   rgba(255,240,230,.06);
 }
 [data-theme="light"] {
-  --bg:     #edf0f7;
-  --bg2:    #f8f9fc;
-  --bg3:    #dde1ee;
-  --bg4:    #cdd3e3;
-  --bdr:    #b8c0d4;
-  --bdr2:   #8e9ab4;
-  --tx:     #0f1320;
-  --tx2:    #293050;
-  --tx3:    #4e5a72;
-  --acbg:   #fff0e6;
-  --pinbg:  #fef9ec;
-  --redbg:  #fdecea;
+  --bg:     #f4f1ec;
+  --bg2:    #fffdfa;
+  --bg3:    #efeae3;
+  --bg4:    #e4ddd2;
+  --bdr:    #ddd4c8;
+  --bdr2:   #c2b8a9;
+  --tx:     #1c1611;
+  --tx2:    #463d33;
+  --tx3:    #6f655a;
+  --acbg:   #fdebdd;
+  --pinbg:  #fef6e8;
+  --redbg:  #fdece9;
   --info:   #0284c7;
   --infobg: #e8f4fc;
   --ok:     #059669;
   --okbg:   #e6f8f1;
-  --pre-bg: #e4e8f4;
-  --code-c: #1a2238;
-  --modal-shadow: rgba(0,0,0,.18);
-  --sidebar-bg:   rgba(248,249,252,.8);
+  --pre-bg: #efeae3;
+  --code-c: #2a2017;
+  --modal-shadow: rgba(60,40,20,.16);
+  --sidebar-bg:   rgba(244,241,236,.82);
   --focus-ring:   rgba(232,97,10,.22);
-  --body-gradient: radial-gradient(at 0% 0%, #d8dff080 0%, transparent 55%),
-                   radial-gradient(at 100% 100%, #dde1ee80 0%, transparent 55%);
-  --hairline:     rgba(0,0,0,.05);
-  --hairline-2:   rgba(0,0,0,.08);
+  --body-gradient: radial-gradient(at 0% 0%, #f6ead880 0%, transparent 55%),
+                   radial-gradient(at 100% 100%, #efe7db80 0%, transparent 55%);
+  --hairline:     rgba(60,40,20,.05);
+  --hairline-2:   rgba(60,40,20,.08);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
@@ -144,7 +144,7 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 
 .chat-item{display:flex;align-items:center;gap:0;padding:0 4px;border-radius:8px;cursor:pointer;transition:all .12s;margin-bottom:5px;border:1px solid var(--bdr);background:var(--bg2)}
 .chat-item:hover{background:var(--bg3);border-color:var(--bdr2)}
-.chat-item.active{background:var(--bg4);border-color:var(--ac)}
+.chat-item.active{background:var(--acbg);border-color:var(--ac)}
 
 .chat-item-inner{flex:1;padding:8px 6px;min-width:0;display:flex;align-items:center;gap:7px}
 .chat-pin-dot{width:6px;height:6px;border-radius:50%;background:var(--pin);flex-shrink:0;opacity:0}
@@ -3823,7 +3823,7 @@ function launchComet(startX, startY) {
       ctx.beginPath()
       ctx.moveTo(trail[i].x, trail[i].y)
       ctx.lineTo(trail[i+1].x, trail[i+1].y)
-      ctx.strokeStyle = `rgba(255, ${160 + Math.floor(a*80)}, 60, ${a * 0.7})`
+      ctx.strokeStyle = `rgba(232, ${97 + Math.floor(a*103)}, ${10 + Math.floor(a*70)}, ${a * 0.75})`
       ctx.lineWidth   = width
       ctx.lineCap     = 'round'
       ctx.stroke()
@@ -3833,7 +3833,7 @@ function launchComet(startX, startY) {
     if (trail.length) {
       const grd = ctx.createRadialGradient(x, y, 0, x, y, 18)
       grd.addColorStop(0,   'rgba(255, 255, 220, 1)')
-      grd.addColorStop(0.3, 'rgba(255, 180, 60, 0.9)')
+      grd.addColorStop(0.3, 'rgba(245, 124, 52, 0.92)')
       grd.addColorStop(1,   'rgba(232, 97, 10, 0)')
       ctx.beginPath()
       ctx.arc(x, y, 18, 0, Math.PI * 2)
