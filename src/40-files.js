@@ -41,7 +41,7 @@ function saveEmbedKey() {
   // Mirror into D.settings so persist() also carries these to disk
   if (D.settings) { D.settings.embedApiKey = keyVal; D.settings.embedModelId = modelVal }
   const settingsBody = { apiKey: creds?.apiKey||'', modelId: creds?.model||'', maxTokens: creds?.maxTokens||8192, systemPrompt: creds?.systemPrompt||'', embedApiKey: keyVal, embedModelId: modelVal }
-  try { fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(settingsBody) }) } catch {}
+  if (!(typeof demoOn === 'function' && demoOn())) { try { fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(settingsBody) }) } catch {} }
   persist()
   document.getElementById('embed-key-banner')?.remove()
   toast('Embedding settings saved', 'ok')
