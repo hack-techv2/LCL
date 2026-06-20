@@ -36,7 +36,7 @@ function dlog(...a) { log.debug(...a) }
 // renders on Win10+/PowerShell/Windows Terminal + macOS/Linux; on an old terminal
 // the box still prints, just without colour. Printed via console.log (always on,
 // independent of LCL_LOG_LEVEL) since it's a critical user instruction.
-const A_RESET = '\x1b[0m', A_YEL = '\x1b[1m\x1b[93m'
+const A_RESET = '\x1b[0m', A_YEL = '\x1b[1m\x1b[93m', A_CYN = '\x1b[1m\x1b[96m'
 function restartBanner() {
   const y = (line) => A_YEL + line + A_RESET
   const bar = '============================================================'
@@ -1638,6 +1638,11 @@ function handleUpdateRestart(req, res) {
   }, 350)
 }
 function finishRestart() {
+  // Make the auto-restart unmistakable in the console (distinct from the yellow
+  // manual-restart banner shown when a restart is only *needed*).
+  console.log('')
+  console.log(A_CYN + '  >> RESTART TRIGGERED - reloading server.txt now ...' + A_RESET)
+  console.log('')
   try { upstreamAgent.destroy() } catch {}
   if (RUN_AS_MAIN) {
     ulog('restart - re-exec into server.txt ...')
