@@ -87,7 +87,6 @@ function appendMsg(role, text, date, sources, fileNames, errored) {
 function buildMsgEl(role, text, date, sources, fileNames, errored) {
   const isUser = role === 'user'
   const time   = (date || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const label  = isUser ? 'You' : ((creds?.model || 'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : ''))
 
   // strip injected file content blocks from display - only show the user's actual typed text
   let displayText = text
@@ -108,7 +107,9 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
   // Header
   div.appendChild(mkEl('div', { class: 'msg-hdr' }, [
     mkEl('div', { class: 'msg-av ' + (isUser ? 'user' : 'ai') }, isUser ? 'U' : 'LCL'),
-    mkEl('div', { class: 'msg-role' }, label),
+    (isUser
+      ? mkEl('div', { class: 'msg-role' }, 'You')
+      : mkEl('div', { class: 'msg-role', html: esc(creds?.model || 'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : '') })),
     mkEl('div', { class: 'msg-time' }, time)
   ]))
 
@@ -199,11 +200,10 @@ function refreshTailActions() {
 function appendTyping() {
   let inner = document.querySelector('.msgs-inner')
   if (!inner) { inner = document.createElement('div'); inner.className = 'msgs-inner'; document.getElementById('messages').appendChild(inner) }
-  const role = (creds?.model || 'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : '')
   const div = mkEl('div', { class: 'msg-group' }, [
     mkEl('div', { class: 'msg-hdr' }, [
       mkEl('div', { class: 'msg-av ai' }, 'LCL'),
-      mkEl('div', { class: 'msg-role' }, role)
+      mkEl('div', { class: 'msg-role', html: esc(creds?.model || 'LCL') + (typeof clsSuffix === 'function' ? clsSuffix(creds) : '') })
     ]),
     mkEl('div', { class: 'msg-body' }, mkEl('div', { class: 'typing', html: '<span></span><span></span><span></span>' }))
   ])
