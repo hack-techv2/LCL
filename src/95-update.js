@@ -8,6 +8,7 @@ function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0'
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
 
 async function checkForUpdate(manual){
+  if (typeof demoOn === 'function' && demoOn()) { if (manual) toast('Demo mode \u2014 update check simulated', 'info'); return }
   try{
     const r = await fetch('/api/update/check')
     const d = await r.json()
@@ -29,8 +30,10 @@ function renderUpdateBadge(){
   if (va) va.style.display = (lclUpdate.channel === 'alpha') ? 'inline-block' : 'none'
   const el = document.getElementById('footer-upd')
   if (!el) return
-  const show = lclUpdate.channel==='alpha' ? (lclUpdate.checked && !lclUpdate.error && !lclUpdate.inSync) : !!lclUpdate.newer
-  if (show){ el.style.display='inline-block'; el.setAttribute('data-tip', lclUpdate.channel==='alpha' ? ('Alpha changes on @'+(lclUpdate.ref||'alpha')+' — restart Node') : ('Update available: '+lclUpdate.tag)) }
+  // Stable only: the footer "new" badge shows for a version update. Alpha tracks
+  // a build hash and doesn't surface the green footer badge.
+  const show = lclUpdate.channel === 'alpha' ? false : !!lclUpdate.newer
+  if (show){ el.style.display='inline-block'; el.setAttribute('data-tip', 'Update available: '+lclUpdate.tag) }
   else el.style.display='none'
 }
 
