@@ -1173,6 +1173,19 @@ function serveStatic(req, res) {
     // Always revalidate: the browser sends If-None-Match and gets a tiny 304 when
     // the file is unchanged, or the fresh bytes when it changed — so rebuilds show
     // up on a normal reload without re-downloading every file every time.
+    // The HTML document is served no-store so an auto-update is ALWAYS picked up on
+    // the next load - no stale index.html lingering in the browser cache until a
+    // manual hard-refresh. (The whole app is inlined in index.html, so this also
+    // covers the bundled JS/CSS.) Any other static file keeps ETag + no-cache.
+    const isDoc = base === 'index.html'
+    if (isDoc) {
+      res.writeHead(200, {
+        'Content-Type': MIME[path.extname(fp).toLowerCase()] || 'application/octet-stream',
+        'Cache-Control': 'no-store'
+      })
+      res.end(data)
+      return
+    }
     const etag = '"' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 16) + '"'
     if (req.headers['if-none-match'] === etag) {
       res.writeHead(304, { 'ETag': etag, 'Cache-Control': 'no-cache' })
