@@ -30,7 +30,8 @@ const KNOWN_GLOBALS = new Set([
   'setTimeout','setInterval','clearTimeout','clearInterval','requestAnimationFrame',
   'getComputedStyle','encodeURIComponent','decodeURIComponent','structuredClone',
   'queueMicrotask','parseInt','parseFloat','isNaN','fetch','confirm','alert','prompt','atob','btoa',
-  'marked','DOMPurify','Tesseract','pdfjsLib','mammoth','XLSX'
+  'marked','DOMPurify','Tesseract','pdfjsLib','mammoth','XLSX',
+  'onData'  // callback parameter of streamSse() (12-transport), not a global fn
 ])
 const KEYWORDS = new Set('if for while switch catch return typeof function await throw delete void do else new in of yield case try finally with class extends super'.split(' '))
 
