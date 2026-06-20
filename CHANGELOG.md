@@ -6,6 +6,14 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 ------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
+- Restart notice (server.txt console): when a boot-time update changes server.txt,
+  the terse `Updates -> server.txt updated - restart Node to load the new server`
+  line is replaced by a bold-yellow boxed banner (new restartBanner(), ANSI) with
+  explicit steps: Ctrl+C (stop) → Ctrl+C again / .exit (close Node.js) → start
+  Node.js again (Up arrow for the usual start command). Printed via console.log so
+  it always shows regardless of LCL_LOG_LEVEL; box still prints (uncoloured) on
+  terminals without ANSI.
+
 - Updates card polish + easter-egg fix (alpha):
   - "Experimental" badge (.upd-exp) was grey-on-faint-orange (poor contrast) →
     now solid accent with white text (matches the warn pill).
