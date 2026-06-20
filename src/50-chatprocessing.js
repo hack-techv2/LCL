@@ -8,7 +8,7 @@
 async function resolveSystemPrompt(chat) {
   if (!chat || !chat.skillId) return { sys: creds.systemPrompt || '', error: null }
   try {
-    const r = await fetch('/skills/' + encodeURIComponent(chat.skillId))
+    const r = await httpGet('/skills/' + encodeURIComponent(chat.skillId))
     if (r.status === 404) return { sys: null, error: 'Skill "' + chat.skillId + '" not found' }
     if (!r.ok) return { sys: null, error: 'Skill "' + chat.skillId + '" failed to load (HTTP ' + r.status + ')' }
     const data = await r.json()
@@ -21,7 +21,7 @@ async function resolveSystemPrompt(chat) {
 async function loadSkillsList() {
   if (typeof demoOn === 'function' && demoOn()) return  // keep seeded demo skills
   try {
-    const r = await fetch('/skills')
+    const r = await httpGet('/skills')
     if (!r.ok) { skillsCache = []; return }
     const data = await r.json()
     skillsCache = Array.isArray(data.skills) ? data.skills : []
