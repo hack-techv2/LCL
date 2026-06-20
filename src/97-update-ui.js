@@ -14,7 +14,7 @@ function renderUpdateSettings(){
   // or "Installed" tile), then the two toggle rows.
   const verRow = (verHtml,p)=> '<div class="upd-top"><span class="upd-ver">'+verHtml+'</span>'+p+'</div>'
   const autoRow = (right)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" id="upd-auto" '+(updateAutoOn()?'checked':'')+' onchange="setUpdateAuto(this.checked)"><span class="upd-sw"></span>Check on launch</label>'+right+'</div>'
-  const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Experimental updates</label><span class="upd-exp">Experimental</span></div>'
+  const expRow = (on)=> '<div class="upd-row"><label class="upd-auto"><input type="checkbox" '+(on?'checked':'')+' onchange="setChannel(this.checked?\'alpha\':\'stable\')"><span class="upd-sw"></span>Alpha updates</label><span class="upd-exp">Experimental</span></div>'
 
   if (!u.checked){
     body.innerHTML = verRow(v, pill('neutral','Not checked'))
@@ -76,13 +76,39 @@ function openUpdateDialog(){
         '<button class="btn-sv" id="update-apply-btn" onclick="applyUpdate()">Download &amp; apply</button>'+
       '</div></div>'
   document.body.appendChild(bd)
+  // #demo: the notes are seeded placeholders — fetch the REAL release notes from
+  // GitHub (read-only, via the server check endpoint) so "What is new" is genuine.
+  if (typeof demoOn === 'function' && demoOn()) {
+    const notesEl = bd.querySelector('.msg-body')
+    if (notesEl) {
+      notesEl.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Loading release notes from GitHub\u2026</div>'
+      fetch('/api/update/check').then(r => r.json()).then(d => {
+        notesEl.innerHTML = fmt(d.notes || '_No release notes provided._')
+      }).catch(e => { notesEl.innerHTML = '<div style="color:var(--red);padding:6px 0">Could not load notes: ' + esc(e.message) + '</div>' })
+    }
+  }
   bd.addEventListener('click', e=>{ if(e.target===bd) closeUpdateDialog() })
 }
 
 function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
 
 async function applyUpdate(){
-  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 updates are simulated', 'info'); return }
+  if (typeof demoOn === 'function' && demoOn()) {
+    // Emulate the full download -> restart -> updated sequence (no network). The
+    // floating "Reset demo" button re-seeds the one-version-behind state.
+    const out = document.getElementById('update-result')
+    const btn = document.getElementById('update-apply-btn')
+    if (btn){ btn.disabled = true; btn.textContent = 'Working\u2026' }
+    if (out) out.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Downloading and verifying\u2026 (demo)</div>'
+    setTimeout(() => { if (out) out.innerHTML = '<div style="color:var(--ok);padding:6px 0">Updated to v0.67d. Restarting Node\u2026</div>' }, 1000)
+    setTimeout(() => {
+      const vb = document.getElementById('ver-badge'); if (vb) vb.textContent = 'v0.67d'
+      lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67d', tag:'v0.67d', newer:false, error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+      renderUpdateBadge(); renderUpdateSettings(); closeUpdateDialog()
+      toast('Updated to v0.67d (demo) \u2014 Reset demo to replay', 'ok')
+    }, 2100)
+    return
+  }
   const btn = document.getElementById('update-apply-btn')
   const out = document.getElementById('update-result')
   if (btn){ btn.disabled=true; btn.textContent='Working…' }
