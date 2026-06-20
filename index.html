@@ -4632,8 +4632,20 @@ async function setChannel(ch){
 
 // Alpha enrolment is gated behind the easter egg: 7 clicks on the version badge
 // unlock the "Try alpha updates" toggle inside Settings -> Updates.
-function alphaUnlocked(){ try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false } }
-function unlockAlpha(){ try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {}; if (typeof toast === 'function') toast('Tester options unlocked - Open Settings','ok'); if (typeof renderUpdateSettings === 'function') renderUpdateSettings() }
+// #demo: gate on an in-memory flag (default locked) and never touch localStorage,
+// so demo always starts locked regardless of the real profile's unlock state, the
+// easter egg can demonstrate the unlock live, and nothing leaks into normal mode.
+let _demoAlphaUnlocked = false
+function alphaUnlocked(){
+  if (typeof demoOn === 'function' && demoOn()) return _demoAlphaUnlocked
+  try { return localStorage.getItem('lcl_alpha_unlocked') === '1' } catch { return false }
+}
+function unlockAlpha(){
+  if (typeof demoOn === 'function' && demoOn()) { _demoAlphaUnlocked = true }
+  else { try { localStorage.setItem('lcl_alpha_unlocked', '1') } catch {} }
+  if (typeof toast === 'function') toast('Tester options unlocked - Open Settings','ok')
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+}
 
 // Front-end alpha apply: download + verify the alpha pair via the server, then
 // prompt reload (index) / restart (server). Boot-time auto-update still exists.
