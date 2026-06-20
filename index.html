@@ -3199,17 +3199,25 @@ function renderDocPanel() {
   const el   = document.getElementById('dp-body')
   const chat = curChat()
   const docs = chat?.docs||[]
-  if (!docs.length) { el.innerHTML='<div class="dp-empty">No files attached.<br>Upload files to use as context for this chat.</div>'; return }
-  el.innerHTML = docs.map(d=>`
-    <div class="doc-card">
-      <div class="doc-ext">${esc(d.name.split('.').pop().slice(0,4).toUpperCase())}</div>
-      <div class="doc-inf">
-        <div class="doc-name">${esc(d.name)}</div>
-        <div class="doc-sz">${fmtSz(d.size)} * ${d.chunks?.length||0} chunks</div>
-        <span class="doc-st ${d.status==='ready'?'ready':d.status==='error'?'error':'pending'}">${d.status||'pending'}</span>
-      </div>
-      <button class="doc-del" onclick="removeDoc('${d.id}',event)">x</button>
-    </div>`).join('')
+  el.innerHTML = ''
+  if (!docs.length) {
+    el.append(mkEl('div', { class: 'dp-empty', html: 'No files attached.<br>Upload files to use as context for this chat.' }))
+    return
+  }
+  for (const d of docs) {
+    const ext   = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
+    const status = d.status || 'pending'
+    const stCls = d.status === 'ready' ? 'ready' : d.status === 'error' ? 'error' : 'pending'
+    el.append(mkEl('div', { class: 'doc-card' }, [
+      mkEl('div', { class: 'doc-ext' }, ext),
+      mkEl('div', { class: 'doc-inf' }, [
+        mkEl('div', { class: 'doc-name' }, d.name),
+        mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
+        mkEl('span', { class: 'doc-st ' + stCls }, status),
+      ]),
+      mkEl('button', { class: 'doc-del', title: 'Remove', onclick: (e) => removeDoc(d.id, e) }, 'x'),
+    ]))
+  }
 }
 
 function updateDocsBtn() {
@@ -3246,6 +3254,28 @@ function fmt(text) {
 
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function escJs(s){ return esc(String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")) }
+// Minimal DOM builder for renderers (avoids string-template innerHTML + inline
+// onclick). mkEl('div',{class:'x',onclick:fn,title:'t'},[child|string|node]).
+// Strings -> text nodes (auto-escaped by the DOM). Named mkEl, not el, because
+// renderers use `el` as the container local. Use {html:'...'} for trusted markup.
+function mkEl(tag, attrs, children) {
+  const n = document.createElement(tag)
+  if (attrs) for (const k in attrs) {
+    const v = attrs[k]
+    if (v == null || v === false) continue
+    if (k === 'class') n.className = v
+    else if (k === 'html') n.innerHTML = v
+    else if (k.slice(0, 2) === 'on' && typeof v === 'function') n.addEventListener(k.slice(2), v)
+    else n.setAttribute(k, v)
+  }
+  const add = (c) => {
+    if (c == null || c === false) return
+    if (Array.isArray(c)) { c.forEach(add); return }
+    n.append(c.nodeType ? c : document.createTextNode(String(c)))
+  }
+  add(children)
+  return n
+}
 
 function fmtSz(b) {
   if (!b) return '0 B'
