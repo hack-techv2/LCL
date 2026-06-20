@@ -18,8 +18,9 @@
 //   Settings ..... data-classification picker (light/dark contrast), Updates.
 //
 // Safe: persist() is a no-op while #demo is active, so nothing is written to
-// lcl_data.json. STRIP src/96-demo.js + the maybeDemo() guard in init() before
-// promoting alpha -> stable.
+// lcl_data.json. Demo now ships gated behind the #demo hash and is intentionally
+// NOT stripped before promoting alpha -> stable — do not remove src/96-demo.js or
+// the maybeDemo() guard in init() (see CLAUDE.md). Stripping them breaks the build.
 // =============================================================================
 function demoOn() {
   try { return (location.hash || '').toLowerCase() === '#demo' } catch { return false }
@@ -89,9 +90,9 @@ function demoChat(id, title, ts, pinned, messages) {
 // the browser doesn't reload, so init()/maybeDemo() never re-run. Reload when we
 // cross the demo boundary so entering or leaving #demo actually (de)activates it.
 ;(function () {
-  let wasDemo = location.hash === '#demo'
+  let wasDemo = demoOn()
   window.addEventListener('hashchange', () => {
-    const isDemo = location.hash === '#demo'
+    const isDemo = demoOn()
     if (isDemo !== wasDemo) { wasDemo = isDemo; location.reload() }
   })
 })()
