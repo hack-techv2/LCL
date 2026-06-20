@@ -1317,7 +1317,7 @@ function handleUpdateCheck(req, res) {
   if (readChannel() === 'alpha') {
     const alphaStat = () => alphaStatus()
       .then(st => json(res, Object.assign({ channel: 'alpha', current: APP_VERSION }, st)))
-      .catch(e => json(res, { channel: 'alpha', current: APP_VERSION, error: updateClientErr('alpha check', e) }))
+      .catch(e => json(res, Object.assign({ channel: 'alpha', current: APP_VERSION, error: updateClientErr('alpha check', e) }, localBuild())))
     alphaMatchesStable().then(same => {
       if (!same) return alphaStat()
       // Experimental == stable: drop the flag and report stable so the UI stops
@@ -1426,6 +1426,14 @@ async function ghFetchFile(ref, name) {
   } catch { return { statusCode: 502, buf: Buffer.alloc(0) } }
 }
 let _alphaCache = { ts: 0, data: null }
+// Current installed build info from the on-disk index.html (hash + mtime). Used so
+// a FAILED update check can still show the current build, not a blank dash.
+function localBuild() {
+  let hash = '', installedAt = null
+  try { hash = sha256Buf(fs.readFileSync(path.join(LCL_DIR, 'index.html'))).slice(0, 7) } catch {}
+  try { installedAt = fs.statSync(path.join(LCL_DIR, 'index.html')).mtimeMs } catch {}
+  return { hash, installedAt }
+}
 async function alphaStatus() {
   if (_alphaCache.data && Date.now() - _alphaCache.ts < 30000) return _alphaCache.data
   const cs = await ghFetchFile(ALPHA_REF, 'checksums.txt')
