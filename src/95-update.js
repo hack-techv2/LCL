@@ -2,12 +2,19 @@
 // Auto-update — checks GitHub releases via the local server (server.txt does
 // the network + file work; this is the display + consent layer).
 // =============================================================================
-let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+let lclUpdate = { checked:false, channel:'stable', current:'', latest:'', tag:'', newer:false, notes:'', html_url:'', error:null, ref:'alpha', inSync:true, changed:[], hash:'', installedAt:null }
 
 // Normalize any partial update payload into the full lclUpdate shape so every
 // assignment site carries the same keys (the error path used to drop most of
 // them, and `applied` could go stale). Always resets `applied` unless provided.
-function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+function makeUpdateState(d){ d=d||{}; return { checked:true, channel:d.channel||'stable', current:d.current||'', latest:d.latest||'', tag:d.tag||'', newer:!!d.newer, notes:d.notes||'', html_url:d.html_url||'', error:d.error||null, ref:d.ref||'alpha', inSync:!!d.inSync, changed:d.changed||[], hash:d.hash||'', installedAt:d.installedAt||null, sameAsStable:!!d.sameAsStable, applied:d.applied||null } }
+
+// Compact "updated <date>" for the experimental build line (e.g. 21 Jun 2026).
+function fmtUpdated(ms){
+  if (!ms) return ''
+  try { return new Date(ms).toLocaleDateString([], { day:'numeric', month:'short', year:'numeric' }) }
+  catch { return '' }
+}
 
 function setUpdateAuto(on){ try{ localStorage.setItem('lcl_upd_auto', on?'1':'0') }catch{} }
 function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1') === '1' }catch{ return true } }
@@ -15,7 +22,7 @@ function updateAutoOn(){ try{ return (localStorage.getItem('lcl_upd_auto') ?? '1
 async function checkForUpdate(manual){
   if (typeof demoOn === 'function' && demoOn()) { if (manual) toast('Demo mode \u2014 update check simulated', 'info'); return }
   try{
-    const r = await fetch('/api/update/check')
+    const r = await httpGet('/api/update/check')
     const d = await r.json()
     lclUpdate = makeUpdateState(d)
   }catch(e){ lclUpdate = makeUpdateState({ channel:'stable', error:e.message }) }
