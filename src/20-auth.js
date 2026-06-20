@@ -5,6 +5,12 @@ async function init() {
   // Demo mode (?demo=1) seeds sample content and skips all network work.
   if (typeof maybeDemo === 'function' && maybeDemo()) return
   await loadData()
+  // Scrub any leaked #demo sentinel ('demo') from saved settings so a prior demo
+  // visit never looks connected or "embeddings ready" in normal mode.
+  if (D.settings) {
+    if (D.settings.apiKey === 'demo') D.settings.apiKey = ''
+    if (D.settings.embedApiKey === 'demo') D.settings.embedApiKey = ''
+  }
   // Try to auto-connect from saved settings
   try {
     const r = await fetch('/api/config')
