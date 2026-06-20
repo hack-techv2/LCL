@@ -1,7 +1,8 @@
 # Internal docs — not for publication
 llms.txt
-PROJECT_BRIEF.md
-UPGRADE_PLAN_file-editing.md
+CLAUDE.md
+UPGRADE_PLAN.md
+REFACTOR_PLAN.md
 
 # Runtime data & caches — never commit (hold API keys / chat history
 # if Node is ever run from this folder)
