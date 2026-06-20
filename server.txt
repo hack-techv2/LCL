@@ -1417,7 +1417,9 @@ async function alphaStatus() {
     let cur = null; try { cur = sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) } catch {}
     if (cur !== want) changed.push(f)
   }
-  _alphaCache = { ts: Date.now(), data: { ref: ALPHA_REF, inSync: changed.length === 0, changed, hash: (exp['index.html'] || '').slice(0, 7) } }
+  let installedAt = null
+  try { installedAt = fs.statSync(path.join(LCL_DIR, 'index.html')).mtimeMs } catch {}
+  _alphaCache = { ts: Date.now(), data: { ref: ALPHA_REF, inSync: changed.length === 0, changed, hash: (exp['index.html'] || '').slice(0, 7), installedAt } }
   return _alphaCache.data
 }
 // True when the @alpha build is byte-identical to the latest stable release
