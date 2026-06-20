@@ -6,6 +6,14 @@ R-series follow-ups (20 Jun 2026, still v0.67d - alpha)
 ------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
+- Top-bar comet alignment: the ambient streaks (.tb-comets .h1/.h2/.h3) were
+  top:50% (top-edge on the midline, so the 4px bar sat ~2px low) → now
+  top:calc(50% - 2px), centred on the midline so they line up with the
+  easter-egg's launched streak (drawn dead-centre). The two left→right comets now
+  run at the same height.
+- Footer ALPHA pill (.ver-alpha) dropped from weight 600 to 400 (less heavy);
+  still solid red + white.
+
 - Restart notice (server.txt console): when a boot-time update changes server.txt,
   the terse `Updates -> server.txt updated - restart Node to load the new server`
   line is replaced by a bold-yellow boxed banner (new restartBanner(), ANSI) with
