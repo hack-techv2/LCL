@@ -163,9 +163,7 @@ async function disconnect() {
   toast('Disconnected', 'ok')
 }
 
-function connectedLabel() {
-  return creds ? (creds.model || 'Connected') : 'Not connected'
-}
+// connectedLabel() is defined in 70-render.js (chat+embed vs chat only).
 
 function openConnect() {
   if (typeof initClassification === 'function') initClassification('cfg', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce')
