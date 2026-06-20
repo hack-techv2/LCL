@@ -17,7 +17,8 @@ async function setChannel(ch){
   try{
     const r = await fetch('/api/update/channel',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channel:ch}) })
     const d = await r.json()
-    if (d.error){ toast('Experimental switch failed: '+d.error+' \u2014 staying on stable','err'); await checkForUpdate(true); return }
+    if (d.error){ const stay = (d.channel === 'alpha') ? 'experimental' : 'stable'; toast('Channel switch failed: '+d.error+' \u2014 staying on '+stay,'err'); await checkForUpdate(true); return }
+    if (d.sameAsStable){ toast('Experimental build is identical to stable \u2014 nothing to switch','info'); await checkForUpdate(true); return }
     if (d.restartNeeded){
       const msg = ch==='alpha'
         ? 'Experimental build applied'
