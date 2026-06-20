@@ -6,9 +6,7 @@ async function autoTitleChat(chat) {
   const seed = (extract(chat.messages[0]) + '\n\n' +
                 extract(chat.messages[1])).slice(0, 1500)
   try {
-    const resp = await fetch('/api/chat', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const resp = await httpPost('/api/chat', {
         apiKey: creds.apiKey, modelId: creds.model,
         payload: {
           messages: [
@@ -21,7 +19,6 @@ async function autoTitleChat(chat) {
           max_tokens: 24,
           stream: false
         }
-      })
     })
     if (!resp.ok) return
     const data = await resp.json()
