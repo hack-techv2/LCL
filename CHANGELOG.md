@@ -99,6 +99,8 @@ UI polish
 - Composer placeholder: the rotating example prompts ("Review some code…") now show
   only on an empty/new chat; existing chats keep the plain "Message LCL…".
 - Skills empty-state message now reads "drop one into LCL/skills" (was LCL_DIR/skills/).
+- AI reply header now shows the data classification after the model name, e.g.
+  "cce.claude-opus-4-6 (CCE/SN)" (muted), matching the welcome line (clsSuffix).
 
 Dev / infra
 - `#demo` no-API debug mode: seeds sample messages + a typing
