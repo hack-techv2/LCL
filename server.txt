@@ -54,6 +54,7 @@ const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
 const API_HOST = 'api.ai.tech.gov.sg'
 const CHAT_PATH = '/platform/models/chat/completions'
 const EMBED_PATH = '/platform/models/embeddings'
+const DEMOKEY = 'DEMOKEY'   // #demo sentinel key — see the Demo API block below
 
 // --- Auto-update: checks GitHub releases for this repo ---
 const APP_VERSION = '0.67d'
@@ -744,9 +745,156 @@ function respondUpstreamJson(res, err, upstream) {
   }
 }
 
+// ===========================================================================
+// Demo API (DEMOKEY) — when the front-end runs in #demo it talks to the REAL
+// endpoints with the sentinel key 'DEMOKEY' + an 'x-lcl-demo: 1' header, and we
+// answer locally (no upstream socket). This exercises every client workflow —
+// transport, route dispatch, streaming render, RAG plumbing, retry/error UI —
+// offline with deterministic canned data. The header gate means a stray DEMOKEY
+// typed in normal mode does NOT get demo data (it 401s like any bad key).
+// Persistence is bypassed: demo embeds never read/write the real embed cache.
+// ===========================================================================
+function isDemoReq(req) { try { return (req.headers['x-lcl-demo'] || '') === '1' } catch { return false } }
+function demoGate(req, body) {
+  const hdr = isDemoReq(req)
+  const key = !!(body && body.apiKey === DEMOKEY)
+  if (!hdr && !key) return 'normal'
+  if (!hdr) return 'no-demo-mode'    // demo key typed outside #demo
+  if (!key) return 'no-demo-key'     // #demo header but not the demo key
+  return 'serve'
+}
+function demo401(res, g) {
+  if (g === 'no-demo-mode') { json(res, { error: { message: 'Demo key only works in #demo mode' } }, 401); return true }
+  if (g === 'no-demo-key')  { json(res, { error: { message: 'Demo mode requires the demo key' } }, 401); return true }
+  return false
+}
+
+const DEMO_REPLY_MD = [
+  'Here is a **demo** reply, streamed live through the real transport + SSE path.',
+  '',
+  'It renders *italic*, `inline code`, a [link](https://platform.ai.tech.gov.sg), and a list:',
+  '',
+  '- transport (httpPost) + streamSse parsing',
+  '- token-by-token live render',
+  '- markdown formatting',
+  '',
+  'No network and no real key — every byte comes from the local demo responder.'
+].join('\n')
+const DEMO_REPLY_CODE = [
+  'Sure — here is a short snippet:',
+  '',
+  '```python',
+  'def greet(name):',
+  '    return f"hello, {name}"',
+  '',
+  'print(greet("LCL"))',
+  '```',
+  '',
+  'That exercises fenced code-block rendering.'
+].join('\n')
+const DEMO_RL = { reqRemaining: 58, reqLimit: 60, tokRemaining: 95000, tokLimit: 100000 }
+
+// Most recent user text from an OpenAI-style payload (marker detection / routing).
+function demoLastUserText(payload) {
+  try {
+    const msgs = (payload && payload.messages) || []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        const c = msgs[i].content
+        if (typeof c === 'string') return c
+        if (Array.isArray(c)) return (c.find(b => b && b.type === 'text') || {}).text || ''
+      }
+    }
+  } catch {}
+  return ''
+}
+
+// Marker in the prompt -> simulated upstream error, so error/retry/filter UI is
+// testable. [[429]] fails only the FIRST hit (per marker text) so the client
+// retry wrapper then succeeds — proving the retry path end-to-end.
+const _demo429 = new Map()
+function demoErrorFor(text) {
+  if (/\[\[401\]\]/.test(text)) return { status: 401, body: { error: { message: 'Invalid API key (demo 401)', type: 'auth' } } }
+  if (/\[\[500\]\]/.test(text)) return { status: 500, body: { error: { message: 'Internal server error (demo 500)' } } }
+  if (/\[\[429\]\]/.test(text)) {
+    const n = (_demo429.get(text) || 0) + 1; _demo429.set(text, n)
+    if (n <= 1) return { status: 429, body: { error: { message: 'Rate limit exceeded (demo 429) — retrying' } } }
+    return null
+  }
+  return null
+}
+
+// Deterministic pseudo-embedding (NOT semantic) — exercises RAG plumbing only.
+function demoVector(text, dim) {
+  dim = dim || 1024
+  const v = new Array(dim)
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) }
+  for (let i = 0; i < dim; i++) { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; v[i] = ((h >>> 0) / 4294967295) * 2 - 1 }
+  return v
+}
+
+// Stream a canned reply as OpenAI-style SSE (choices[0].delta.content) with a
+// trickle delay so the typing UI is exercised. Honours error/filter markers.
+function demoChatStream(res, payload) {
+  const text = demoLastUserText(payload)
+  const err = demoErrorFor(text)
+  if (err) { res.writeHead(err.status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(err.body)); return }
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
+  if (/\[\[filter\]\]/.test(text)) {
+    res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'content_filter' }] }) + '\n\n')
+    res.write('data: [DONE]\n\n'); res.end(); return
+  }
+  const reply = /code|snippet|function|script/i.test(text) ? DEMO_REPLY_CODE : DEMO_REPLY_MD
+  const slow  = /\[\[slow\]\]/.test(text)
+  const toks  = reply.match(/\s+|\S+/g) || [reply]
+  let i = 0, done = false
+  res.on('close', () => { done = true })
+  const tick = () => {
+    if (done || res.writableEnded) return
+    if (i >= toks.length) {
+      res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\n')
+      res.write('data: [DONE]\n\n'); res.end(); return
+    }
+    res.write('data: ' + JSON.stringify({ choices: [{ delta: { content: toks[i] }, finish_reason: null }] }) + '\n\n')
+    i++; setTimeout(tick, slow ? 220 : 28)
+  }
+  tick()
+}
+
+// Buffered chat (Connect test + auto-title): {choices:[{message:{content}}]}.
+function demoChatJson(payload) {
+  const text = demoLastUserText(payload)
+  const sys  = ((payload.messages || []).find(m => m.role === 'system') || {}).content || ''
+  const isTitle = /title/i.test(sys) || (payload.max_tokens && payload.max_tokens <= 32)
+  const content = isTitle ? 'Demo conversation'
+    : (/code|snippet|function/i.test(text) ? DEMO_REPLY_CODE : DEMO_REPLY_MD)
+  return { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }], _rateLimit: DEMO_RL }
+}
+
+// Serve a /api/chat demo request (stream or buffered, honouring markers).
+function demoServeChat(res, body) {
+  const finalPayload = { ...(body.payload || {}), model: body.modelId || 'demo' }
+  if (finalPayload.stream === true) return demoChatStream(res, finalPayload)
+  const err = demoErrorFor(demoLastUserText(finalPayload))
+  if (err) return json(res, err.body, err.status)
+  return json(res, demoChatJson(finalPayload))
+}
+
+// Demo embeddings: {data:[{index,embedding}]}, deterministic, never cached.
+function demoEmbed(inputs) {
+  const arr = Array.isArray(inputs) ? inputs : [inputs]
+  return { model: 'demo', _rateLimit: DEMO_RL,
+    data: arr.map((t, idx) => ({ object: 'embedding', index: idx, embedding: demoVector(String(t)) })) }
+}
+
 function handleChat(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
+
+    const _g = demoGate(req, body)
+    if (demo401(res, _g)) return
+    if (_g === 'serve') return demoServeChat(res, body)
 
     const settings = appData.settings || {}
     const apiKey  = settings.apiKey  || body.apiKey
@@ -772,6 +920,10 @@ function handleChat(req, res) {
 function handleEmbed(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
+
+    const _g = demoGate(req, body)
+    if (demo401(res, _g)) return
+    if (_g === 'serve') return json(res, demoEmbed(body.input ?? body.text))
 
     const { apiKey, modelId, input, text } = body
     const finalInput = input ?? text
@@ -882,6 +1034,14 @@ async function handleEmbedBatch(req, res) {
   readBody(req, async (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
 
+    const _g = demoGate(req, body)
+    if (demo401(res, _g)) return
+    if (_g === 'serve') {
+      const ins = body.inputs || []
+      return json(res, { embeddings: ins.map(t => demoVector(String(t))),
+                         hashes: ins.map(t => hashText((body.modelId || 'demo') + ':' + t)) })
+    }
+
     const settings = appData.settings || {}
     const apiKey   = settings.embedApiKey  || body.apiKey
     const modelId  = settings.embedModelId || body.modelId
@@ -979,6 +1139,8 @@ function handleEmbedLookup(req, res) {
       return json(res, { error: 'Invalid hashes array' }, 400)
     }
 
+    if (isDemoReq(req)) return json(res, { vectors: hashes.map(h => demoVector(String(h))) })
+
     const vectors = hashes.map(h => {
       const v = embedCache[h]
       return v ? Array.from(v) : null
@@ -999,6 +1161,8 @@ function handleEmbedEvict(req, res) {
     if (!Array.isArray(hashes) || !hashes.length || hashes.length > 1500) {
       return json(res, { error: 'Invalid hashes array' }, 400)
     }
+
+    if (isDemoReq(req)) return json(res, { ok: true, removed: 0 })
 
     let removed = 0
     for (const h of hashes) {
@@ -1043,6 +1207,7 @@ function pruneEmbedCache() {
 }
 
 function handleEmbedGc(req, res) {
+  if (isDemoReq(req)) return json(res, { ok: true, removed: 0 })
   json(res, { ok: true, removed: pruneEmbedCache() })
 }
 
