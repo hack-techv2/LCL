@@ -136,7 +136,6 @@ async function send() {
   const input = document.getElementById('msg-in')
   const text  = input.value.trim()
   if (!text||busy||!chatId) return
-  if (typeof demoOn === 'function' && demoOn()) { demoSend(text, input); return }
 
   // If a 429 retry was pending from a previous send, cancel it. The user
   // is starting fresh; the old payload shouldn't auto-fire later.
@@ -201,8 +200,6 @@ async function send() {
 // ---------------------------------------------------------------------------
 
 async function runStream(chat, payload, ragSources) {
-  // #demo: stream a canned reply through the same busy/stop UI; no network.
-  if (typeof demoOn === 'function' && demoOn()) { demoStream(chat, ragSources); return }
   payload.stream = true   // enable server-side streaming proxy
 
   const typingEl = appendTyping()
@@ -599,10 +596,6 @@ async function regenerateLast() {
   }
   if (!chat.messages.length) return
   renderMessages()
-
-  // #demo: skip the real RAG/skill payload build (which would hit the network)
-  // and just stream another canned reply.
-  if (typeof demoOn === 'function' && demoOn()) { demoStream(chat); return }
 
   // Rebuild the payload from the remaining history. Shared with send() via
   // buildPayload() so the full-text-vs-RAG doc logic is identical (regenerate
