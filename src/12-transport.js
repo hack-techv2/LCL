@@ -9,16 +9,24 @@
 
 // Build a fetch init for a JSON request. Only sets a body + Content-Type when a
 // body is provided (a bodyless POST/PUT/DELETE stays bodyless, as before).
+// In #demo the front-end talks to the REAL endpoints with the demo key; this
+// header is the server-side gate (a stray DEMOKEY in normal mode can't get demo
+// data). Added automatically to every request while demoOn() is true.
+function _demoHdr() { return (typeof demoOn === 'function' && demoOn()) ? { 'x-lcl-demo': '1' } : null }
+
 function _httpInit(method, body, opts) {
   const init = Object.assign({ method }, opts || {})
+  const dh = _demoHdr()
   if (body !== undefined) {
-    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {})
+    init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {}, dh || {})
     init.body = JSON.stringify(body)
+  } else if (dh) {
+    init.headers = Object.assign({}, init.headers || {}, dh)
   }
   return init
 }
 
-function httpGet(path, opts)          { return fetch(path, opts) }
+function httpGet(path, opts)          { const dh = _demoHdr(); if (dh) { opts = Object.assign({}, opts || {}); opts.headers = Object.assign({}, opts.headers || {}, dh) } return fetch(path, opts) }
 function httpPost(path, body, opts)   { return fetch(path, _httpInit('POST', body, opts)) }
 function httpPut(path, body, opts)    { return fetch(path, _httpInit('PUT', body, opts)) }
 function httpDelete(path, opts)       { return fetch(path, _httpInit('DELETE', undefined, opts)) }
