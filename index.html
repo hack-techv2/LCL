@@ -914,6 +914,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 </div>
 
 <script>
+
 // SECTION: 00-config.js
 // =============================================================================
 // Central tunable constants (CFG)
@@ -4835,7 +4836,16 @@ async function setChannel(ch){
     const r = await httpPost('/api/update/channel', { channel: ch })
     const d = await r.json()
     if (d.error){ const stay = (d.channel === 'alpha') ? 'experimental' : 'stable'; toast('Channel switch failed: '+d.error+' \u2014 staying on '+stay,'err'); await checkForUpdate(true); return }
-    if (d.sameAsStable){ toast('Experimental build is identical to stable \u2014 nothing to switch','info'); await checkForUpdate(true); return }
+    if (d.sameAsStable){
+      // Enrolled in Experimental even though the current build already matches stable;
+      // future alpha builds will be offered. Render from this response - no second
+      // check (the toggle stays on and the ALPHA pill shows).
+      lclUpdate = makeUpdateState({ channel:'alpha', ref:'alpha', inSync:true, changed:[], hash:d.hash||'', installedAt:d.installedAt||null })
+      toast('Enrolled in Experimental updates \u2014 already on the latest build','ok')
+      if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
+      renderUpdateSettings()
+      return
+    }
     if (ch === 'stable') relockAlpha()
     if (d.restartNeeded){
       const msg = ch==='alpha'
