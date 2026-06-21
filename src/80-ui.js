@@ -205,3 +205,447 @@ function exportChat() {
 }
 
 let toastT=null
+
+// ---------------------------------------------------------------------------
+// merged from 81-ui-settings.js
+// ---------------------------------------------------------------------------
+
+function toast(msg,type) {
+  const el=document.getElementById('toast'); el.textContent=msg; el.className='show '+(type||'')
+  clearTimeout(toastT); toastT=setTimeout(()=>el.className='',2800)
+}
+
+// Update a range slider's --fill custom property so the gradient track
+// renders the orange "filled" portion correctly at its current value.
+// Without this, the thumb floats over a flat grey track.
+function refreshSliderFill(el) {
+  if (!el) return
+  const min = parseFloat(el.min) || 0
+  const max = parseFloat(el.max) || 100
+  const val = parseFloat(el.value) || 0
+  const pct = max === min ? 0 : ((val - min) / (max - min)) * 100
+  // Offset by the thumb radius so the filled portion lines up with the thumb
+  // centre at both ends (native range thumbs are inset by half their width, so a
+  // plain pct% gradient overshoots at max and shows under the thumb at min).
+  const T = 16 // thumb width incl. border
+  const off = (T / 2 - (pct / 100) * T).toFixed(2)
+  el.style.setProperty('--fill', 'calc(' + pct + '% + ' + off + 'px)')
+}
+
+// Max-tokens preset chips + custom field. The custom number input (#s-tok-v-input)
+// is the single source of truth that saveSP() reads; chips just write into it.
+function setTok(v){
+  const inp = document.getElementById('s-tok-v-input')
+  if (inp) inp.value = v
+  refreshSliderFill(document.getElementById('s-tok'))
+}
+function refreshTokChips(){
+  const inp = document.getElementById('s-tok-v-input')
+  const v = parseInt(inp && inp.value) || 0
+  document.querySelectorAll('#tok-presets .tok-chip').forEach(b => b.classList.toggle('on', parseInt(b.dataset.tok) === v))
+}
+
+// Two-way sync for the RAG sliders + their editable value fields.
+function onRangeIn(numId, range){
+  const n = document.getElementById(numId)
+  if (n) n.value = range.value
+  refreshSliderFill(range)
+}
+function onNumIn(rangeId, num){
+  const r = document.getElementById(rangeId)
+  if (!r) return
+  let v = parseInt(num.value)
+  if (!isNaN(v)) r.value = Math.max(+r.min, Math.min(+r.max, v))
+  refreshSliderFill(r)
+}
+
+// Settings
+function openSP() {
+  if (!creds) return
+  document.getElementById('s-key').value   = creds.apiKey||''
+  document.getElementById('s-mdl').value   = creds.model||''
+  document.getElementById('s-sys').value   = creds.systemPrompt||''
+  document.getElementById('s-tok-v-input').value = Math.min(CFG.MAX_TOKENS_CAP, creds.maxTokens||8192)
+  document.getElementById('s-tok').value = Math.min(CFG.MAX_TOKENS_SLIDER, creds.maxTokens||8192)
+  document.getElementById('s-chunk').value = creds.chunkSize||800
+  document.getElementById('s-topk').value  = creds.topK||5
+  document.getElementById('s-embk').value  = creds.embedApiKey||''
+  document.getElementById('s-embm').value  = creds.embedModelId||''
+  document.getElementById('s-chunk-v').value = creds.chunkSize||800
+  document.getElementById('s-topk-v').value  = creds.topK||5
+  // Paint the slider fills to match initial values
+  refreshSliderFill(document.getElementById('s-tok'))
+  refreshSliderFill(document.getElementById('s-chunk'))
+  refreshSliderFill(document.getElementById('s-topk'))
+  if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
+  document.getElementById('sp').classList.remove('hidden')
+  let _spTab = 'models'; try { _spTab = localStorage.getItem('lcl_sp_tab') || 'models' } catch {}
+  if (typeof spTab === 'function') spTab(['models','settings'].includes(_spTab) ? _spTab : 'models')
+  if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+}
+
+// Switch the Settings panel tab (Model / Embed / Settings); remembers last choice.
+function spTab(name){
+  document.querySelectorAll('#sp .sp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name))
+  document.querySelectorAll('#sp .sp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name))
+  try { localStorage.setItem('lcl_sp_tab', name) } catch {}
+}
+
+// Skills manager (independent of Settings; accessible without connection)
+async function openSkillsManager() {
+  // Refresh from disk every time so the list is current — also makes this work
+  // before a connect() has populated skillsCache.
+  await loadSkillsList()
+  renderSpSkillsList()
+  renderSkillPicker()
+  document.getElementById('skills-mgr').classList.remove('hidden')
+}
+
+function closeSkillsManager() {
+  cancelNewSkill()
+  document.getElementById('skills-mgr').classList.add('hidden')
+}
+function closeSP() { document.getElementById('sp').classList.add('hidden') }
+
+function renderSpSkillsList() {
+  const root = document.getElementById('sp-skills-list')
+  if (!root) return
+  if (!skillsCache.length) {
+    root.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:6px">No skills yet. Upload a .md file or drop one into LCL/skills.</div>'
+    return
+  }
+  root.innerHTML = skillsCache.map(s => `
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;background:var(--bg3)">
+      <div style="flex:1;min-width:0;font-size:12px">
+        <div style="font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.title)}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--tx3)">${esc(s.id)}.md &middot; ${s.bytes} B</div>
+      </div>
+      <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
+      <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
+      <button class="tb-btn" onclick="deleteSkillUI('${esc(s.id)}')" style="color:var(--red)">Delete</button>
+    </div>
+  `).join('')
+}
+
+async function reloadSkillsFromUI() {
+  try {
+    const r = await httpPost('/skills/reload')
+    if (!r.ok) throw new Error('HTTP ' + r.status)
+    const data = await r.json()
+    skillsCache = Array.isArray(data.skills) ? data.skills : []
+    renderSpSkillsList()
+    renderSkillPicker()
+    toast('Skills reloaded', 'ok')
+  } catch (e) {
+    toast('Reload failed: ' + e.message, 'err')
+  }
+}
+
+async function uploadSkillFile(fileList) {
+  if (!fileList || !fileList.length) return
+  const file = fileList[0]
+  if (!file.name.toLowerCase().endsWith('.md')) {
+    toast('Only .md files are supported', 'err')
+    return
+  }
+  if (file.size > 256 * 1024) {
+    toast('File exceeds 256 KB cap', 'err')
+    return
+  }
+  const baseName = file.name.replace(/\.md$/i, '')
+  const slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
+  if (!slug) {
+    toast('Could not derive a valid name from filename', 'err')
+    return
+  }
+  if (skillsCache.some(s => s.id === slug)) {
+    if (!confirm('Skill "' + slug + '" already exists. Overwrite?')) return
+  }
+  const body = await file.text()
+  try {
+    const r = await httpPut('/skills/' + encodeURIComponent(slug), { body })
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}))
+      throw new Error(err.error || ('HTTP ' + r.status))
+    }
+    await loadSkillsList()
+    renderSpSkillsList()
+    renderSkillPicker()
+    toast('Uploaded as "' + slug + '"', 'ok')
+  } catch (e) {
+    toast('Upload failed: ' + e.message, 'err')
+  }
+  document.getElementById('sp-skill-upload').value = ''
+}
+
+let _editingSkillId = null
+
+function newSkill() {
+  const list = document.getElementById('sp-skills-list')
+  if (!list) return
+  // Already showing? focus it.
+  const existing = document.getElementById('sp-skill-new-input')
+  if (existing) { existing.focus(); return }
+
+  const row = document.createElement('div')
+  row.id = 'sp-skill-new-row'
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px;border-radius:4px;background:var(--acbg);border:1px solid rgba(232,97,10,.3)'
+  row.innerHTML = `
+    <input id="sp-skill-new-input" type="text" placeholder="skill-name"
+      autocomplete="off" spellcheck="false"
+      style="flex:1;background:none;border:none;outline:none;color:var(--ac);font-family:var(--mono);font-size:12px;padding:4px"
+      onkeydown="handleNewSkillKey(event)" oninput="this.style.color='var(--ac)'">
+    <button class="tb-btn" onclick="confirmNewSkill()" style="font-size:11px">OK</button>
+    <button class="tb-btn" onclick="cancelNewSkill()" style="font-size:11px">Cancel</button>
+  `
+  list.insertBefore(row, list.firstChild)
+  setTimeout(() => document.getElementById('sp-skill-new-input')?.focus(), 30)
+}
+
+function cancelNewSkill() {
+  document.getElementById('sp-skill-new-row')?.remove()
+}
+
+function confirmNewSkill() {
+  handleNewSkillKey({ key: 'Enter', preventDefault: () => {} })
+}
+
+
+// Esc closes the topmost open overlay (settings / skills / update dialog) so the
+// user doesn't have to scroll to the footer buttons. Tag: lcl-esc-overlays
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return
+  const open = id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden') ? el : null }
+  if (open('skill-edit-bd')) { closeSkillEdit(); return }
+  if (document.getElementById('update-bd')) { closeUpdateDialog(); return }
+  if (open('skills-mgr')) { closeSkillsManager(); return }
+  if (open('sp')) { closeSP(); return }
+})
+
+// ---------------------------------------------------------------------------
+// merged from 82-ui-skills.js
+// ---------------------------------------------------------------------------
+
+function handleNewSkillKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); cancelNewSkill(); return }
+  if (e.key !== 'Enter') return
+  e.preventDefault()
+  const inp = document.getElementById('sp-skill-new-input')
+  if (!inp) return
+  const slug = inp.value.trim().toLowerCase()
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
+    inp.style.color = 'var(--red)'
+    toast('Invalid name — use lowercase letters, digits, dashes (max 64)', 'err')
+    return
+  }
+  if (skillsCache.some(s => s.id === slug)) {
+    inp.style.color = 'var(--red)'
+    toast('Skill "' + slug + '" already exists', 'err')
+    return
+  }
+  cancelNewSkill()
+  // Title-case the slug for the H1 stub.
+  const title = slug.split('-').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ')
+  _editingSkillId = slug
+  document.getElementById('skill-edit-id').textContent = slug
+  document.getElementById('skill-edit-body').value = '# ' + title + '\n\n'
+  document.getElementById('skill-edit-bd').classList.remove('hidden')
+  setTimeout(() => {
+    const ta = document.getElementById('skill-edit-body')
+    if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length }
+  }, 30)
+}
+
+async function editSkill(id) {
+  if (typeof demoOn === 'function' && demoOn()) {
+    const sk = skillsCache.find(s => s.id === id) || {}
+    _editingSkillId = id
+    document.getElementById('skill-edit-id').textContent = id
+    document.getElementById('skill-edit-body').value = sk.body || ''
+    document.getElementById('skill-edit-bd').classList.remove('hidden')
+    return
+  }
+  try {
+    const r = await httpGet('/skills/' + encodeURIComponent(id))
+    if (!r.ok) throw new Error('HTTP ' + r.status)
+    const data = await r.json()
+    _editingSkillId = id
+    document.getElementById('skill-edit-id').textContent = id
+    document.getElementById('skill-edit-body').value = data.body || ''
+    document.getElementById('skill-edit-bd').classList.remove('hidden')
+  } catch (e) {
+    toast('Failed to load skill: ' + e.message, 'err')
+  }
+}
+
+function closeSkillEdit() {
+  document.getElementById('skill-edit-bd').classList.add('hidden')
+  _editingSkillId = null
+}
+
+async function saveSkillEdit() {
+  if (!_editingSkillId) return
+  const body = document.getElementById('skill-edit-body').value
+  if (typeof demoOn === 'function' && demoOn()) {
+    const ex = skillsCache.find(s => s.id === _editingSkillId)
+    if (ex) { ex.body = body; ex.bytes = body.length; ex.title = demoSkillTitle(body, _editingSkillId); ex.mtime = Date.now() }
+    else { skillsCache.push({ id: _editingSkillId, title: demoSkillTitle(body, _editingSkillId), bytes: body.length, mtime: Date.now(), body }) }
+    renderSpSkillsList(); renderSkillPicker(); closeSkillEdit(); toast('Saved', 'ok')
+    return
+  }
+  try {
+    const r = await httpPut('/skills/' + encodeURIComponent(_editingSkillId), { body })
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}))
+      throw new Error(err.error || ('HTTP ' + r.status))
+    }
+    await loadSkillsList()
+    renderSpSkillsList()
+    renderSkillPicker()
+    closeSkillEdit()
+    toast('Saved', 'ok')
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'err')
+  }
+}
+
+async function renameSkill(oldId) {
+  const newId = prompt('Rename "' + oldId + '" to (lowercase letters, digits, dashes, max 64):', oldId)
+  if (newId == null) return
+  const slug = newId.trim()
+  if (!/^[a-z0-9-]{1,64}$/.test(slug)) { toast('Invalid name', 'err'); return }
+  if (slug === oldId) return
+  if (skillsCache.some(s => s.id === slug)) {
+    toast('A skill named "' + slug + '" already exists', 'err')
+    return
+  }
+  if (typeof demoOn === 'function' && demoOn()) {
+    const sk = skillsCache.find(s => s.id === oldId); if (sk) sk.id = slug
+    let touched = 0
+    for (const cid of Object.keys(D.chats)) { if (D.chats[cid].skillId === oldId) { D.chats[cid].skillId = slug; touched++ } }
+    renderSpSkillsList(); renderSkillPicker(); renderSkillChip()
+    toast('Renamed (' + touched + ' chat' + (touched === 1 ? '' : 's') + ' updated)', 'ok')
+    return
+  }
+  try {
+    let r = await httpGet('/skills/' + encodeURIComponent(oldId))
+    if (!r.ok) throw new Error('Read old: HTTP ' + r.status)
+    const data = await r.json()
+    r = await httpPut('/skills/' + encodeURIComponent(slug), { body: data.body })
+    if (!r.ok) throw new Error('Write new: HTTP ' + r.status)
+    r = await httpDelete('/skills/' + encodeURIComponent(oldId))
+    if (!r.ok) throw new Error('Delete old: HTTP ' + r.status)
+    let touched = 0
+    for (const cid of Object.keys(D.chats)) {
+      if (D.chats[cid].skillId === oldId) { D.chats[cid].skillId = slug; touched++ }
+    }
+    if (touched) await persist()
+    await loadSkillsList()
+    renderSpSkillsList()
+    renderSkillPicker()
+    renderSkillChip()
+    toast('Renamed (' + touched + ' chat' + (touched === 1 ? '' : 's') + ' updated)', 'ok')
+  } catch (e) {
+    toast('Rename failed: ' + e.message, 'err')
+  }
+}
+
+async function deleteSkillUI(id) {
+  const referencing = Object.values(D.chats).filter(c => c.skillId === id)
+  const msg = referencing.length
+    ? 'Delete skill "' + id + '"?\n\n' + referencing.length + ' chat(s) currently use it and will be reset to "None".'
+    : 'Delete skill "' + id + '"?'
+  if (!confirm(msg)) return
+  if (typeof demoOn === 'function' && demoOn()) {
+    const i = skillsCache.findIndex(s => s.id === id); if (i > -1) skillsCache.splice(i, 1)
+    let touched = 0
+    for (const cid of Object.keys(D.chats)) { if (D.chats[cid].skillId === id) { D.chats[cid].skillId = null; touched++ } }
+    renderSpSkillsList(); renderSkillPicker(); renderSkillChip()
+    toast('Deleted ' + id, 'ok')
+    return
+  }
+  try {
+    const r = await httpDelete('/skills/' + encodeURIComponent(id))
+    if (!r.ok && r.status !== 404) {
+      const err = await r.json().catch(() => ({}))
+      throw new Error(err.error || ('HTTP ' + r.status))
+    }
+    let touched = 0
+    for (const cid of Object.keys(D.chats)) {
+      if (D.chats[cid].skillId === id) { D.chats[cid].skillId = null; touched++ }
+    }
+    if (touched) await persist()
+    await loadSkillsList()
+    renderSpSkillsList()
+    renderSkillPicker()
+    renderSkillChip()
+    toast('Deleted "' + id + '"' + (touched ? ' (' + touched + ' chat' + (touched === 1 ? '' : 's') + ' reset)' : ''), 'ok')
+  } catch (e) {
+    toast('Delete failed: ' + e.message, 'err')
+  }
+}
+function saveSP() {
+  creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
+  creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
+  creds.systemPrompt = document.getElementById('s-sys').value.trim()
+  const tokInput = parseInt(document.getElementById('s-tok-v-input').value)
+  creds.maxTokens    = isNaN(tokInput) ? 8192 : Math.max(64, Math.min(CFG.MAX_TOKENS_CAP, tokInput))
+  creds.chunkSize    = parseInt(document.getElementById('s-chunk').value)
+  creds.topK         = parseInt(document.getElementById('s-topk').value)
+  creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
+  creds.embedModelId = document.getElementById('s-embm').value.trim() || creds.embedModelId
+  creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
+  // Mirror into D.settings so persist() also carries these to disk
+  D.settings = credsToSettings(creds)
+  saveSettings(D.settings)
+  persist()
+  closeSP(); toast('Settings saved','ok')
+}
+
+// =============================================================================
+// Theme
+// =============================================================================
+function toggleTheme() {
+  const curr = document.documentElement.getAttribute('data-theme') || 'light'
+  const next  = curr === 'dark' ? 'light' : 'dark'
+  document.documentElement.setAttribute('data-theme', next)
+  localStorage.setItem('lcl_theme', next)
+  document.getElementById('icon-moon').style.display = next === 'dark' ? '' : 'none'
+  document.getElementById('icon-sun').style.display  = next === 'light' ? '' : 'none'
+}
+
+// ---------------------------------------------------------------------------
+// merged from 83-ui-theme.js
+// ---------------------------------------------------------------------------
+
+function initTheme() {
+  const saved = localStorage.getItem('lcl_theme') || 'light'
+  document.documentElement.setAttribute('data-theme', saved)
+  const moonEl = document.getElementById('icon-moon')
+  const sunEl  = document.getElementById('icon-sun')
+  if (moonEl) moonEl.style.display = saved === 'dark' ? '' : 'none'
+  if (sunEl)  sunEl.style.display  = saved === 'light' ? '' : 'none'
+
+  // Inject comet logo into sidebar header
+  const COMET = '<svg width="28" height="28" viewBox="0 0 22 22" fill="none" xmlns=\"http://www.w3.org/2000/svg\"><line x1=\"10\" y1=\"10\" x2=\"2\" y2=\"18\" stroke=\"white\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.7\"/><line x1=\"11.5\" y1=\"10\" x2=\"4\" y2=\"18\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.45\"/><line x1=\"10\" y1=\"11.5\" x2=\"2\" y2=\"20\" stroke=\"white\" stroke-width=\"0.6\" stroke-linecap=\"round\" opacity=\"0.28\"/><rect x=\"9\" y=\"1\" width=\"11\" height=\"11\" rx=\"1.5\" fill=\"white\" opacity=\"0.95\"/><rect x=\"11\" y=\"3\" width=\"7\" height=\"7\" rx=\"0.5\" fill=\"#e8610a\"/><line x1=\"13.3\" y1=\"3\" x2=\"13.3\" y2=\"10\" stroke=\"white\" stroke-width=\"0.5\" opacity=\"0.6\"/><line x1=\"15.7\" y1=\"3\" x2=\"15.7\" y2=\"10\" stroke=\"white\" stroke-width=\"0.5\" opacity=\"0.6\"/><line x1=\"11\" y1=\"5.3\" x2=\"18\" y2=\"5.3\" stroke=\"white\" stroke-width=\"0.5\" opacity=\"0.6\"/><line x1=\"11\" y1=\"7.7\" x2=\"18\" y2=\"7.7\" stroke=\"white\" stroke-width=\"0.5\" opacity=\"0.6\"/><line x1=\"12.5\" y1=\"1\" x2=\"12.5\" y2=\"0\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"15\" y1=\"1\" x2=\"15\" y2=\"0\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"17.5\" y1=\"1\" x2=\"17.5\" y2=\"0\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"12.5\" y1=\"12\" x2=\"12.5\" y2=\"13.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"15\" y1=\"12\" x2=\"15\" y2=\"13.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"17.5\" y1=\"12\" x2=\"17.5\" y2=\"13.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"20\" y1=\"3.5\" x2=\"21.5\" y2=\"3.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"20\" y1=\"6.5\" x2=\"21.5\" y2=\"6.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"20\" y1=\"9.5\" x2=\"21.5\" y2=\"9.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"9\" y1=\"3.5\" x2=\"7.5\" y2=\"3.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"9\" y1=\"6.5\" x2=\"7.5\" y2=\"6.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/><line x1=\"9\" y1=\"9.5\" x2=\"7.5\" y2=\"9.5\" stroke=\"white\" stroke-width=\"1\" stroke-linecap=\"round\" opacity=\"0.8\"/></svg>'
+  const iconEl = document.getElementById('tb-brand-icon')
+  if (iconEl) iconEl.innerHTML = COMET
+}
+
+// Sidebar minimise / expand (state persisted in localStorage)
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sb-collapsed')
+  localStorage.setItem('lcl_sb_collapsed', collapsed ? '1' : '0')
+  updateSidebarToggle(collapsed)
+}
+
+function updateSidebarToggle(collapsed) {
+  const btn = document.getElementById('sb-toggle')
+  if (btn) btn.setAttribute('data-tip-bottom', collapsed ? 'Expand sidebar' : 'Collapse sidebar')
+}
+
+function initSidebar() {
+  const collapsed = localStorage.getItem('lcl_sb_collapsed') === '1'
+  document.body.classList.toggle('sb-collapsed', collapsed)
+  updateSidebarToggle(collapsed)
+}
