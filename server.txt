@@ -813,12 +813,14 @@ function demoLastUserText(payload) {
 // testable. [[429]] fails only the FIRST hit (per marker text) so the client
 // retry wrapper then succeeds — proving the retry path end-to-end.
 const _demo429 = new Map()
+let _demoChatN = 0   // streamed-message counter for the auto rate-limit demo
+function demoResetStamp(secs) { return new Date(Date.now() + (secs || 5) * 1000).toISOString().replace('T', ' ').replace(/\..*/, '') + ' UTC' }
 function demoErrorFor(text) {
   if (/\[\[401\]\]/.test(text)) return { status: 401, body: { error: { message: 'Invalid API key (demo 401)', type: 'auth' } } }
   if (/\[\[500\]\]/.test(text)) return { status: 500, body: { error: { message: 'Internal server error (demo 500)' } } }
   if (/\[\[429\]\]/.test(text)) {
     const n = (_demo429.get(text) || 0) + 1; _demo429.set(text, n)
-    if (n <= 1) return { status: 429, body: { error: { message: 'Rate limit exceeded (demo 429) — retrying' } } }
+    if (n <= 1) return { status: 429, body: { error: { message: 'Rate limit exceeded (demo 429). Limit resets at: ' + demoResetStamp(5) } } }
     return null
   }
   return null
@@ -840,6 +842,17 @@ function demoChatStream(res, payload) {
   const text = demoLastUserText(payload)
   const err = demoErrorFor(text)
   if (err) { res.writeHead(err.status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(err.body)); return }
+  // Auto rate-limit: every 5th streamed message returns a retryable 429 with a
+  // near-future reset time, so the countdown + auto-retry UI runs naturally. The
+  // client re-sends after the reset (that attempt isn't the 5th, so it streams).
+  if (!/\[\[/.test(text)) {
+    _demoChatN++
+    if (_demoChatN % 5 === 0) {
+      res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: { message: 'Rate limit reached (demo — auto every 5 messages). Limit resets at: ' + demoResetStamp(5) } }))
+      return
+    }
+  }
   res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
   if (/\[\[filter\]\]/.test(text)) {
     res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'content_filter' }] }) + '\n\n')
