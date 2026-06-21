@@ -23,8 +23,8 @@ async function init() {
   // Scrub any leaked #demo sentinel ('demo') from saved settings so a prior demo
   // visit never looks connected or "embeddings ready" in normal mode.
   if (D.settings) {
-    if (D.settings.apiKey === 'demo') D.settings.apiKey = ''
-    if (D.settings.embedApiKey === 'demo') D.settings.embedApiKey = ''
+    if (D.settings.apiKey === 'demo' || D.settings.apiKey === 'DEMOKEY') D.settings.apiKey = ''
+    if (D.settings.embedApiKey === 'demo' || D.settings.embedApiKey === 'DEMOKEY') D.settings.embedApiKey = ''
   }
   // Try to auto-connect from saved settings
   try {
@@ -32,7 +32,7 @@ async function init() {
     // Primary: settings from /api/config. Fallback: settings embedded in D (from /api/data)
     // Ignore the demo sentinel ('demo') so a prior #demo visit never looks
     // connected in normal mode.
-    const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.modelId
+    const real = (o) => o && o.apiKey && o.apiKey !== 'demo' && o.apiKey !== 'DEMOKEY' && o.modelId
     const s = real(cfg) ? cfg : real(D.settings) ? D.settings : null
     if (s) {
       creds = makeCreds(s)
@@ -65,13 +65,23 @@ async function persist() {
 // =============================================================================
 async function connect() {
   if (typeof demoOn === 'function' && demoOn()) {
-    // Demo: re-seed creds offline (no API ping, no /api/config write) so the
-    // Connect modal / reconnect flow is exercisable.
+    // Demo: run the REAL validation call (httpPost adds the x-lcl-demo header so
+    // the server demo responder answers) to exercise the Connect path, then set
+    // creds WITHOUT the persist/loadData side-effects that would wipe demo seed.
     const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
-    creds = makeCreds({ apiKey:'demo', model, embedApiKey:'demo', embedModelId:'cohere.embed-english-v3', classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
+    const dErr = document.getElementById('modal-err'), dBtn = document.getElementById('connect-btn')
+    if (dErr) dErr.classList.remove('show')
+    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting...' }
+    setHealth('warn','Connecting')
+    try {
+      const r = await httpPost('/api/chat', { apiKey: DEMOKEY_CLIENT, modelId: model, payload: { messages:[{role:'user',content:'Hi'}], max_tokens:16, stream:false } })
+      if (!r.ok) { const d = await r.json().catch(()=>({})); if (dErr) { dErr.textContent = 'Connection failed: ' + (d?.error?.message || ('HTTP '+r.status)); dErr.classList.add('show') } setHealth('err','Failed'); return }
+    } catch(e) { if (dErr) { dErr.textContent = 'Connection error: ' + e.message; dErr.classList.add('show') } setHealth('err','Unreachable'); return }
+    finally { if (dBtn) { dBtn.disabled = false; dBtn.textContent = 'Connect' } }
+    creds = makeCreds({ apiKey: DEMOKEY_CLIENT, model, embedApiKey: DEMOKEY_CLIENT, embedModelId:'cohere.embed-english-v3', classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
     if (typeof closeConnect==='function') closeConnect()
     if (typeof updateConnectedUI==='function') updateConnectedUI()
-    if (typeof setHealth==='function') setHealth('ok','Demo')
+    setHealth('ok', connectedLabel())
     if (typeof toast==='function') toast('Connected (demo)','ok')
     return
   }
@@ -177,6 +187,7 @@ async function disconnect() {
 function openConnect() {
   if (typeof initClassification === 'function') initClassification('cfg', (creds && creds.classification) || inferTier(creds && creds.model) || 'cce')
   document.getElementById('modal-bd').classList.remove('hidden')
+  if (typeof demoKeyHint === 'function') demoKeyHint('cfg-key')
   setTimeout(() => document.getElementById('cfg-key').focus(), 50)
 }
 
