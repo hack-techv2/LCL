@@ -8,6 +8,8 @@ REFACTOR_PLAN.md
 # if Node is ever run from this folder)
 lcl_data.json
 embed_cache.bin
+# Offline stable-build snapshots written when enabling the Experimental channel
+*.stable
 
 # Build packaging artifact (produced by build.js)
 LCL.zip
