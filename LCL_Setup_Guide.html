@@ -398,7 +398,7 @@ nav li a { transition: color .15s, background .15s; }
 <nav id="nav">
   <div class="nav-logo">
     <div class="nav-badge">LCL</div>
-    <div class="nav-ver">Local Comet LLM<br>v0.67d · updated 20 Jun 2026</div>
+    <div class="nav-ver">Local Comet LLM<br>v0.67d · updated 21 Jun 2026</div>
   </div>
   <div class="nav-section">Overview</div>
   <ul>
@@ -483,6 +483,11 @@ nav li a { transition: color .15s, background .15s; }
 <section id="changelog">
   <div class="section-label">Release Notes</div>
   <h1 class="page-title">Changelog</h1>
+
+  <div class="ver-head">v0.67d <span>– maintenance &amp; hardening · 21 Jun 2026</span></div>
+  <div class="cl-item"><div class="cl-item-title">Clearer update &amp; restart guidance</div><div class="cl-item-body">When an update changes <code>server.txt</code>, the Node.js window now shows a clear highlighted notice with the exact restart steps (press Ctrl+C, close Node.js, then run your startup command again). The in-app <strong>Update &amp; restart</strong> button also restarts the server automatically where the machine allows it, then reloads the page for you.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Updates panel shows what changed</div><div class="cl-item-body">The <strong>Settings &rarr; Updates</strong> card now names the file(s) an update will change, shows when your current build was last updated (date &amp; time), and keeps showing your current build details even if a version check can't reach GitHub.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Under-the-hood hardening</div><div class="cl-item-body">Internal refactor of the networking, storage and logging layers for reliability and easier maintenance, plus small interface fixes. This is a maintenance release (still v0.67d) — no change to how you use LCL, and your chats, settings, embeddings and skills are unaffected.</div></div>
 
   <div class="ver-head">v0.67d <span>– feature update · 20 Jun 2026</span></div>
   <div class="cl-item"><div class="cl-item-title">Automatic updates</div><div class="cl-item-body">LCL can now keep itself up to date. <strong>Settings → Updates</strong> shows your current version and checks GitHub for newer builds, applying them on your say-so. Power users can unlock an optional <em>Experimental</em> channel (a toggle in <strong>Settings &rarr; Updates</strong>) to try early features before they ship &mdash; turning it on swaps in the latest experimental build, and turning it off restores the latest stable release.</div></div>
