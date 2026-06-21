@@ -90,3 +90,403 @@ function getExt(name) { return (name.split('.').pop()||'').toLowerCase() }
 function isSupported(file) {
   return SUPPORTED_EXTS.has(getExt(file.name))
 }
+
+// ---------------------------------------------------------------------------
+// merged from 41-files-extract.js
+// ---------------------------------------------------------------------------
+
+// File-type extractor registry: extension -> async (file) => { text, scanWarning, ... }.
+// Adding a new file type is a single entry here; preview/embed stay generic.
+const EXTRACTORS = {
+  pdf: async (file) => {
+    const ab = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: ab, verbosity: 0 }).promise
+    const totalPages   = pdf.numPages
+    const pages        = []
+    const emptyPageNums = []
+    for (let i = 1; i <= totalPages; i++) {
+      const page = await pdf.getPage(i)
+      const tc   = await page.getTextContent()
+      const pageText = tc.items.map(it => it.str).join(' ').trim()
+      if (!pageText) emptyPageNums.push(i)
+      pages.push({ pageNum: i, text: pageText })
+    }
+    const text = pages.map(p => p.text).join('\n').trim() || '[No text found in PDF]'
+    const emptyShare   = totalPages ? emptyPageNums.length / totalPages : 0
+    const looksScanned = emptyPageNums.length >= CFG.SCAN_MIN_PAGES && emptyShare >= CFG.SCAN_MIN_SHARE
+    const scanWarning = looksScanned
+      ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text \u2014 this PDF may be partially or fully scanned. Embedded content will be incomplete.'
+      : null
+    return { text, scanWarning, pdfDoc: scanWarning ? pdf : null, emptyPageNums, pages }
+  },
+  docx: async (file) => {
+    const ab = await file.arrayBuffer()
+    const result = await mammoth.extractRawText({ arrayBuffer: ab })
+    return { text: result.value.trim() || '[No text found in DOCX]', scanWarning: null }
+  },
+  xlsx: async (file) => {
+    const ab = await file.arrayBuffer()
+    const wb = XLSX.read(ab, { type: 'array' })
+    let out = ''
+    for (const name of wb.SheetNames) {
+      const ws  = wb.Sheets[name]
+      const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false })
+      if (csv.trim()) out += '=== Sheet: ' + name + ' ===\n' + csv + '\n\n'
+    }
+    return { text: out.trim() || '[No data found in spreadsheet]', scanWarning: null }
+  },
+  // Plain text / code files - default for any unlisted extension.
+  _default: (file) => new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload  = e => resolve({ text: e.target.result || '', scanWarning: null })
+    r.onerror = () => reject(new Error('Read error'))
+    r.readAsText(file)
+  }),
+}
+EXTRACTORS.xls = EXTRACTORS.xlsx   // legacy spreadsheet alias
+
+async function extractText(file) {
+  const ext = getExt(file.name)
+  return (EXTRACTORS[ext] || EXTRACTORS._default)(file)
+}
+
+// =============================================================================
+// On-demand OCR via Tesseract.js (loaded only when a scanned PDF is detected)
+// =============================================================================
+// Injects a script element at call time. Resolves immediately if the script is
+// already present (i.e. already loaded and cached by the browser).
+function loadScript(url) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector('script[src="' + url + '"]')) { resolve(); return }
+    const s = document.createElement('script')
+    s.src = url
+    s.onload = resolve
+    s.onerror = () => reject(new Error('Could not load: ' + url))
+    document.head.appendChild(s)
+  })
+}
+
+// Render each scanned (empty-text) page to canvas at 2× scale, run Tesseract
+// OCR on it, and patch the recovered text back into item.extractedText.
+// Clears item.scanWarning on success so the embed confirm shows no residual warning.
+async function ocrQueueItem(item) {
+  const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
+  if (!window.Tesseract) {
+    toast('Loading OCR engine — first use only (~3 MB, cached after this)...', 'info')
+    await loadScript(TESSERACT_CDN)
+  }
+  const worker    = await Tesseract.createWorker('eng')
+  const pdf       = item.pdfDoc
+  const pageTexts = item.pages.map(p => p.text)  // per-page copy, index 0 = page 1
+  try {
+    for (let i = 0; i < item.emptyPageNums.length; i++) {
+      const pageNum  = item.emptyPageNums[i]
+      setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
+      toast('OCR: scanning page ' + pageNum + ' of ' + pdf.numPages + '...', 'info')
+      const page     = await pdf.getPage(pageNum)
+      const viewport = page.getViewport({ scale: 2.0 })  // 2× for better accuracy
+      const canvas   = document.createElement('canvas')
+      canvas.width   = viewport.width
+      canvas.height  = viewport.height
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+      const { data: { text } } = await worker.recognize(canvas)
+      pageTexts[pageNum - 1] = text.trim()
+    }
+  } finally {
+    await worker.terminate()
+    setHealth('ok', connectedLabel())
+  }
+  item.extractedText = pageTexts.join('\n').trim()
+  item.scanWarning   = null  // resolved — all pages now have text
+}
+
+// =============================================================================
+// File preview queue
+// =============================================================================
+let previewQueue   = []   // { name, size, extractedText, confirmed }
+let previewTarget  = null // 'attach' | 'docs'
+let previewTabIdx  = 0
+
+// ---------------------------------------------------------------------------
+// merged from 42-files-preview.js
+// ---------------------------------------------------------------------------
+
+async function queueFilesForPreview(files, target) {
+  if (typeof demoOn === 'function' && demoOn()) {
+    files = demoCapFiles(Array.from(files), target)
+    if (!files.length) return
+  }
+  const valid = []
+  for (const f of Array.from(files)) {
+    if (!isSupported(f)) {
+      toast('Unsupported file: ' + f.name + '. Supported: PDF, Word, Excel, text/code files.', 'err')
+      continue
+    }
+    valid.push(f)
+  }
+  if (!valid.length) return
+
+  previewTarget = target
+  previewQueue  = []
+  previewTabIdx = 0
+
+  toast('Extracting text...', 'info')
+  for (const f of valid) {
+    try {
+      const { text, scanWarning, pdfDoc, emptyPageNums, pages } = await extractText(f)
+      previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, pdfDoc, emptyPageNums, pages })
+    } catch (err) {
+      toast('Could not read ' + f.name + ': ' + err.message, 'err')
+    }
+  }
+
+  if (!previewQueue.length) return
+
+  // Embed flow: skip the text-preview panel entirely. Users uploading a file
+  // for RAG want the whole file embedded as-is; showing a preview-and-edit
+  // step is misleading. One confirmation dialog with file name + size is
+  // enough.
+  if (target === 'docs') {
+    // If any files have scanned pages, offer to OCR them before embedding.
+    const scannedItems = previewQueue.filter(f => f.scanWarning && f.pdfDoc)
+    if (scannedItems.length) {
+      const ocrList = scannedItems.map(f => '  - ' + f.name + ': ' + f.scanWarning).join('\n')
+      const doOcr = confirm(
+        '⚠️ Scanned pages detected:\n\n' + ocrList + '\n\n' +
+        'Run OCR on the scanned pages before embedding?\n\n' +
+        'OK     = Run OCR first (recommended — ~3 MB one-time download, cached)\n' +
+        'Cancel = Embed as-is (scanned pages will be missing from context)'
+      )
+      if (doOcr) {
+        for (const item of scannedItems) {
+          try {
+            await ocrQueueItem(item)
+            toast(item.name + ' — OCR complete', 'ok')
+          } catch (e) {
+            toast('OCR failed for ' + item.name + ': ' + e.message, 'err')
+          }
+        }
+      }
+    }
+
+    const items = previewQueue.slice()
+    previewQueue  = []
+    previewTarget = null
+    await commitDocs(items)
+    document.getElementById('file-in').value = ''
+    return
+  }
+
+  // Attach-to-message flow: keep the preview panel so the user can edit
+  // the extracted text before sending it into chat context.
+  showFilePreview()
+}
+
+function showFilePreview() {
+  document.getElementById('messages').style.display = 'none'
+  document.getElementById('input-wrap').style.display = 'none'
+  const panel = document.getElementById('file-preview')
+  panel.classList.remove('hidden')
+  renderPreviewTabs()
+  selectPreviewTab(0)
+  updateFpHint()
+}
+
+function renderPreviewTabs() {
+  const tabsEl = document.getElementById('fp-tabs')
+  tabsEl.innerHTML = previewQueue.map((f, i) => `
+    <div class="fp-tab ${i === previewTabIdx ? 'active' : ''}" onclick="selectPreviewTab(${i})">
+      ${esc(f.name)}
+    </div>`).join('')
+}
+
+function selectPreviewTab(i) {
+  previewTabIdx = i
+  renderPreviewTabs()
+  const f = previewQueue[i]
+  if (!f) return
+  document.getElementById('fp-filename').textContent = f.name
+  const ta = document.getElementById('fp-textarea')
+  ta.value = f.extractedText
+  updateCharCount()
+  updateFpHint()
+}
+
+function updateFpHint() {
+  const total = previewQueue.length
+  const hint  = document.getElementById('fp-hint')
+  if (!hint) return
+  const f = previewQueue[previewTabIdx]
+  let text = total > 1
+    ? `File ${previewTabIdx + 1} of ${total} — review each tab before confirming`
+    : 'Review and edit the text above if needed'
+  if (f?.scanWarning) text += ' · ⚠️ ' + f.scanWarning
+  hint.textContent = text
+}
+
+function updateCharCount() {
+  const ta  = document.getElementById('fp-textarea')
+  const cnt = ta.value.length
+  document.getElementById('fp-charcount').textContent = cnt.toLocaleString() + ' chars'
+  // Keep extractedText in sync as user edits
+  if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
+}
+
+// fp-textarea input wired up in Boot section below
+
+function cancelFilePreview() {
+  previewQueue  = []
+  previewTarget = null
+  document.getElementById('file-preview').classList.add('hidden')
+  document.getElementById('messages').style.display = ''
+  document.getElementById('input-wrap').style.display = ''
+  document.getElementById('file-in').value = ''
+}
+
+async function confirmFilePreview() {
+  // Sync final edits from active textarea
+  const ta = document.getElementById('fp-textarea')
+  if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
+
+  const files = previewQueue.slice()
+  previewQueue  = []
+  previewTarget === 'attach' ? commitAttachments(files) : await commitDocs(files)
+  previewTarget = null
+  document.getElementById('file-preview').classList.add('hidden')
+  document.getElementById('messages').style.display = ''
+  document.getElementById('input-wrap').style.display = ''
+  document.getElementById('file-in').value = ''
+}
+
+function commitAttachments(files) {
+  for (const f of files) {
+    attachments.push({ name: f.name, textContent: f.extractedText, isText: true })
+  }
+  renderChips()
+}
+
+async function commitDocs(files) {
+  const chat = curChat(); if (!chat) return
+  if (!Array.isArray(chat.docs)) chat.docs = []
+  for (const f of files) {
+    const doc = {
+      id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      name: f.name, size: f.size, content: f.extractedText,
+      chunks: [], status: creds ? 'pending' : 'ready', addedAt: Date.now()
+    }
+    chat.docs.push(doc)
+    renderDocPanel(); updateDocsBtn()
+    if (creds) {
+      toast('Embedding ' + f.name + '...', 'info')
+      await embedDoc(doc)
+    } else {
+      toast(f.name + ' added (connect to embed for RAG)', 'info')
+    }
+  }
+  await persist(); renderDocPanel(); updateDocsBtn()
+}
+// File-input change handlers: attachments go to the preview panel, doc
+// uploads go straight to the embed flow.
+function handleAttach(files) {
+  if (files && files.length) queueFilesForPreview(files, 'attach')
+}
+
+function uploadDocs(files) {
+  if (files && files.length) queueFilesForPreview(files, 'docs')
+}
+
+// Render attachment chips in the composer from the `attachments` array.
+function renderChips() {
+  const el = document.getElementById('chips')
+  if (!el) return
+  el.innerHTML = attachments.map((a, i) =>
+    '<div class="chip">' + esc(a.name) +
+    '<span class="chip-x" title="Remove" onclick="attachments.splice(' + i + ',1); renderChips()">\u2715</span>' +
+    '</div>'
+  ).join('')
+}
+
+// ---------------------------------------------------------------------------
+// merged from 43-files-embed.js
+// ---------------------------------------------------------------------------
+
+async function embedDoc(doc) {
+  // Demo mode: skip the API — fake chunk hashes and mark ready so the upload +
+  // Embed-panel flow can be tried offline.
+  if (typeof demoOn === 'function' && demoOn()) {
+    const size = creds.chunkSize || 800
+    const raw = (typeof chunkText === 'function' && doc.content) ? chunkText(doc.content, size, Math.floor(size * 0.2)) : []
+    doc.chunks = raw.map((t, i) => ({ text: t, embHash: 'demo' + i }))
+    doc.status = 'ready'
+    if (typeof renderDocPanel === 'function') renderDocPanel()
+    if (typeof updateDocsBtn === 'function') updateDocsBtn()
+    if (typeof toast === 'function') toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
+    return
+  }
+  // Embeds doc chunks via /api/embed-batch (SSE or cached JSON).
+  // Only the 16-char SHA-1 hash is stored per chunk (embHash) — the actual
+  // vector lives in the server's binary cache (embed_cache.bin).
+  try {
+    if (!creds?.embedApiKey || !creds?.embedModelId) {
+      throw new Error('Embedding API key / model not configured')
+    }
+    const embedModel = creds.embedModelId
+    const size = creds.chunkSize || 800
+    const raw  = chunkText(doc.content, size, Math.floor(size * 0.2))
+    if (!raw.length) {
+      doc.chunks = []; doc.status = 'ready'
+      toast(doc.name + ' ready (no chunks)', 'ok')
+      renderDocPanel(); return
+    }
+
+    setHealth('warn', 'Embedding 0/' + raw.length)
+
+    // Re-use existing embHash for chunks that haven't changed
+    const existing = Array.isArray(doc.chunks) ? doc.chunks : []
+    const chunks   = new Array(raw.length).fill(null)
+    const toEmbed  = [], toEmbedIdx = []
+
+    for (let i = 0; i < raw.length; i++) {
+      if (existing[i]?.text === raw[i] && existing[i]?.embHash) {
+        chunks[i] = { text: raw[i], embHash: existing[i].embHash }
+      } else {
+        toEmbed.push(raw[i]); toEmbedIdx.push(i)
+      }
+    }
+
+    if (toEmbed.length) {
+      // embedBatch handles SSE progress toasts internally
+      const { hashes } = await embedBatch(toEmbed)
+      for (let k = 0; k < toEmbedIdx.length; k++) {
+        chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
+      }
+    }
+
+    doc.chunks = chunks.filter(Boolean)
+    doc.status = 'ready'
+    persist()
+    setHealth('ok', connectedLabel())
+    toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
+    renderDocPanel()
+  } catch (e) {
+    doc.status = 'error'
+    doc.error  = e.message
+    toast('Embed failed: ' + e.message, 'err')
+    setHealth('ok', connectedLabel())
+    renderDocPanel()
+  }
+}
+// Remove an embedded document: evict its vectors, drop it from chat.docs,
+// persist, and refresh the panel.
+async function removeDoc(id, event) {
+  if (event) event.stopPropagation()
+  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
+  const idx = chat.docs.findIndex(d => d.id === id)
+  if (idx === -1) return
+  const doc = chat.docs[idx]
+  chat.docs.splice(idx, 1)
+  await persist()                                  // server now has the updated doc list
+  try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc]', e.message) }  // prune vectors no longer referenced
+  renderDocPanel(); updateDocsBtn()
+  toast('Removed ' + doc.name, 'ok')
+}
