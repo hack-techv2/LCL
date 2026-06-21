@@ -271,6 +271,7 @@ function openSP() {
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
   document.getElementById('s-embm').value  = creds.embedModelId||''
+  if (typeof demoKeyHint === 'function') { demoKeyHint('s-key'); demoKeyHint('s-embk') }
   document.getElementById('s-chunk-v').value = creds.chunkSize||800
   document.getElementById('s-topk-v').value  = creds.topK||5
   // Paint the slider fills to match initial values
