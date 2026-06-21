@@ -7,6 +7,12 @@
 // can block the send and surface the error.
 async function resolveSystemPrompt(chat) {
   if (!chat || !chat.skillId) return { sys: creds.systemPrompt || '', error: null }
+  // #demo: seeded skills live only in the in-memory skillsCache (not on the
+  // server's disk), so resolve the body from there — a /skills/:id fetch 404s.
+  if (typeof demoOn === 'function' && demoOn()) {
+    const sk = (typeof skillsCache !== 'undefined' ? skillsCache : []).find(s => s.id === chat.skillId)
+    return sk ? { sys: sk.body || '', error: null } : { sys: null, error: 'Skill "' + chat.skillId + '" not found' }
+  }
   try {
     const r = await httpGet('/skills/' + encodeURIComponent(chat.skillId))
     if (r.status === 404) return { sys: null, error: 'Skill "' + chat.skillId + '" not found' }
