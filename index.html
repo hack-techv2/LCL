@@ -1824,7 +1824,10 @@ function isSupported(file) {
   return SUPPORTED_EXTS.has(getExt(file.name))
 }
 
-// SECTION: 41-files-extract.js
+// ---------------------------------------------------------------------------
+// merged from 41-files-extract.js
+// ---------------------------------------------------------------------------
+
 // File-type extractor registry: extension -> async (file) => { text, scanWarning, ... }.
 // Adding a new file type is a single entry here; preview/embed stay generic.
 const EXTRACTORS = {
@@ -1937,7 +1940,10 @@ let previewQueue   = []   // { name, size, extractedText, confirmed }
 let previewTarget  = null // 'attach' | 'docs'
 let previewTabIdx  = 0
 
-// SECTION: 42-files-preview.js
+// ---------------------------------------------------------------------------
+// merged from 42-files-preview.js
+// ---------------------------------------------------------------------------
+
 async function queueFilesForPreview(files, target) {
   if (typeof demoOn === 'function' && demoOn()) {
     files = demoCapFiles(Array.from(files), target)
@@ -2133,7 +2139,10 @@ function renderChips() {
   ).join('')
 }
 
-// SECTION: 43-files-embed.js
+// ---------------------------------------------------------------------------
+// merged from 43-files-embed.js
+// ---------------------------------------------------------------------------
+
 async function embedDoc(doc) {
   // Demo mode: skip the API — fake chunk hashes and mark ready so the upload +
   // Embed-panel flow can be tried offline.
@@ -2414,7 +2423,10 @@ async function send() {
 // is gone — auto-title and any other utility calls explicitly send stream:false
 // in their own payload and hit the buffered path on the server.
 
-// SECTION: 51-chat-stream.js
+// ---------------------------------------------------------------------------
+// merged from 51-chat-stream.js
+// ---------------------------------------------------------------------------
+
 async function runStream(chat, payload, ragSources) {
   // #demo: stream a canned reply through the same busy/stop UI; no network.
   if (typeof demoOn === 'function' && demoOn()) { demoStream(chat, ragSources); return }
@@ -2612,7 +2624,10 @@ async function runStream(chat, payload, ragSources) {
 // 3-6 word title and write it back. Runs once per chat; the new title only
 // replaces the auto-derived "first 42 chars" title from send().
 
-// SECTION: 52-chat-retry.js
+// ---------------------------------------------------------------------------
+// merged from 52-chat-retry.js
+// ---------------------------------------------------------------------------
+
 async function autoTitleChat(chat) {
   if (!creds || !chat || chat.titledByAI) return
   if (!chat.messages || chat.messages.length < 2) return
@@ -2736,8 +2751,10 @@ function cancelRateLimitRetry() {
 
 // Auto-retry for 502/503/504. Backoff: 10s → 20s → 60s (3 retries max).
 // Shows a transient countdown bubble; cancellable by the user.
+// ---------------------------------------------------------------------------
+// merged from 53-chat-actions.js
+// ---------------------------------------------------------------------------
 
-// SECTION: 53-chat-actions.js
 // Strip any HTML (e.g. an upstream proxy error page) and truncate, so a raw
 // upstream error body never renders in the chat.
 function cleanErrMsg(raw) {
@@ -2842,8 +2859,10 @@ function editLastUser() {
   chat.updatedAt = Date.now()
   renderMessages()
 }
+// ---------------------------------------------------------------------------
+// merged from 54-chat-statusbox.js
+// ---------------------------------------------------------------------------
 
-// SECTION: 54-chat-statusbox.js
 // =============================================================================
 // Shared status box — the error / retry / rate-limit panel rendered inside an
 // AI bubble's body. Single source of truth for this styling, used by the 5xx
@@ -2983,7 +3002,10 @@ function connectedLabel() {
     : 'Chat only'
 }
 
-// SECTION: 71-render-chatlist.js
+// ---------------------------------------------------------------------------
+// merged from 71-render-chatlist.js
+// ---------------------------------------------------------------------------
+
 // =============================================================================
 // Render — sidebar chat list (mkEl + one delegated listener; no inline onclick)
 // =============================================================================
@@ -3103,7 +3125,10 @@ function chatItemEl(c) {
   }, [avatar, inner, actions])
 }
 
-// SECTION: 72-render-message.js
+// ---------------------------------------------------------------------------
+// merged from 72-render-message.js
+// ---------------------------------------------------------------------------
+
 // =============================================================================
 // Render — chat messages (bubbles, file chips, RAG tags, typing)
 // mkEl + addEventListener throughout; no inline onclick / escJs string-building.
@@ -3318,7 +3343,10 @@ function appendTyping() {
   return div
 }
 
-// SECTION: 73-render-docpanel.js
+// ---------------------------------------------------------------------------
+// merged from 73-render-docpanel.js
+// ---------------------------------------------------------------------------
+
 // =============================================================================
 // Render — document (RAG) panel + embed button
 // =============================================================================
@@ -3569,7 +3597,10 @@ function exportChat() {
 
 let toastT=null
 
-// SECTION: 81-ui-settings.js
+// ---------------------------------------------------------------------------
+// merged from 81-ui-settings.js
+// ---------------------------------------------------------------------------
+
 function toast(msg,type) {
   const el=document.getElementById('toast'); el.textContent=msg; el.className='show '+(type||'')
   clearTimeout(toastT); toastT=setTimeout(()=>el.className='',2800)
@@ -3782,7 +3813,10 @@ document.addEventListener('keydown', e => {
   if (open('sp')) { closeSP(); return }
 })
 
-// SECTION: 82-ui-skills.js
+// ---------------------------------------------------------------------------
+// merged from 82-ui-skills.js
+// ---------------------------------------------------------------------------
+
 function handleNewSkillKey(e) {
   if (e.key === 'Escape') { e.preventDefault(); cancelNewSkill(); return }
   if (e.key !== 'Enter') return
@@ -3971,7 +4005,10 @@ function toggleTheme() {
   document.getElementById('icon-sun').style.display  = next === 'light' ? '' : 'none'
 }
 
-// SECTION: 83-ui-theme.js
+// ---------------------------------------------------------------------------
+// merged from 83-ui-theme.js
+// ---------------------------------------------------------------------------
+
 function initTheme() {
   const saved = localStorage.getItem('lcl_theme') || 'light'
   document.documentElement.setAttribute('data-theme', saved)
@@ -4814,7 +4851,10 @@ async function applyUpdate(){
   }
 }
 
-// SECTION: 98-update-channel.js
+// ---------------------------------------------------------------------------
+// update — channel enrolment (merged from 98-update-channel.js)
+// ---------------------------------------------------------------------------
+
 // =============================================================================
 // Auto-update — channel switch (stable/alpha) + alpha apply/restart
 // =============================================================================
