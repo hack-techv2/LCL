@@ -26,6 +26,27 @@ function demoOn() {
   try { return (location.hash || '').toLowerCase() === '#demo' } catch { return false }
 }
 
+// #demo sentinel key — the front-end sends this to the REAL endpoints (with the
+// x-lcl-demo header) so the local demo responder answers. Restricted to #demo:
+// outside demo there's no header, so a stray DEMOKEY just 401s upstream.
+const DEMOKEY_CLIENT = 'DEMOKEY'
+
+// Surface (and prefill) the demo key in a masked key field while in #demo, so
+// the Connect/Settings flows are usable and the key is visible to the tester.
+// Inserts a one-time hint line after the field; never shown outside demo.
+function demoKeyHint(inputId) {
+  if (!demoOn()) return
+  const el = document.getElementById(inputId); if (!el) return
+  if (el.value !== DEMOKEY_CLIENT) el.value = DEMOKEY_CLIENT
+  let h = document.getElementById(inputId + '-demohint')
+  if (!h) {
+    h = document.createElement('div'); h.id = inputId + '-demohint'
+    h.style.cssText = 'font-size:11px;color:var(--ac);margin-top:4px'
+    el.insertAdjacentElement('afterend', h)
+  }
+  h.textContent = 'Demo key prefilled — ' + DEMOKEY_CLIENT
+}
+
 const DEMO_AI_MARKDOWN = [
   '# Heading 1',
   '## Heading 2',
@@ -97,12 +118,11 @@ function demoChat(id, title, ts, pinned, messages) {
   })
 })()
 
-let _demoStreamSeq = 0   // bumped on Reset demo to cancel an in-flight demo stream
 function maybeDemo() {
   if (!demoOn()) return false
 
   // Reset transient runtime state so a mid-action "Reset demo" starts clean:
-  _demoStreamSeq++                       // supersede any in-flight demo stream (its tick aborts)
+  if (typeof stopStreaming === 'function') { try { stopStreaming() } catch {} }  // abort any in-flight real stream
   busy = false; inflightCtl = null       // un-stick the composer / Stop button
   try { const _mi = document.getElementById('msg-in'); if (_mi) { _mi.value = ''; if (typeof autoResize === 'function') autoResize(_mi) } } catch {}
   if (typeof closeUpdateDialog === 'function') closeUpdateDialog()   // drop a stale update modal
@@ -111,7 +131,7 @@ function maybeDemo() {
 
   // Fake embed creds so the Embed panel reads as configured (green dot, no
   // "set embed key" banner) and upload->embed works via the mock — no real key.
-  creds = makeCreds({ apiKey: 'demo', model: 'cce.claude-opus-4-6', embedApiKey: 'demo', embedModelId: 'cohere.embed-english-v3', classification: 'cce' })
+  creds = makeCreds({ apiKey: DEMOKEY_CLIENT, model: 'cce.claude-opus-4-6', embedApiKey: DEMOKEY_CLIENT, embedModelId: 'cohere.embed-english-v3', classification: 'cce' })
   setHealth('ok', 'Demo')
   try { document.body.classList.remove('not-connected') } catch {}
   try { document.getElementById('connect-banner')?.classList.add('hidden') } catch {}
@@ -232,68 +252,8 @@ function maybeDemo() {
   return true
 }
 
-// Compact mock responder for #demo: echoes the user turn and replies with a
-// random canned answer (some markdown) after a short typing delay. No API.
-const DEMO_REPLIES = [
-  'Sure — here is a quick take:\n\n- One point worth noting\n- A second consideration\n\nWant me to go deeper on any of these?',
-  'Good question. In short: **yes**, with a caveat — the trade-off is latency vs cost, so it depends on your workload.',
-  'Here is a small example:\n\n```js\nconst total = items.reduce((n, x) => n + x.value, 0)\n```\n\nLet me know if you want it in another language.',
-  'I would approach it in three steps:\n\n1. Clarify the requirement\n2. Draft a minimal version\n3. Iterate with feedback',
-  'That should work. One thing to watch: make sure the data classification matches the model tier you have selected.'
-]
-
-function demoSend(text, input) {
-  const chat = curChat(); if (!chat) return
-  if (!chat.messages.length) chat.title = text.slice(0, 42) + (text.length > 42 ? '...' : '')
-  chat.messages.push({ role: 'user', content: text, ts: Date.now() })
-  chat.updatedAt = Date.now()
-  input.value = ''; if (typeof autoResize === 'function') autoResize(input)
-  const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
-  appendMsg('user', text, null, null, [])
-  demoStream(chat)
-}
-
-// Faithful offline copy of runStream's UX: typing indicator -> busy + Stop
-// button -> token-by-token reply -> Stop/Regenerate/Edit all work. inflightCtl
-// is a stub so the real stopStreaming() can cancel the demo stream.
-function demoStream(chat) {
-  const seq = ++_demoStreamSeq
-  const typingEl = appendTyping()
-  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
-  if (typeof setHealth === 'function') setHealth('warn', 'Thinking')
-  let stopped = false
-  inflightCtl = { abort() { stopped = true } }
-  const reply = DEMO_REPLIES[Math.floor(Math.random() * DEMO_REPLIES.length)]
-  const tokens = reply.match(/\S+\s*/g) || [reply]
-  let i = 0, acc = '', msgObj = null, bubble = null
-  const swap = () => {
-    try { typingEl.remove() } catch {}
-    msgObj = { role: 'assistant', content: '', ts: Date.now() }
-    chat.messages.push(msgObj)
-    bubble = appendMsg('ai', '', null, null)
-  }
-  const done = (wasStopped) => {
-    busy = false; inflightCtl = null; if (typeof updateSendBtn === 'function') updateSendBtn()
-    if (wasStopped) {
-      if (!msgObj) { try { typingEl.remove() } catch {}; chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true }); appendMsg('ai', '(stopped)', null, null) }
-      else { msgObj.stopped = true; msgObj.content = acc + (acc ? '\n\n' : '') + '(stopped)'; const b = bubble.querySelector('.msg-body'); if (b) b.innerHTML = fmt(msgObj.content) }
-      if (typeof setHealth === 'function') setHealth('ok', 'Stopped')
-    } else if (typeof setHealth === 'function') setHealth('ok', 'Demo')
-    chat.updatedAt = Date.now(); if (typeof renderChatList === 'function') renderChatList()
-  }
-  const tick = () => {
-    if (seq !== _demoStreamSeq) return   // superseded by Reset demo / a newer stream
-    if (stopped) { done(true); return }
-    if (!msgObj) swap()
-    if (i < tokens.length) {
-      acc += tokens[i++]; msgObj.content = acc; bubble.dataset.raw = acc
-      const b = bubble.querySelector('.msg-body'); if (b) b.innerHTML = fmt(acc)
-      const m = document.getElementById('messages'); if (m) m.scrollTop = m.scrollHeight
-      setTimeout(tick, 38)
-    } else { done(false) }
-  }
-  setTimeout(tick, 350)
-}
+// demoSend/demoStream/DEMO_REPLIES retired: #demo now drives the REAL chat
+// path with DEMOKEY (server.txt Demo API + the x-lcl-demo header in 12-transport).
 
 // Derive a skill title from its body (first markdown H1) or its id slug. Used by
 // the in-memory skill CRUD under #demo so saving/uploading behaves like normal.
