@@ -1315,21 +1315,13 @@ function sha256Buf(buf) { return crypto.createHash('sha256').update(buf).digest(
 
 function handleUpdateCheck(req, res) {
   if (readChannel() === 'alpha') {
-    const alphaStat = () => alphaStatus()
+    // Enrolled in Experimental: always report the alpha channel status. Enrolment is
+    // sticky - we no longer auto-downgrade to stable when alpha == stable, so the user
+    // keeps receiving alpha builds as they land (alphaStatus reports inSync when there
+    // is nothing newer yet).
+    alphaStatus()
       .then(st => json(res, Object.assign({ channel: 'alpha', current: APP_VERSION }, st)))
       .catch(e => json(res, Object.assign({ channel: 'alpha', current: APP_VERSION, error: updateClientErr('alpha check', e) }, localBuild())))
-    alphaMatchesStable().then(same => {
-      if (!same) return alphaStat()
-      // Experimental == stable: drop the flag and report stable so the UI stops
-      // showing an alpha state / offering alpha updates that do nothing.
-      writeChannel('stable')
-      return fetchLatestRelease().then(rel => {
-        const latest = (rel.tag || '').replace(/^v/i, '')
-        json(res, { channel: 'stable', current: APP_VERSION, latest, tag: rel.tag,
-                    newer: latest ? cmpVer(latest, APP_VERSION) > 0 : false,
-                    notes: rel.notes, html_url: rel.html_url, sameAsStable: true })
-      }).catch(e => json(res, { channel: 'stable', current: APP_VERSION, sameAsStable: true, error: updateClientErr('stable check', e) }))
-    }).catch(() => alphaStat())
     return
   }
   fetchLatestRelease().then(rel => {
@@ -1592,11 +1584,15 @@ function handleUpdateChannel(req, res) {
     const ch = (body && body.channel === 'alpha') ? 'alpha' : 'stable'
 
     if (ch === 'alpha') {
-      // If the experimental build is identical to the stable release there is
-      // nothing to switch to - keep stable and tell the client so the toggle
-      // stays off (avoids the pointless 'alpha == stable' state entirely).
+      // Enrol in Experimental (sticky opt-in). If the alpha build differs from
+      // stable, snapshot stable + apply it now; if it's identical, still enrol with
+      // nothing to download so future alpha builds land.
       alphaMatchesStable().then(same => {
-        if (same) { writeChannel('stable'); return json(res, { ok: true, channel: 'stable', sameAsStable: true }) }
+        if (same) {
+          backupStable()
+          writeChannel('alpha')
+          return json(res, Object.assign({ ok: true, channel: 'alpha', sameAsStable: true, inSync: true, applied: [], unchanged: UPDATE_FILES.slice() }, localBuild()))
+        }
         // Snapshot stable (offline fallback), then download + swap the latest
         // alpha build. writeChannel ONLY after a successful apply (no split-brain).
         backupStable()
