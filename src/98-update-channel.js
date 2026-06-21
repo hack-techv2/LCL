@@ -7,9 +7,15 @@ async function setChannel(ch){
   if (typeof demoOn === 'function' && demoOn()) {
     // Demo: flip the in-memory state so both the version-based (stable) and
     // hash-based (experimental) update cards can be previewed. Touches nothing.
-    if (ch === 'alpha') lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:false, changed:['index.html','server.txt','styles.css'], hash:'a1b2c3d', installedAt:Date.now()-86400000, error:null }
-    else lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
-    if (ch !== 'alpha') relockAlpha()
+    if (ch === 'alpha') {
+      // Preview sticky enrolment: enrolled on the experimental channel and already
+      // on the latest build (the alpha == stable case).
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67d', ref:'alpha', inSync:true, changed:[], hash:'a1b2c3d', installedAt:Date.now(), error:null, sameAsStable:true }
+      if (typeof toast === 'function') toast('Enrolled in Experimental updates \u2014 already on the latest build','ok')
+    } else {
+      lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
+      relockAlpha()
+    }
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
     renderUpdateSettings()
     return
