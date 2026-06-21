@@ -6,6 +6,20 @@ R-series follow-ups + UI/update-flow polish (20-21 Jun 2026, still v0.67d - alph
 --------------------------------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
 
+- Experimental enrolment is now sticky (alpha): toggling **Alpha updates** on now
+  ENROLS you in the Experimental channel even when the current build already equals
+  stable — previously it refused ("you're on the latest version") and stayed on
+  stable. handleUpdateChannel: when alpha == stable it snapshots stable + persists
+  channel=alpha (returns sameAsStable + the current build hash/date) instead of
+  reverting; when alpha differs it still downloads + applies. handleUpdateCheck no
+  longer auto-downgrades alpha→stable when identical, so enrolment survives launches
+  and "Check now". Client setChannel renders straight from the toggle response (drops
+  the redundant follow-up checkForUpdate that was also what silently un-enrolled you).
+  Net: one round-trip to enrol; you then receive alpha builds as they land. Toggling
+  Alpha updates off still reverts to the latest stable release. Verified via unit
+  harness (server enrol same/diff + no-downgrade + revert) and JSDOM (client enrol
+  render, no re-check).
+
 - Update-flow polish (alpha):
   - "Check failed" now still shows the current build (#hash · updated date/time)
     instead of a bare dash: server includes localBuild() (on-disk index.html hash +
