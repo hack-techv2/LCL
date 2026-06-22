@@ -16,6 +16,7 @@
 function storeIsDemo() { return typeof demoOn === 'function' && demoOn() }
 
 // --- full app data (chats + settings) <-> /api/data --------------------------
+const SCHEMA_VERSION = 1
 async function loadAppData() {
   try {
     const r = await httpGet('/api/data')
@@ -23,9 +24,27 @@ async function loadAppData() {
     return await r.json()
   } catch { return null }
 }
-async function saveAppData(data) {
-  if (storeIsDemo()) return
-  try { await httpPost('/api/data', data) } catch {}
+// Serialized write queue: every saveAppData() is appended to a single FIFO chain,
+// so /api/data is never written by two overlapping requests (no server-side
+// file-write race / lock). Each call's promise resolves when ITS write lands, and
+// nothing is dropped (no debounce) — so `await persist()` still means "written".
+let _appWriteChain = Promise.resolve()
+function saveAppData(data) {
+  if (storeIsDemo()) return Promise.resolve()
+  _appWriteChain = _appWriteChain.then(async () => {
+    try {
+      if (data && typeof data === 'object') data.schemaVersion = SCHEMA_VERSION
+      await httpPost('/api/data', data)
+    } catch {}
+  })
+  return _appWriteChain
+}
+// Single entry point for "change state, then persist": runs fn(D) synchronously,
+// then queues a serialized save and returns the save promise. Prefer this over
+// hand-pairing a D mutation with persist() (call sites migrate incrementally).
+function mutate(fn) {
+  try { fn(D) } catch (e) { try { console.warn('[mutate]', e && e.message) } catch {} }
+  return saveAppData(D)
 }
 
 // --- live settings <-> /api/config -------------------------------------------
