@@ -4024,6 +4024,7 @@ async function deleteSkillUI(id) {
   }
 }
 function saveSP() {
+  const prevEmbedKey = creds.embedApiKey || ''
   creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
   creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
   creds.systemPrompt = document.getElementById('s-sys').value.trim()
@@ -4039,6 +4040,25 @@ function saveSP() {
   saveSettings(D.settings)
   persist()
   closeSP(); toast('Settings saved','ok')
+  // Validate a new/changed embedding key NOW (one tiny embed call) so a wrong or
+  // truncated key is caught with a clear message instead of silently 401'ing on
+  // the first RAG embed. Non-blocking: settings are already saved.
+  if (creds.embedApiKey && creds.embedModelId && creds.embedApiKey !== prevEmbedKey) checkEmbedKey()
+}
+
+// One-shot embedding-key check used after a Settings save. Skips #demo (DEMOKEY).
+async function checkEmbedKey() {
+  if (typeof demoOn === 'function' && demoOn()) return
+  if (!creds || !creds.embedApiKey || !creds.embedModelId) return
+  try {
+    const r = await httpPost('/api/embed', { apiKey: creds.embedApiKey, modelId: creds.embedModelId, input: 'lcl key check' })
+    if (r.ok) { toast('Embedding key verified', 'ok'); return }
+    let msg = 'HTTP ' + r.status
+    try { const d = await r.json(); msg = (d && d.error && (d.error.message || d.error)) || msg } catch {}
+    toast('Embedding key rejected (' + msg + ')' + (r.status === 401 ? ' — check the key is complete' : ''), 'err')
+  } catch (e) {
+    toast('Could not verify embedding key: ' + e.message, 'err')
+  }
 }
 
 // =============================================================================
