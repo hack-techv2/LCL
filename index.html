@@ -3195,8 +3195,27 @@ const HINT_CARDS = [
 const ICON_CHIP_FILE = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2z"/></svg>'
 const ICON_CHIP_CHEVRON = '<svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.94L1.53 4.47a.75.75 0 011.06-1.06L8 8.81l5.41-5.4a.75.75 0 111.06 1.06L8 10.94z"/></svg>'
 
+// One delegated click listener for message action buttons (Copy / Copy-for-Word /
+// Edit / Regenerate), wired once on the persistent #messages container — matches
+// the chat-list pattern (data-act, no per-button closures). Idempotent.
+function wireMessageActions() {
+  const el = document.getElementById('messages')
+  if (!el || el.dataset.actsWired) return
+  el.dataset.actsWired = '1'
+  el.addEventListener('click', e => {
+    const btn = e.target.closest('.mact')
+    if (!btn || !el.contains(btn)) return
+    const act = btn.getAttribute('data-act')
+    if (act === 'copy')           copyMsg(btn)
+    else if (act === 'copy-html') copyMsgHtml(btn)
+    else if (act === 'edit')      editLastUser()
+    else if (act === 'regen')     regenerateLast()
+  })
+}
+
 function renderMessages() {
   const el   = document.getElementById('messages')
+  wireMessageActions()
   const chat = curChat()
 
   if (!chat || !chat.messages.length) {
@@ -3248,6 +3267,7 @@ function renderMessages() {
 }
 
 function appendMsg(role, text, date, sources, fileNames, errored) {
+  wireMessageActions()
   let inner = document.querySelector('.msgs-inner')
   if (!inner) {
     document.getElementById('messages').innerHTML = ''
@@ -3337,12 +3357,12 @@ function buildMsgEl(role, text, date, sources, fileNames, errored) {
   // messages (both hidden until refreshTailActions reveals the tail ones).
   const acts = mkEl('div', { class: 'msg-acts' })
   if (!(errored && !isUser)) {
-    acts.appendChild(mkEl('button', { class: 'mact', title: 'Copy raw markdown to clipboard', onclick: e => copyMsg(e.currentTarget) }, 'Copy'))
+    acts.appendChild(mkEl('button', { class: 'mact', 'data-act': 'copy', title: 'Copy raw markdown to clipboard' }, 'Copy'))
     if (isUser) {
-      acts.appendChild(mkEl('button', { class: 'mact edit-act', style: 'display:none', onclick: () => editLastUser() }, 'Edit'))
+      acts.appendChild(mkEl('button', { class: 'mact edit-act', 'data-act': 'edit', style: 'display:none' }, 'Edit'))
     } else {
-      acts.appendChild(mkEl('button', { class: 'mact', title: 'Paste into Word or Outlook to preserve formatting (tables, bold, headings)', onclick: e => copyMsgHtml(e.currentTarget) }, 'Copy for Word / Outlook'))
-      acts.appendChild(mkEl('button', { class: 'mact regen-act', style: 'display:none', title: 'Re-send the last message and get a new response', onclick: () => regenerateLast() }, 'Regenerate'))
+      acts.appendChild(mkEl('button', { class: 'mact', 'data-act': 'copy-html', title: 'Paste into Word or Outlook to preserve formatting (tables, bold, headings)' }, 'Copy for Word / Outlook'))
+      acts.appendChild(mkEl('button', { class: 'mact regen-act', 'data-act': 'regen', style: 'display:none', title: 'Re-send the last message and get a new response' }, 'Regenerate'))
     }
   }
   div.appendChild(acts)
