@@ -233,48 +233,39 @@ async function runStream(chat, payload, ragSources) {
   }
 
   try {
-    const resp = await httpPost('/api/chat',
+    const r = await postClassified('/api/chat',
       { apiKey: creds.apiKey, modelId: creds.model, streamTimeoutMs: RETRY_STEPS_MS[Math.min(retry5xxCount, 2)], payload },
       { signal: inflightCtl.signal })
 
-    // Non-200 responses from our proxy are JSON, not SSE.
-    if (!resp.ok) {
-      let errData = {}
-      try { errData = JSON.parse(await resp.text()) } catch {}
+    // Non-200 from our proxy is JSON, not SSE. transport.postClassified already
+    // parsed the error body + classified it; we own the response UX here.
+    if (!r.ok) {
+      const errData = r.errData
       try { typingEl.remove() } catch {}
 
-      // 429 rate-limit: parse the "Limit resets at: YYYY-MM-DD HH:MM:SS UTC"
-      // marker, convert to local time, show a countdown, and auto-retry
-      // when it expires. Hand off to handleRateLimitWait and exit early.
-      if (resp.status === 429) {
-        const em = errData?.error?.message || ''
-        const m = em.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
-        if (m) {
-          const resetMs = Date.parse(m[1].replace(' ', 'T') + 'Z')
-          if (!isNaN(resetMs) && resetMs > Date.now()) {
-            handleRateLimitWait(chat, payload, ragSources, resetMs, em)
-            return
-          }
-        }
+      // 429 with a usable reset time → countdown + auto-retry when it expires.
+      if (r.kind === 'ratelimit' && r.resetMs) {
+        handleRateLimitWait(chat, payload, ragSources, r.resetMs, errData?.error?.message || '')
+        return
       }
 
-      // Any 5xx is transient — auto-retry with backoff (up to 3 times). 429 is
-      // handled above (quota wait); everything else falls through to a clean box.
-      if (resp.status >= 500 && resp.status < 600 && retry5xxCount < 3) {
-        const em5 = errData?.error?.message || errData?.error || ('HTTP '+resp.status)
-        handle5xxRetry(chat, payload, ragSources, resp.status, em5)
+      // Any 5xx is transient — auto-retry with backoff (up to 3 times). 429 with a
+      // reset is handled above; everything else falls through to a clean box.
+      if (r.kind === 'transient' && retry5xxCount < 3) {
+        handle5xxRetry(chat, payload, ragSources, r.status, r.message)
         return
       }
       retry5xxCount = 0
       const labels = { 500:'Server error', 502:'Bad gateway', 503:'Service unavailable', 504:'Gateway timeout' }
-      const note = labels[resp.status]
-        ? ('Error ' + resp.status + ': ' + labels[resp.status] + ' — The model service is temporarily unreachable. Please try again in a moment.')
-        : ('Error ' + resp.status + ': ' + cleanErrMsg(errData?.error?.message || errData?.error || ('HTTP ' + resp.status)))
+      const note = labels[r.status]
+        ? ('Error ' + r.status + ': ' + labels[r.status] + ' — The model service is temporarily unreachable. Please try again in a moment.')
+        : ('Error ' + r.status + ': ' + cleanErrMsg(r.message))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
       appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', labels[resp.status] ? 'Service unavailable' : ('Error ' + resp.status))
+      setHealth('err', labels[r.status] ? 'Service unavailable' : ('Error ' + r.status))
       return
     }
+    const resp = r.resp
     if (!resp.body) throw new Error('No response body for streaming')
 
     const msgsEl = document.getElementById('messages')
