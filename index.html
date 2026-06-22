@@ -4055,7 +4055,7 @@ async function checkEmbedKey() {
     if (r.ok) { toast('Embedding key connected', 'ok'); return }
     let msg = 'HTTP ' + r.status
     try { const d = await r.json(); msg = (d && d.error && (d.error.message || d.error)) || msg } catch {}
-    toast('Embedding key failed: ' + msg + (r.status === 401 ? ' — check the key is complete' : ''), 'err')
+    toast('Embedding key failed: ' + msg, 'err')
   } catch (e) {
     toast('Embedding key error: ' + e.message, 'err')
   }
