@@ -35,6 +35,7 @@ before a release-worthy push (esp. before promoting to `main`).
 | U10 | Click "Reset demo"; click "+ Many chats" | Re-seeds the demo cleanly; long chat list groups by date |
 | U11 | Upload a `.pptx` to Embeddings → wait → ask about it | Slide text + speaker notes extracted (`=== Slide N ===` / `[Notes]`), chunks embed, doc goes "ready", retrieval works. (Needs cdnjs JSZip reachable.) |
 | U12 | Upload a code/config or no-ext file (`.ts`, `.sql`, `Dockerfile`) and a binary (`.png`) | Text-like files extract + embed (no allowlist); the binary is skipped with "Could not read … unsupported file type (not readable as text)" |
+| U14 | Hover a message → click Copy / Copy for Word / Edit / Regenerate | All fire correctly via one delegated `#messages` listener (`data-act`); buttons carry no inline `onclick` (P2 refactor, behaviour unchanged) |
 | U13 | Settings → set a new embed key → Save | A new/changed embed key is verified with one `/api/embed` call: valid → "Embedding key connected"; bad/truncated → "Embedding key failed: …" (caught at save, not on first RAG embed) |
 
 ## Status log
