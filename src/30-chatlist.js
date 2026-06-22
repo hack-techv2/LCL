@@ -41,8 +41,8 @@ function switchChat(id) {
 
 function togglePin(id, e) {
   e.stopPropagation()
-  D.chats[id].pinned = !D.chats[id].pinned
-  persist(); renderChatList()
+  mutate(D => { D.chats[id].pinned = !D.chats[id].pinned })
+  renderChatList()
   toast(D.chats[id].pinned ? 'Pinned' : 'Unpinned', 'ok')
 }
 
@@ -70,7 +70,7 @@ function startRename(id, e) {
 
 function finishRename(id, inp) {
   const val = inp.value.trim()
-  if (val && D.chats[id]) { D.chats[id].title = val; persist() }
+  if (val && D.chats[id]) mutate(D => { D.chats[id].title = val })
   renderChatList()
 }
 
