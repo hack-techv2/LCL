@@ -614,12 +614,12 @@ async function checkEmbedKey() {
   if (!creds || !creds.embedApiKey || !creds.embedModelId) return
   try {
     const r = await httpPost('/api/embed', { apiKey: creds.embedApiKey, modelId: creds.embedModelId, input: 'lcl key check' })
-    if (r.ok) { toast('Embedding key verified', 'ok'); return }
+    if (r.ok) { toast('Embedding key connected', 'ok'); return }
     let msg = 'HTTP ' + r.status
     try { const d = await r.json(); msg = (d && d.error && (d.error.message || d.error)) || msg } catch {}
-    toast('Embedding key rejected (' + msg + ')' + (r.status === 401 ? ' — check the key is complete' : ''), 'err')
+    toast('Embedding key failed: ' + msg + (r.status === 401 ? ' — check the key is complete' : ''), 'err')
   } catch (e) {
-    toast('Could not verify embedding key: ' + e.message, 'err')
+    toast('Embedding key error: ' + e.message, 'err')
   }
 }
 
