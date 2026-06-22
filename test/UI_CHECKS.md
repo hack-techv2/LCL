@@ -33,10 +33,22 @@ before a release-worthy push (esp. before promoting to `main`).
 | U8 | Open Connect modal and Settings → Models | Both key fields show "Demo key prefilled — DEMOKEY" (demo-only; absent in normal mode) |
 | U9 | Send `[[401]]` and `[[500]]` | Each renders an error bubble ("Error 401…" / "Error 500…") and the health pill reflects the error |
 | U10 | Click "Reset demo"; click "+ Many chats" | Re-seeds the demo cleanly; long chat list groups by date |
+| U11 | Upload a `.pptx` to Embeddings → wait → ask about it | Slide text + speaker notes extracted (`=== Slide N ===` / `[Notes]`), chunks embed, doc goes "ready", retrieval works. (Needs cdnjs JSZip reachable.) |
+| U12 | Upload a code/config or no-ext file (`.ts`, `.sql`, `Dockerfile`) and a binary (`.png`) | Text-like files extract + embed (no allowlist); the binary is skipped with "Could not read … unsupported file type (not readable as text)" |
 
 ## Status log
 Record date + build (index.html / server.txt sha) + which items passed when run,
 so we have a trail.
+- 22 Jun 2026 (file policy): **U12 verified** — gate made permissive: office
+  types use extractors; any other file is read as UTF-8 text and rejected only if
+  it sniffs binary (NUL / high U+FFFD ratio). `extractText()` accepted a `.ts`
+  (incl. spaces) and rejected a binary blob ("not readable as text"). Build 5/5
+  incl. null-byte scan.
+- 22 Jun 2026 (pptx): **U11 verified** — synthetic `.pptx` built in-page and run
+  through the real `extractText()` (slide order, `<a:t>`, `&amp;` decode, speaker
+  notes resolved via slide rels) then `embedDoc()` → "ready" + chunk embedded;
+  `JSZip` loads from cdnjs on the gov network. (Real-file upload not yet driven —
+  the native file dialog isn't automatable; do it manually when convenient.)
 - 22 Jun 2026 (alpha build): **U1–U10 all verified live** — incl. U7 (Stop mid
   `[[slow]]` → "(stopped)") and U10 (Reset demo re-seeds; "+ Many chats" adds 18,
   date-grouped). U6 countdown captured via the `[[429]]` marker.
