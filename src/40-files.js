@@ -79,17 +79,12 @@ async function testEmbedConnection() {
 // =============================================================================
 // File parsing (PDF, DOCX, XLSX, plain text)
 // =============================================================================
-const SUPPORTED_EXTS = new Set([
-  'pdf','docx','xlsx','xls',
-  'txt','md','csv','log',
-  'json','js','py','ps1','sh','xml','yaml','yml'
-])
-
 function getExt(name) { return (name.split('.').pop()||'').toLowerCase() }
 
-function isSupported(file) {
-  return SUPPORTED_EXTS.has(getExt(file.name))
-}
+// File acceptance: pdf/docx/pptx/xlsx/xls have dedicated EXTRACTORS; every other
+// file is attempted as plain text and rejected during extraction if it isn't
+// readable text (EXTRACTORS._default). So there is no upload allowlist — text /
+// code / config and no-extension files (Dockerfile, .env, …) all pass through.
 
 // ---------------------------------------------------------------------------
 // merged from 41-files-extract.js
@@ -135,11 +130,62 @@ const EXTRACTORS = {
     }
     return { text: out.trim() || '[No data found in spreadsheet]', scanWarning: null }
   },
-  // Plain text / code files - default for any unlisted extension.
+  // PowerPoint (.pptx) is a zip of slide XML; unzip (JSZip) and pull the
+  // DrawingML <a:t> text runs per slide (also covers table cells). Speaker notes
+  // are resolved per slide via the slide's .rels so they attach to the right
+  // slide. Image-only decks yield no text (no OCR) and raise a scan warning.
+  pptx: async (file) => {
+    if (typeof JSZip === 'undefined') throw new Error('PPTX needs the JSZip library (offline / blocked?) — export the deck to PDF instead')
+    const zip = await JSZip.loadAsync(await file.arrayBuffer())
+    const ent = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    const runs = xml => { const out = []; const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g; let m; while ((m = re.exec(xml))) out.push(m[1]); return ent(out.join(' ')).replace(/\s+/g, ' ').trim() }
+    const num = n => { const m = n.match(/slide(\d+)\.xml$/); return m ? +m[1] : 0 }
+    const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b))
+    const blocks = []
+    let empty = 0
+    for (let i = 0; i < slides.length; i++) {
+      const body = runs(await zip.file(slides[i]).async('string'))
+      // notes: resolve via the slide's rels (../notesSlides/notesSlideN.xml)
+      let notes = ''
+      const relsName = 'ppt/slides/_rels/' + slides[i].split('/').pop() + '.rels'
+      const relsFile = zip.file(relsName)
+      if (relsFile) {
+        const rm = (await relsFile.async('string')).match(/Target="([^"]*notesSlide\d+\.xml)"/i)
+        if (rm) {
+          const np = ('ppt/slides/' + rm[1]).replace(/[^/]+\/\.\.\//g, '')
+          if (zip.file(np)) notes = runs(await zip.file(np).async('string'))
+        }
+      }
+      if (!body && !notes) empty++
+      let block = '=== Slide ' + (i + 1) + ' ===\n' + (body || '[no slide text]')
+      if (notes) block += '\n[Notes] ' + notes
+      blocks.push(block)
+    }
+    const text = blocks.join('\n\n').trim() || '[No text found in PPTX]'
+    const total = slides.length
+    const imageOnly = total > 0 && empty >= (CFG.SCAN_MIN_PAGES || 3) && (empty / total) >= (CFG.SCAN_MIN_SHARE || 0.5)
+    const scanWarning = imageOnly
+      ? empty + ' of ' + total + ' slides had no extractable text — this deck may be image-only. Embedded content will be incomplete.'
+      : null
+    return { text, scanWarning }
+  },
+  // Any other file: read it as UTF-8 text. If it sniffs as binary (NUL bytes,
+  // or a high share of U+FFFD replacement chars from undecodable bytes), reject
+  // it as unsupported. queueFilesForPreview() catches this, shows a per-file
+  // "Could not read ..." toast, and skips it.
   _default: (file) => new Promise((resolve, reject) => {
     const r = new FileReader()
-    r.onload  = e => resolve({ text: e.target.result || '', scanWarning: null })
-    r.onerror = () => reject(new Error('Read error'))
+    r.onload  = e => {
+      const s = e.target.result || ''
+      const head = s.slice(0, 8000)
+      const bad = (head.match(/[\u0000\uFFFD]/g) || []).length
+      if (head.indexOf('\u0000') !== -1 || (head.length && bad / head.length > 0.1)) {
+        reject(new Error('unsupported file type (not readable as text)'))
+      } else {
+        resolve({ text: s, scanWarning: null })
+      }
+    }
+    r.onerror = () => reject(new Error('read error'))
     r.readAsText(file)
   }),
 }
@@ -216,14 +262,7 @@ async function queueFilesForPreview(files, target) {
     files = demoCapFiles(Array.from(files), target)
     if (!files.length) return
   }
-  const valid = []
-  for (const f of Array.from(files)) {
-    if (!isSupported(f)) {
-      toast('Unsupported file: ' + f.name + '. Supported: PDF, Word, Excel, text/code files.', 'err')
-      continue
-    }
-    valid.push(f)
-  }
+  const valid = Array.from(files)
   if (!valid.length) return
 
   previewTarget = target
