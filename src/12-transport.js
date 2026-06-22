@@ -62,3 +62,30 @@ async function streamSse(resp, onData, opts) {
   }
   return { stopped: false }
 }
+
+// Chat/embed POST with error classification. On HTTP 200 → { ok:true, resp }.
+// On non-200 it reads the JSON error body ONCE and classifies the failure so the
+// caller's UI layer just branches on `kind`:
+//   'ratelimit' — 429; resetMs set if the upstream "Limit resets at: … UTC" marker
+//                 parses to a FUTURE time (else null → caller treats it as terminal)
+//   'transient' — any 5xx (caller may auto-retry with backoff)
+//   'terminal'  — everything else (4xx, non-JSON, …)
+// This keeps all fetch + error-shape parsing in the transport seam; the chat
+// module owns the response UX (countdown, retry scheduling, rendering).
+async function postClassified(path, body, opts) {
+  const resp = await httpPost(path, body, opts)
+  if (resp.ok) return { ok: true, resp }
+  let errData = {}
+  try { errData = JSON.parse(await resp.text()) } catch {}
+  const message = (errData && errData.error && (errData.error.message || errData.error)) || ('HTTP ' + resp.status)
+  let kind = 'terminal', resetMs = null
+  if (resp.status === 429) {
+    kind = 'ratelimit'
+    const m = String((errData.error && (errData.error.message || errData.error)) || '')
+      .match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
+    if (m) { const t = Date.parse(m[1].replace(' ', 'T') + 'Z'); if (!isNaN(t) && t > Date.now()) resetMs = t }
+  } else if (resp.status >= 500 && resp.status < 600) {
+    kind = 'transient'
+  }
+  return { ok: false, status: resp.status, errData, message, kind, resetMs }
+}
