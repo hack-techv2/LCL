@@ -398,7 +398,7 @@ nav li a { transition: color .15s, background .15s; }
 <nav id="nav">
   <div class="nav-logo">
     <div class="nav-badge">LCL</div>
-    <div class="nav-ver">Local Comet LLM<br>v0.67d · updated 21 Jun 2026</div>
+    <div class="nav-ver">Local Comet LLM<br>v0.67d · updated 23 Jun 2026</div>
   </div>
   <div class="nav-section">Overview</div>
   <ul>
@@ -444,7 +444,7 @@ nav li a { transition: color .15s, background .15s; }
   <div class="cover-badge">LCL</div>
   <h1 class="page-title">LOCAL COMET LLM</h1>
   <p class="cover-tagline">Setup Guide for Comet Users</p>
-  <div class="ver-badge">v0.67d &nbsp;&nbsp;&nbsp; 17 Jun 2026 &middot; updated 20 Jun</div>
+  <div class="ver-badge">v0.67d &nbsp;&nbsp;&nbsp; 17 Jun 2026 &middot; updated 23 Jun</div>
   <div class="cover-credits">
     <strong>Cyber Security Agency of Singapore</strong><br>
     ASG – Melvin Yung (CSA / Regulations) – Ko Zheng Teng (CSA / ASG)
@@ -483,6 +483,19 @@ nav li a { transition: color .15s, background .15s; }
 <section id="changelog">
   <div class="section-label">Release Notes</div>
   <h1 class="page-title">Changelog</h1>
+
+  <div class="ver-head">Highlights <span>– the big changes in v0.67d</span></div>
+  <div class="cl-item"><div class="cl-item-title">Automatic updates</div><div class="cl-item-body">LCL keeps itself current — check and apply new builds from <strong>Settings &rarr; Updates</strong> in one click, with an optional <strong>Experimental</strong> channel to try features early.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Copy for Word / Outlook</div><div class="cl-item-body">A one-click copy that pastes replies straight into Word or Outlook with formatting intact — headings, tables and bold preserved.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Reads your documents — now including PowerPoint</div><div class="cl-item-body">PDF, Word, <strong>PowerPoint (.pptx)</strong> and Excel, plus any text-based file (code, config, logs). Upload to a chat or embed it for search.</div></div>
+  <div class="cl-item"><div class="cl-item-title">A refreshed interface</div><div class="cl-item-body">A top-to-bottom UI overhaul: tabbed, card-based Settings; streaming, fully formatted (markdown) replies; a cleaner full-width chat layout; a data-classification picker; and quieter, clearer error handling.</div></div>
+
+  <div class="ver-head">v0.67d <span>– file support &amp; fixes · 23 Jun 2026</span></div>
+  <div class="cl-item"><div class="cl-item-title">PowerPoint support</div><div class="cl-item-body">LCL can now read <strong>.pptx</strong> presentations — slide text and speaker notes are extracted for chat context and embedding. Image-only slides aren't read (there's no OCR for slides); export those decks to PDF, which does support OCR.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Read almost any text-based file</div><div class="cl-item-body">The upload list is no longer restricted. Alongside the built-in readers for PDF, Word, PowerPoint and Excel, any text-based file — source code, config, logs, <code>.env</code>, even files with no extension — is now read as text. Only genuinely binary files are skipped, with a clear "couldn't read" message.</div></div>
+  <div class="cl-item"><div class="cl-item-title">HTML &amp; other text files selectable</div><div class="cl-item-body">The attach / upload file picker no longer greys out <code>.html</code> and similar text files, so you can pick them directly instead of only dragging them in.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Rename shows at the top</div><div class="cl-item-body">Renaming a chat in the sidebar now also updates the chat title shown at the top of the window, instead of only changing in the list.</div></div>
+  <div class="cl-item"><div class="cl-item-title">Embedding key is checked when you save it</div><div class="cl-item-body">Saving a new or changed embedding key now runs a quick check and tells you immediately whether it works, instead of failing later on the first document embed.</div></div>
 
   <div class="ver-head">v0.67d <span>– maintenance &amp; hardening · 21 Jun 2026</span></div>
   <div class="cl-item"><div class="cl-item-title">Clearer update &amp; restart guidance</div><div class="cl-item-body">When an update changes <code>server.txt</code>, the Node.js window now shows a clear highlighted notice with the exact restart steps (press Ctrl+C, close Node.js, then run your startup command again). The in-app <strong>Update &amp; restart</strong> button also restarts the server automatically where the machine allows it, then reloads the page for you.</div></div>
