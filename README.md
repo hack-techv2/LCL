@@ -52,9 +52,9 @@ Not committed (see `.gitignore`): `lcl_data.json` and `embed_cache.bin`
 node build.js
 ```
 
-This regenerates `index.html` from `src/` and runs verification (null-byte
-scan, per-module + bundle syntax checks, undefined-function scan). It can also
-optionally package changed files into a password-protected `LCL.zip`.
+This regenerates `index.html` from `src/`, runs verification (null-byte scan,
+per-module + bundle syntax checks, undefined-function scan), and writes
+`checksums.txt` for the in-app updater.
 
 ## Run
 
@@ -83,8 +83,6 @@ optionally package changed files into a password-protected `LCL.zip`.
 - No credentials are committed. API keys are supplied at runtime and saved only
   to the local, git-ignored `lcl_data.json`.
 - Embedding vectors are cached locally in `embed_cache.bin` (git-ignored).
-- The optional `LCL.zip` uses ZipCrypto — weak, for casual gating only, not for
-  protecting secrets.
 
 ## Credits
 
