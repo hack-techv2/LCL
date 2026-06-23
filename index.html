@@ -878,8 +878,10 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
             <div class="in-row">
               <label class="ib" data-tip="Attach file to this message">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 1.5A4.5 4.5 0 0113 6v6.5a3 3 0 01-6 0V5a1.5 1.5 0 013 0v7.5a.5.5 0 01-1 0V5a.5.5 0 00-1 0v7.5a2 2 0 004 0V6a3.5 3.5 0 00-7 0v7.5a5 5 0 0010 0V6a6.5 6.5 0 00-13 0v6.5a.5.5 0 01-1 0V6A7.5 7.5 0 018.5 1.5z"/></svg>
+                <!-- No accept allowlist: pdf/docx/pptx/xlsx have dedicated
+                     extractors; every other file is attempted as text and
+                     rejected at extraction time if it isn't readable. -->
                 <input type="file" id="file-in" multiple
-                  accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.xls,.csv,.json,.js,.py,.ps1,.sh,.xml,.yaml,.yml,.log"
                   onchange="handleAttach(this.files)">
               </label>
               <button class="ib send" id="send-btn" onclick="send()" disabled data-tip="Send (Enter)">
@@ -905,8 +907,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       </div>
       <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
         + Upload file
+        <!-- No accept allowlist: dedicated extractors for pdf/docx/pptx/xlsx;
+             everything else is read as text (rejected if it sniffs as binary). -->
         <input type="file" style="display:none" multiple
-          accept=".txt,.md,.pdf,.docx,.pptx,.xlsx,.xls,.csv,.json,.js,.py,.ps1,.sh,.xml,.yaml,.yml,.log"
           onchange="uploadDocs(this.files)">
       </label>
       <div class="dp-body" id="dp-body"></div>
@@ -1792,6 +1795,7 @@ function finishRename(id, inp) {
   const val = inp.value.trim()
   if (val && D.chats[id]) mutate(D => { D.chats[id].title = val })
   renderChatList()
+  renderTopbar()   // keep the title under the top header in sync with the rename
 }
 
 function curChat() { return chatId ? D.chats[chatId] : null }
