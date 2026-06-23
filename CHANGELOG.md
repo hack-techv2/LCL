@@ -2,6 +2,82 @@ LCL CHANGELOG  —  v0.67d
 ========================
 
 
+Rename topbar sync + HTML file picker fix (23 Jun 2026, still v0.67d - alpha)
+----------------------------------------------------------------------------
+Two bug fixes on `alpha` only; stable stays v0.67d. Verified live and in #demo via
+Claude-in-Chrome (rename->topbar, HTML extraction).
+
+- Sidebar rename now updates the title under the top header. finishRename() only
+  re-rendered the chat list (renderChatList), so the topbar's tb-chat-title kept the
+  old name until the next full render; it now also calls renderTopbar().
+
+- HTML (and other text-like) files can be chosen from the file picker again. Both file
+  <input>s carried a hardcoded accept="" allowlist that omitted .html, so the picker
+  greyed them out even though the extractor has no allowlist (dedicated extractors for
+  pdf/docx/pptx/xlsx; everything else read as UTF-8 text, rejected only if binary).
+  Drag-drop already worked because it ignores accept. Removed the accept attribute from
+  both inputs so the picker matches the code's actual behaviour.
+
+
+Demo mode (DEMOKEY) + pptx + permissive files + refactor B/P2/P3/P4 (22 Jun 2026, still v0.67d - alpha)
+------------------------------------------------------------------------------------------------------
+All on `alpha` only; stable stays v0.67d until a version bump. Build 5/5; covered by
+the new test/ suite (server: test/demo-api.test.js, 20 cases; browser: test/UI_CHECKS.md).
+
+- Refactor B — src/ consolidation: 31 -> 17 JS modules by merging the contiguous,
+  defensively-split families (41/42/43->40-files, 51-54->50-chatprocessing,
+  71/72/73->70-render, 81/82/83->80-ui, 98->97-update-ui). Only adjacent merges were
+  used, so the built index.html's executable JS is byte-identical (comment/banner diff
+  only); 95/96/97 left alone (96-demo sits between -> merging would reorder code).
+
+- Server-backed demo mode (#demo): the front-end now runs the REAL transport + embed +
+  RAG path against a local "demo API" keyed by the sentinel `DEMOKEY`, replacing the
+  old client-side mock (demoSend/demoStream, retired). server.txt answers locally
+  (canned OpenAI-style SSE, deterministic 1024-d embeds, RAG lookup) with no upstream
+  socket and no cache writes. Gate: DEMOKEY serves demo data only WITH an
+  `x-lcl-demo: 1` header (added by 12-transport while demoOn()); a stray DEMOKEY in
+  normal mode 401s. Prompt markers `[[401]]/[[429]]/[[500]]/[[filter]]/[[slow]]` drive
+  the error/retry/filter paths, and every 5th plain streamed message returns a
+  retryable 429 (near-future reset stamp) so the rate-limit countdown + auto-retry UI
+  exercises naturally. DEMOKEY is surfaced (prefilled + hint) in the Connect/Settings
+  key fields, demo-only. Skill resolution in #demo reads skillsCache (seeded skills
+  aren't on the server disk).
+
+- File ingestion: added a `.pptx` extractor (JSZip unzip -> slide `<a:t>` text +
+  speaker notes resolved via slide rels; image-only decks warn, no OCR). Replaced the
+  upload allowlist with a permissive policy — pdf/docx/pptx/xlsx/xls use dedicated
+  extractors, every other file is read as UTF-8 text and rejected during extraction
+  only if it sniffs binary (NUL bytes / high U+FFFD ratio). So text/code/config and
+  no-extension files (Dockerfile, .env) all work; images/.doc/etc. are skipped with a
+  clear "not readable as text" message.
+
+- Embedding-key validation: saving a new/changed embed key in Settings now fires one
+  /api/embed check and reports immediately ("Embedding key connected" / "Embedding key
+  failed: <msg>" / "Embedding key error: <msg>"), so a wrong or truncated embed key is
+  caught at save instead of silently 401'ing on the first RAG embed.
+
+- Refactor P2 — message-renderer event delegation: Copy / Copy-for-Word / Edit /
+  Regenerate now route through ONE delegated #messages listener (data-act,
+  wireMessageActions()); no per-button onclick closures. Behaviour unchanged.
+
+- Refactor P3 — transport seam tail: new 12-transport.postClassified() owns the chat
+  POST + non-200 JSON parse + 429/5xx classification (returns kind =
+  ratelimit|transient|terminal + resetMs); runStream just branches on kind for the UX
+  (countdown / 5xx-retry box / terminal bubble). Behaviour-identical.
+
+- Refactor P4 (partial) — persistence seam tail: saveAppData is now a serialized FIFO
+  write queue, so two saves never hit /api/data at once (no file-write race) while
+  nothing is dropped and `await persist()` still means "written"; added a mutate(fn)
+  single change+save entry (adopted in togglePin/finishRename) and a schemaVersion
+  stamp. The debounce timer was deliberately skipped (saves fire on discrete events,
+  not rapidly).
+
+- Tests: added test/demo-api.test.js — boots the real server.txt on a spare port and
+  exercises the #demo endpoints (20 grouped cases: chat/embed/rag/errors/retry/gate +
+  opt-in slow; exit-code CI-ready) — plus test/TEST_CASES.md and a Claude-in-Chrome
+  browser checklist test/UI_CHECKS.md (U1-U14).
+
+
 R-series follow-ups + UI/update-flow polish (20-21 Jun 2026, still v0.67d - alpha)
 --------------------------------------------------------------------------------
 Local-testable items from the deferred R-series, landing incrementally on `alpha`.
