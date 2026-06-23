@@ -431,7 +431,7 @@ nav li a { transition: color .15s, background .15s; }
   </ul>
   <div class="nav-section">Reference</div>
   <ul>
-    <li><a href="#upgrade">Upgrade Guide</a></li>
+    <li><a href="#upgrade">Updating LCL</a></li>
     <li><a href="#faq">FAQ</a></li>
     <li><a href="#credits">Credits</a></li>
   </ul>
@@ -789,22 +789,31 @@ nav li a { transition: color .15s, background .15s; }
 
 <!-- ═══════════════════════════════ UPGRADE ══════════════════════════════ -->
 <section id="upgrade">
-  <div class="section-label">Swap files and restart</div>
-  <h1 class="page-title">Upgrade Guide</h1>
+  <div class="section-label">Keep LCL up to date</div>
+  <h1 class="page-title">Updating LCL</h1>
 
   <div class="card card-warn">
-    <div class="card-label">Do not delete when upgrading</div>
+    <div class="card-label">Do not delete when updating</div>
     <ul class="bullets" style="margin-top:4px">
       <li><code>lcl_data.json</code> – chat history &amp; settings</li>
       <li><code>skills/</code> – your saved skills</li>
     </ul>
   </div>
 
-  <p>Upgrading is straightforward. Chat history, settings, and embeddings stored in <code>lcl_data.json</code> and the server in-memory cache are not affected.</p>
+  <p>LCL can keep itself up to date. The easiest way is the built-in updater; if your machine can't reach GitHub, use the manual file swap further down. Either way, your chats, settings, embeddings and skills in <code>lcl_data.json</code> are not affected.</p>
 
-  <div class="upg-step"><div class="upg-label">Step 1 –</div><div><div class="upg-title">Stop the server</div><div class="upg-body">In the Node.js window, press Ctrl + C. Close the localhost:3000 browser tab.</div></div></div>
-  <div class="upg-step"><div class="upg-label">Step 2 –</div><div><div class="upg-title">Replace index.html</div><div class="upg-body">Copy the new index.html into the LCL folder on your Desktop, replacing the existing one.</div></div></div>
-  <div class="upg-step"><div class="upg-label">Step 3 –</div><div><div class="upg-title">Replace server.txt</div><div class="upg-body">v0.67d ships both files. Copy the new server.txt into the LCL folder too, replacing the existing one.</div></div></div>
+  <div class="upg-title" style="font-size:17px;margin:26px 0 6px">Option A — Update from inside LCL <span style="font-weight:400;color:var(--muted)">(recommended)</span></div>
+  <div class="upg-step"><div class="upg-label">Step 1 –</div><div><div class="upg-title">Open the Updates panel</div><div class="upg-body">Click the gear icon to open <strong>Settings</strong>, then open the <strong>Updates</strong> card.</div></div></div>
+  <div class="upg-step"><div class="upg-label">Step 2 –</div><div><div class="upg-title">Check for updates</div><div class="upg-body">Click <strong>Check for updates</strong>. If a newer build is available, LCL names the file(s) that will change; if you're already current it shows <em>up to date</em>.</div></div></div>
+  <div class="upg-step"><div class="upg-label">Step 3 –</div><div><div class="upg-title">Update &amp; restart</div><div class="upg-body">Click <strong>Update &amp; restart</strong>. LCL downloads the new files, verifies them (SHA-256) and applies them. A changed <code>index.html</code> reloads the page on its own; if <code>server.txt</code> changed, LCL restarts the server automatically where the machine allows it — otherwise the Node.js window shows the exact restart steps to run.</div></div></div>
+  <div class="upg-step"><div class="upg-label">Done –</div><div><div class="upg-title">You're on the new build</div><div class="upg-body">The version line in <strong>Settings &rarr; Updates</strong> shows your current build. Chats, settings, embeddings and skills are untouched.</div></div></div>
+
+  <div class="card" style="margin-top:10px"><div class="card-label">Tip — Experimental channel</div><div>Want new features early? Unlock the <strong>Experimental</strong> toggle in <strong>Settings &rarr; Updates</strong> (tap the version badge a few times to reveal it). A red <strong>ALPHA</strong> pill shows while it's on; turn it off to return to the latest stable release.</div></div>
+
+  <div class="upg-title" style="font-size:17px;margin:26px 0 6px">Option B — Manual file swap <span style="font-weight:400;color:var(--muted)">(if the in-app updater can't reach GitHub)</span></div>
+  <div class="upg-step"><div class="upg-label">Step 1 –</div><div><div class="upg-title">Download the files</div><div class="upg-body">On the LCL <strong>Releases</strong> page on GitHub, download the latest <code>index.html</code> and <code>server.txt</code>.</div></div></div>
+  <div class="upg-step"><div class="upg-label">Step 2 –</div><div><div class="upg-title">Stop the server</div><div class="upg-body">In the Node.js window, press Ctrl + C. Close the localhost:3000 browser tab.</div></div></div>
+  <div class="upg-step"><div class="upg-label">Step 3 –</div><div><div class="upg-title">Replace both files</div><div class="upg-body">Copy the new <code>index.html</code> and <code>server.txt</code> into the LCL folder on your Desktop, replacing the existing ones.</div></div></div>
   <div class="upg-step">
     <div class="upg-label">Step 4 –</div>
     <div>
