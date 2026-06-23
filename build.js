@@ -4,7 +4,6 @@ const path = require('path')
 const os   = require('os')
 const cp   = require('child_process')
 const crypto = require('crypto')
-const zlib = require('zlib')
 
 const ROOT     = __dirname
 const SRC_DIR  = path.join(ROOT, 'src')
@@ -15,13 +14,7 @@ const OUT_FILE = path.join(ROOT, 'index.html')
 const MIN_JS_MODULES = 15
 const MIN_OUTPUT_KB  = 140
 
-// Last-shipped file hashes (sha256). Only files whose current hash differs from
-// these get packaged. After each release, paste the new hashes the build prints
-// here so the next build compares against what recipients actually have.
-const SHIPPED_HASHES = {
-  'index.html': '219318c0a23b34b5badd29675ae0e9c78b9fefb4da3a7e80820c35fd93d9348c',
-  'server.txt': 'cd4fd6ab2d2af07c1b088d76418f1c2adc8a19291272c30bc25ed428a4ab200c'
-}
+// sha256 of a shipped file (repo root), used to write checksums.txt.
 const fileHash = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex')
 
 // Called bare but provided by the browser / CDN libraries (not app code).
@@ -117,109 +110,6 @@ function verify(out, jsFiles) {
 }
 
 
-// ---------------------------------------------------------------------------
-// Optional packaging: password-protected LCL.zip (pure-JS, zero deps).
-// Uses traditional ZipCrypto + stored entries so it works on any machine with
-// just Node — no `zip`/`7z`/PowerShell needed. ZipCrypto is weak encryption
-// (fine for casual gating, not for real secrets).
-// ---------------------------------------------------------------------------
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) { let c = n
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)
-    t[n] = c >>> 0 }
-  return t
-})()
-function crc32(buf) { let c = 0xFFFFFFFF
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xFFFFFFFF) >>> 0 }
-function crc1(crc, b) { return (CRC_TABLE[(crc ^ b) & 0xff] ^ (crc >>> 8)) >>> 0 }
-
-function encryptBuf(plain, password, crc) {
-  const k = [0x12345678, 0x23456789, 0x34567890]
-  const upd = (b) => { k[0] = crc1(k[0], b); k[1] = (k[1] + (k[0] & 0xff)) >>> 0
-    k[1] = (Math.imul(k[1], 134775813) + 1) >>> 0; k[2] = crc1(k[2], (k[1] >>> 24) & 0xff) }
-  const cb = () => { const t = (k[2] | 2) & 0xffff; return ((t * (t ^ 1)) >>> 8) & 0xff }
-  for (let i = 0; i < password.length; i++) upd(password.charCodeAt(i))
-  const hdr = Buffer.alloc(12)
-  for (let i = 0; i < 11; i++) hdr[i] = Math.floor(Math.random() * 256)
-  hdr[11] = (crc >>> 24) & 0xff
-  const out = Buffer.alloc(12 + plain.length)
-  for (let i = 0; i < 12; i++) { const c = hdr[i] ^ cb(); upd(hdr[i]); out[i] = c }
-  for (let i = 0; i < plain.length; i++) { const c = plain[i] ^ cb(); upd(plain[i]); out[12 + i] = c }
-  return out
-}
-
-function makeEncryptedZip(zipPath, fileList, password) {
-  const locals = [], central = []; let offset = 0
-  for (const fname of fileList) {
-    const data = fs.readFileSync(path.join(ROOT, fname))
-    const crc = crc32(data)
-    const comp = zlib.deflateRawSync(data, { level: 9 })
-    const enc = encryptBuf(comp, password, crc)
-    const name = Buffer.from(fname, 'utf8')
-    const lh = Buffer.alloc(30)
-    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x0001, 6)
-    lh.writeUInt16LE(8, 8); lh.writeUInt16LE(0, 10); lh.writeUInt16LE(0x21, 12)
-    lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(enc.length, 18); lh.writeUInt32LE(data.length, 22)
-    lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(0, 28)
-    locals.push(lh, name, enc)
-    const ch = Buffer.alloc(46)
-    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6)
-    ch.writeUInt16LE(0x0001, 8); ch.writeUInt16LE(8, 10); ch.writeUInt16LE(0, 12); ch.writeUInt16LE(0x21, 14)
-    ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(enc.length, 20); ch.writeUInt32LE(data.length, 24)
-    ch.writeUInt16LE(name.length, 28); ch.writeUInt16LE(0, 30); ch.writeUInt16LE(0, 32)
-    ch.writeUInt16LE(0, 34); ch.writeUInt16LE(0, 36); ch.writeUInt32LE(0, 38); ch.writeUInt32LE(offset, 42)
-    central.push(ch, name)
-    offset += lh.length + name.length + enc.length
-  }
-  const localBuf = Buffer.concat(locals), centralBuf = Buffer.concat(central)
-  const eocd = Buffer.alloc(22)
-  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(0, 4); eocd.writeUInt16LE(0, 6)
-  eocd.writeUInt16LE(fileList.length, 8); eocd.writeUInt16LE(fileList.length, 10)
-  eocd.writeUInt32LE(centralBuf.length, 12); eocd.writeUInt32LE(localBuf.length, 16); eocd.writeUInt16LE(0, 20)
-  fs.writeFileSync(zipPath, Buffer.concat([localBuf, centralBuf, eocd]))
-}
-
-// Rewrite the SHIPPED_HASHES baseline in this build.js with the given hashes,
-// so the next build compares against what was just packaged. Falls back to
-// printing them if the file can't be rewritten.
-function updateBaseline(current) {
-  const self = __filename
-  let src = fs.readFileSync(self, 'utf8')
-  const lines = Object.keys(current).map(f => "  '" + f + "': '" + current[f] + "'").join(',\n')
-  const block = 'const SHIPPED_HASHES = {\n' + lines + '\n}'
-  if (!/const SHIPPED_HASHES = \{[\s\S]*?\}/.test(src)) throw new Error('SHIPPED_HASHES block not found')
-  src = src.replace(/const SHIPPED_HASHES = \{[\s\S]*?\}/, block)
-  fs.writeFileSync(self, src)
-}
-
-function promptZip() {
-  const candidates = ['index.html', 'server.txt'].filter(f => fs.existsSync(path.join(ROOT, f)))
-  const current = {}, changed = []
-  for (const f of candidates) { current[f] = fileHash(f); if (current[f] !== SHIPPED_HASHES[f]) changed.push(f) }
-  if (!changed.length) { console.log('\n  No files changed since last baseline — nothing to package.\n'); return }
-  const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout })
-  rl.question('\n  ' + changed.length + ' file(s) changed: ' + changed.join(', ') + '\n  Package changed file(s) into password-protected LCL.zip? (Y/n) ', (ans) => {
-    rl.close()
-    if (/^\s*n(o)?\s*$/i.test(ans)) { console.log('  Skipped packaging.\n'); return }
-    const zipPath = path.join(ROOT, 'LCL.zip')
-    try {
-      makeEncryptedZip(zipPath, changed, '123')
-      console.log('  ✓ Wrote ' + zipPath + '  (password: 123)  [' + changed.join(', ') + ']')
-      console.log('    ZipCrypto is weak encryption — fine for casual gating, not secrets.')
-      try {
-        updateBaseline(current)
-        console.log('  ✓ Baseline auto-updated in build.js [' + candidates.join(', ') + ']\n')
-      } catch (e) {
-        console.error('  ! Could not auto-update baseline (' + e.message + ') — paste manually:')
-        for (const f of candidates) console.log("      '" + f + "': '" + current[f] + "',")
-        console.log('')
-      }
-    } catch (e) { console.error('  ✗ Zip failed: ' + e.message + '\n') }
-  })
-}
-
 function writeChecksums() {
   // sha256 of the shipped files, in `sha256  filename` format. Committed to the
   // repo so the in-app updater can verify a download before applying it.
@@ -251,7 +141,6 @@ function build() {
   console.log('  ' + (out.length / 1024).toFixed(1) + ' KB from ' + (jsFiles.length + 4) + ' source files')
   verify(out, jsFiles)
   writeChecksums()
-  promptZip()
 }
 
 build()
