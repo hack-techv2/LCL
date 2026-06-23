@@ -72,6 +72,7 @@ function finishRename(id, inp) {
   const val = inp.value.trim()
   if (val && D.chats[id]) mutate(D => { D.chats[id].title = val })
   renderChatList()
+  renderTopbar()   // keep the title under the top header in sync with the rename
 }
 
 function curChat() { return chatId ? D.chats[chatId] : null }
