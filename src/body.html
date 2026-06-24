@@ -258,12 +258,12 @@
         + Upload file
         <!-- No accept allowlist: dedicated extractors for pdf/docx/pptx/xlsx;
              everything else is read as text (rejected if it sniffs as binary). -->
-        <input type="file" style="display:none" multiple
+        <input type="file" id="doc-file-in" style="display:none" multiple
           onchange="uploadDocs(this.files)">
       </label>
       <div class="dp-body" id="dp-body"></div>
     </div>
   </div>
-</div>
+
 
 <script>
