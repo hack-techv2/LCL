@@ -312,7 +312,12 @@ async function queueFilesForPreview(files, target) {
     previewQueue  = []
     previewTarget = null
     await commitDocs(items)
-    document.getElementById('file-in').value = ''
+    // Reset the DOCS picker (id="doc-file-in"), not the attach input — otherwise
+    // its value stays set and re-selecting the SAME filename won't refire the
+    // change event, so the upload silently does nothing. (file-in is reset
+    // separately on the attach/preview path.)
+    const docIn = document.getElementById('doc-file-in')
+    if (docIn) docIn.value = ''
     return
   }
 
