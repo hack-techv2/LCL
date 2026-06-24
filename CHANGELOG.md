@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 24 Jun 2026
+
+- **Re-uploading the same filename to a chat's documents no longer hangs.** The
+  document upload `<input>` had no `id`, and after an upload the code cleared the
+  *attach* input (`file-in`) instead. The docs input's value was never reset, so
+  selecting the **same filename** again (e.g. after removing and re-adding it) did
+  not fire a `change` event and the upload silently did nothing. The docs input is
+  now `id="doc-file-in"` and is the one cleared after each upload.
+
 ## 23 Jun 2026
 
 - **Rename syncs the top title.** Renaming a chat in the sidebar now also updates
