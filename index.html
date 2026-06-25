@@ -354,6 +354,20 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .doc-st.error{background:var(--redbg);color:var(--red)}
 .doc-del{font-size:12px;color:var(--tx3);cursor:pointer;padding:2px 4px;border-radius:3px;transition:all .12s;background:none;border:none;flex-shrink:0}
 .doc-del:hover{color:var(--red)}
+.doc-st-row{display:flex;align-items:center;gap:8px;margin-top:3px}
+.doc-prog{margin-top:7px}
+.doc-prog-track{height:6px;border-radius:4px;background:var(--bg4);overflow:hidden}
+.doc-prog-fill{height:100%;background:var(--ac);border-radius:4px;transition:width .25s ease}
+.doc-prog-fill.pace{background:#f0a500;opacity:.75}
+.doc-prog-fill.indet{width:32%;animation:docIndet 1.1s ease-in-out infinite}
+@keyframes docIndet{0%{margin-left:-32%}100%{margin-left:100%}}
+.doc-prog-meta{display:flex;justify-content:space-between;gap:8px;margin-top:4px;font-size:10px;font-family:var(--mono)}
+.doc-prog-lbl{color:var(--ac);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-prog-lbl.pace{color:#f0a500}
+.doc-prog-cnt{color:var(--tx3);flex-shrink:0}
+.doc-retry{font-size:10px;font-family:var(--mono);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:2px 8px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s}
+.doc-retry:hover{border-color:var(--ac);color:var(--ac)}
+.doc-retry-ic{font-size:12px;line-height:1}
 .dp-upload{margin:10px;padding:10px;background:transparent;border:1px dashed var(--bdr2);border-radius:var(--r);color:var(--tx3);font-family:var(--sans);font-size:12px;cursor:pointer;width:calc(100% - 20px);transition:all .15s;text-align:center}
 .dp-upload:hover{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .dp-empty{padding:20px;text-align:center;color:var(--tx3);font-size:12px;line-height:1.7}
@@ -618,7 +632,6 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-sim-btn{font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:7px}
 .upd-sim-btn.on{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .upd-mets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}
-.upd-metric{background:var(--bg2);border-radius:9px;padding:10px 12px}
 .upd-mk{font-size:11px;color:var(--tx3);margin-bottom:2px}
 .upd-mv{font-family:var(--mono);font-size:16px;font-weight:500;color:var(--tx)}
 .upd-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:11px;border-top:1px solid var(--bdr2)}
@@ -1317,7 +1330,7 @@ async function hashText(s) {
 // embedBatch — send texts to /api/embed-batch; returns vectors in input order.
 // Full cache hit → plain JSON; partial / full miss → SSE with progress toasts.
 // ---------------------------------------------------------------------------
-async function embedBatch(texts) {
+async function embedBatch(texts, onProgress) {
   const embedModel = creds?.embedModelId
   if (!embedModel) throw new Error('No embedding model configured')
 
@@ -1347,14 +1360,16 @@ async function embedBatch(texts) {
         let evt
         try { evt = JSON.parse(payload) } catch { return }
         if (evt.type === 'progress') {
-          toast('Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
-            + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
+          // Drive the per-doc progress bar (renderDocPanel) instead of a
+          // transient toast. setHealth keeps the top-bar status in sync.
+          if (onProgress) onProgress({ state: 'embedding', done: evt.done, total: evt.total,
+                                       batchDone: evt.batchDone, batchTotal: evt.batchTotal })
           if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
         } else if (evt.type === 'pacing') {
-          // Server is waiting out the API rate-limit window. Make the pause
-          // obvious so the UI doesn't look frozen.
-          toast('⏳ API rate limit reached — resuming embedding in ~' + evt.waitSec + 's'
-            + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
+          // Server is waiting out the API rate-limit window. The bar switches to
+          // its amber 'pacing' state with a countdown so the UI doesn't look frozen.
+          if (onProgress) onProgress({ state: 'pacing', done: evt.done, total: evt.total,
+                                       batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
           if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
         } else if (evt.type === 'done') {
           settled = true; resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
@@ -2291,15 +2306,23 @@ async function embedDoc(doc) {
     }
 
     if (toEmbed.length) {
-      // embedBatch handles SSE progress toasts internally
-      const { hashes } = await embedBatch(toEmbed)
+      // Show a persistent per-doc progress bar (renderDocPanel) driven by the
+      // SSE progress/pacing events forwarded from embedBatch.
+      doc.status = 'embedding'
+      doc.error  = null
+      doc.embedProgress = { state: 'embedding', done: 0, total: toEmbed.length, batchDone: 0, batchTotal: 0 }
+      renderDocPanel()
+      const { hashes } = await embedBatch(toEmbed, prog => {
+        doc.embedProgress = prog
+        renderDocPanel()
+      })
       for (let k = 0; k < toEmbedIdx.length; k++) {
         chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
       }
     }
-
     doc.chunks = chunks.filter(Boolean)
     doc.status = 'ready'
+    doc.embedProgress = null
     persist()
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
@@ -2307,10 +2330,22 @@ async function embedDoc(doc) {
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
+    doc.embedProgress = null
     toast('Embed failed: ' + e.message, 'err')
     setHealth('ok', connectedLabel())
     renderDocPanel()
   }
+}
+// Retry embedding a single doc that previously failed. Chunks already embedded
+// keep their embHash and are skipped inside embedDoc, so a retry RESUMES from
+// where it stopped rather than re-embedding everything.
+async function retryEmbed(id, event) {
+  if (event) event.stopPropagation()
+  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
+  const doc = chat.docs.find(d => d.id === id)
+  if (!doc) return
+  await embedDoc(doc)
+  await persist()
 }
 // Remove an embedded document: evict its vectors, drop it from chat.docs,
 // persist, and refresh the panel.
@@ -3456,7 +3491,6 @@ function appendTyping() {
   return div
 }
 
-// ---------------------------------------------------------------------------
 // merged from 73-render-docpanel.js
 // ---------------------------------------------------------------------------
 
@@ -3474,16 +3508,48 @@ function renderDocPanel() {
     return
   }
   for (const d of docs) {
-    const ext   = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
+    const ext    = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
     const status = d.status || 'pending'
-    const stCls = d.status === 'ready' ? 'ready' : d.status === 'error' ? 'error' : 'pending'
+    const infKids = [
+      mkEl('div', { class: 'doc-name' }, d.name),
+      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
+    ]
+    if (status === 'embedding') {
+      // Live progress bar driven by doc.embedProgress (set from embedBatch SSE).
+      // No progress data yet (or 0 total) -> indeterminate sliding bar.
+      const p     = d.embedProgress || {}
+      const pace  = p.state === 'pacing'
+      const total = p.total || 0
+      const done  = p.done  || 0
+      const indet = !total
+      const pct   = total ? Math.round(done / total * 100) : 0
+      const fill  = mkEl('div', {
+        class: 'doc-prog-fill' + (pace ? ' pace' : '') + (indet ? ' indet' : ''),
+        style: indet ? null : 'width:' + pct + '%',
+      })
+      const lbl = pace
+        ? 'Rate limit — resuming in ' + (p.waitSec || 0) + 's'
+        : (p.batchTotal ? 'Embedding — batch ' + p.batchDone + '/' + p.batchTotal : 'Embedding…')
+      infKids.push(mkEl('div', { class: 'doc-prog' }, [
+        mkEl('div', { class: 'doc-prog-track' }, [fill]),
+        mkEl('div', { class: 'doc-prog-meta' }, [
+          mkEl('span', { class: 'doc-prog-lbl' + (pace ? ' pace' : '') }, lbl),
+          mkEl('span', { class: 'doc-prog-cnt' }, total ? done + '/' + total : ''),
+        ]),
+      ]))
+    } else {
+      const stCls   = status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'pending'
+      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status) ]
+      if (status === 'error') {
+        stKids.push(mkEl('button',
+          { class: 'doc-retry', title: d.error || 'Retry embedding', onclick: (e) => retryEmbed(d.id, e) },
+          [ mkEl('span', { class: 'doc-retry-ic' }, '↻'), 'Retry' ]))
+      }
+      infKids.push(mkEl('div', { class: 'doc-st-row' }, stKids))
+    }
     el.append(mkEl('div', { class: 'doc-card' }, [
       mkEl('div', { class: 'doc-ext' }, ext),
-      mkEl('div', { class: 'doc-inf' }, [
-        mkEl('div', { class: 'doc-name' }, d.name),
-        mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
-        mkEl('span', { class: 'doc-st ' + stCls }, status),
-      ]),
+      mkEl('div', { class: 'doc-inf' }, infKids),
       mkEl('button', { class: 'doc-del', title: 'Remove', onclick: (e) => removeDoc(d.id, e) }, 'x'),
     ]))
   }
@@ -4665,10 +4731,12 @@ function maybeDemo() {
     ], status: 'ready', addedAt: now
   }, {
     id: 'demo_doc2', name: 'policy-handbook.docx', size: 96000,
-    content: '', chunks: [], status: 'embedding', addedAt: now
+    content: 'Section 1 Acceptable Use. Staff must not share credentials. Section 2 Data Handling. Restricted data stays on managed devices only. Section 3 Incident Reporting within 24 hours to the SOC. This handbook text is intentionally long enough to chunk for the embedding demo.',
+    chunks: [], status: 'embedding', addedAt: now
   }, {
     id: 'demo_doc3', name: 'scanned-invoice.pdf', size: 421000,
-    content: '', chunks: [], status: 'error', addedAt: now
+    content: 'Invoice 4471. Vendor Acme Cyber Pte Ltd. Subtotal 12,400 SGD. GST 9% 1,116 SGD. Total 13,516 SGD. Payment terms net 30. Remit to DBS 001-234567-8. This invoice text is long enough to chunk so a Retry resumes to ready with chunks.',
+    chunks: [], status: 'error', error: 'Embeddings error 503 (demo)', addedAt: now
   }]
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
