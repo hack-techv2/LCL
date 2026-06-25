@@ -383,7 +383,6 @@ function appendTyping() {
   return div
 }
 
-// ---------------------------------------------------------------------------
 // merged from 73-render-docpanel.js
 // ---------------------------------------------------------------------------
 
@@ -401,16 +400,48 @@ function renderDocPanel() {
     return
   }
   for (const d of docs) {
-    const ext   = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
+    const ext    = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
     const status = d.status || 'pending'
-    const stCls = d.status === 'ready' ? 'ready' : d.status === 'error' ? 'error' : 'pending'
+    const infKids = [
+      mkEl('div', { class: 'doc-name' }, d.name),
+      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
+    ]
+    if (status === 'embedding') {
+      // Live progress bar driven by doc.embedProgress (set from embedBatch SSE).
+      // No progress data yet (or 0 total) -> indeterminate sliding bar.
+      const p     = d.embedProgress || {}
+      const pace  = p.state === 'pacing'
+      const total = p.total || 0
+      const done  = p.done  || 0
+      const indet = !total
+      const pct   = total ? Math.round(done / total * 100) : 0
+      const fill  = mkEl('div', {
+        class: 'doc-prog-fill' + (pace ? ' pace' : '') + (indet ? ' indet' : ''),
+        style: indet ? null : 'width:' + pct + '%',
+      })
+      const lbl = pace
+        ? 'Rate limit — resuming in ' + (p.waitSec || 0) + 's'
+        : (p.batchTotal ? 'Embedding — batch ' + p.batchDone + '/' + p.batchTotal : 'Embedding…')
+      infKids.push(mkEl('div', { class: 'doc-prog' }, [
+        mkEl('div', { class: 'doc-prog-track' }, [fill]),
+        mkEl('div', { class: 'doc-prog-meta' }, [
+          mkEl('span', { class: 'doc-prog-lbl' + (pace ? ' pace' : '') }, lbl),
+          mkEl('span', { class: 'doc-prog-cnt' }, total ? done + '/' + total : ''),
+        ]),
+      ]))
+    } else {
+      const stCls   = status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'pending'
+      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status) ]
+      if (status === 'error') {
+        stKids.push(mkEl('button',
+          { class: 'doc-retry', title: d.error || 'Retry embedding', onclick: (e) => retryEmbed(d.id, e) },
+          [ mkEl('span', { class: 'doc-retry-ic' }, '↻'), 'Retry' ]))
+      }
+      infKids.push(mkEl('div', { class: 'doc-st-row' }, stKids))
+    }
     el.append(mkEl('div', { class: 'doc-card' }, [
       mkEl('div', { class: 'doc-ext' }, ext),
-      mkEl('div', { class: 'doc-inf' }, [
-        mkEl('div', { class: 'doc-name' }, d.name),
-        mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
-        mkEl('span', { class: 'doc-st ' + stCls }, status),
-      ]),
+      mkEl('div', { class: 'doc-inf' }, infKids),
       mkEl('button', { class: 'doc-del', title: 'Remove', onclick: (e) => removeDoc(d.id, e) }, 'x'),
     ]))
   }
