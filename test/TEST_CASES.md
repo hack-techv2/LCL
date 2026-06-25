@@ -14,7 +14,7 @@ is changed) and drives it over HTTP. Every demo request carries the gate header
 | Group | Covers | Run when you touched… |
 |-------|--------|------------------------|
 | `chat` | streaming SSE, buffered/auto-title, code render, every-5 | `demoChatStream` / `demoChatJson` / `demoServeChat`, chat payload, transport |
-| `embed` | single + batch embeddings, determinism | `demoEmbed` / `demoVector`, `handleEmbed*` demo branches |
+| `embed` | single + batch embeddings, determinism, streamed batch progress + `[[embedfail]]` | `demoEmbed` / `demoVector` / `demoServeEmbedBatch`, `handleEmbed*` demo branches |
 | `rag` | lookup, evict, gc (cache guards) | `handleEmbedLookup/Evict/Gc` demo branches |
 | `errors` | `[[401]]` / `[[429]]` / `[[filter]]` markers | `demoErrorFor`, marker handling |
 | `retry` | every-5 auto-429 + `[[429]]` resend | rate-limit / reset-stamp logic |
@@ -46,6 +46,8 @@ is changed) and drives it over HTTP. Every demo request carries the gate header
 | T18 | rag | batch embed, then evict + gc | both `removed: 0` (guard holds under load) |
 | T19 | embed | `/api/embed` empty input | `200`, still a 1024-d vector |
 | T20 | slow | `[[slow]]` vs normal stream timing | `200` and slow run > 2× the normal run |
+| T21 | embed | `/api/embed-batch` (20 inputs, demo) | SSE streams `progress` + one `pacing` event, then `done` with 20 embeddings (dim 1024) |
+| T22 | embed, retry | `/api/embed-batch` w/ `[[embedfail]]` twice | 1st streams a `type:error` event; 2nd (retry) `200` with the embedding (fail-once-then-succeed) |
 
 > T0 must run before any other plain streamed chat (the every-5 counter is
 > server-global and resets on boot). It is first in the list, so any group that
