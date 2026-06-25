@@ -184,10 +184,12 @@ function maybeDemo() {
     ], status: 'ready', addedAt: now
   }, {
     id: 'demo_doc2', name: 'policy-handbook.docx', size: 96000,
-    content: '', chunks: [], status: 'embedding', addedAt: now
+    content: 'Section 1 Acceptable Use. Staff must not share credentials. Section 2 Data Handling. Restricted data stays on managed devices only. Section 3 Incident Reporting within 24 hours to the SOC. This handbook text is intentionally long enough to chunk for the embedding demo.',
+    chunks: [], status: 'embedding', addedAt: now
   }, {
     id: 'demo_doc3', name: 'scanned-invoice.pdf', size: 421000,
-    content: '', chunks: [], status: 'error', addedAt: now
+    content: 'Invoice 4471. Vendor Acme Cyber Pte Ltd. Subtotal 12,400 SGD. GST 9% 1,116 SGD. Total 13,516 SGD. Payment terms net 30. Remit to DBS 001-234567-8. This invoice text is long enough to chunk so a Retry resumes to ready with chunks.',
+    chunks: [], status: 'error', error: 'Embeddings error 503 (demo)', addedAt: now
   }]
   chatId = 'demo_active'
   if (typeof renderAll === 'function') renderAll()
