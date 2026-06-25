@@ -411,7 +411,8 @@ function setLastRateLimit(apiKey, rl) {
 const upstreamAgent = new https.Agent({
   rejectUnauthorized: false,   // handshake proceeds; trust is verified in tlsGateFails (allows Zscaler interception)
   keepAlive: true,
-  keepAliveMsecs: 30_000,
+  keepAliveMsecs: 10_000,   // retire idle sockets sooner so we don't reuse one the
+                           // gateway/Zscaler already closed (was 30s -> frequent ECONNRESET)
   maxSockets: 8,
   maxFreeSockets: 4,
   timeout: 60_000
@@ -519,11 +520,27 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   }, 120_000)
 
   req.on('socket', socket => {
+    // Pooled keep-alive sockets are reused across requests; wire each socket's
+    // listeners exactly ONCE so reuse doesn't pile up secureConnect/error
+    // handlers (this was the source of the MaxListenersExceededWarning seen when
+    // embedding many files at once). secureConnect doesn't re-fire on a reused
+    // socket anyway, so there's nothing to miss.
+    if (socket._lclWired) return
+    socket._lclWired = true
     log.debug('[api] socket assigned')
     socket.on('secureConnect', () => {
-      log.debug('[api] TLS connected')
-      log.debug('[api] authorized =', socket.authorized)
-      log.debug('[api] authorizationError =', socket.authorizationError || '(none)')
+      // authorized:false with an unknown-issuer error is EXPECTED behind a
+      // Zscaler TLS-intercepting proxy \u2014 trust is verified in tlsGateFails().
+      // Label it clearly so the log doesn't read like a failure.
+      const ae = String(socket.authorizationError || '')
+      if (socket.authorized) {
+        log.debug('[api] TLS connected (chain trusted)')
+      } else if (_ISSUER_ERRS.test(ae) && chainIsZscaler(socket)) {
+        log.debug('[api] TLS connected (Zscaler-intercepted, trusted)')
+      } else {
+        log.debug('[api] TLS connected; authorized =', socket.authorized,
+                  '; authorizationError =', ae || '(none)')
+      }
     })
     // Change 2: destroy socket on cert/TLS errors to force fresh connection on retry
     socket.on('error', err => {
@@ -901,6 +918,48 @@ function demoEmbed(inputs) {
     data: arr.map((t, idx) => ({ object: 'embedding', index: idx, embedding: demoVector(String(t)) })) }
 }
 
+// Demo /api/embed-batch. Small batches answer instantly (JSON) as before; larger
+// inputs stream simulated per-batch `progress` (+ one `pacing` tick) then `done`,
+// so the client's per-doc progress bar actually advances in #demo. A chunk whose
+// text carries the [[embedfail]] marker fails ONCE per input set then succeeds on
+// retry, exercising the error pill + Retry (resume) path.
+const _demoEmbedFail = new Map()
+const DEMO_EMBED_BATCH = 8
+function demoServeEmbedBatch(res, body) {
+  const ins     = (body.inputs || []).map(String)
+  const modelId = body.modelId || 'demo'
+  const mkHash  = t => hashText(modelId + ':' + t)
+  const sse  = () => res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
+  const send = o => res.write('data: ' + JSON.stringify(o) + '\n\n')
+
+  if (ins.some(t => t.includes('[[embedfail]]'))) {
+    const key = hashText('embedfail:' + ins.join('\u0001'))
+    const n = (_demoEmbedFail.get(key) || 0) + 1; _demoEmbedFail.set(key, n)
+    if (n <= 1) { sse(); send({ type: 'error', message: 'Embeddings error 503 (demo [[embedfail]] marker)' }); return res.end() }
+  }
+
+  if (ins.length <= DEMO_EMBED_BATCH) {
+    return json(res, { embeddings: ins.map(t => demoVector(t)), hashes: ins.map(t => mkHash(t)) })
+  }
+
+  sse()
+  const total = ins.length
+  const batchTotal = Math.ceil(total / DEMO_EMBED_BATCH)
+  ;(async () => {
+    let done = 0
+    for (let b = 1; b <= batchTotal; b++) {
+      if (b === 2) {
+        for (let sec = 2; sec >= 1; sec--) { send({ type: 'pacing', waitSec: sec, done, total, batchDone: b, batchTotal }); await sleep(250) }
+      }
+      await sleep(200)
+      done = Math.min(total, done + DEMO_EMBED_BATCH)
+      send({ type: 'progress', done, total, batchDone: b, batchTotal })
+    }
+    send({ type: 'done', embeddings: ins.map(t => demoVector(t)), hashes: ins.map(t => mkHash(t)) })
+    res.end()
+  })()
+}
+
 function handleChat(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
@@ -1049,11 +1108,7 @@ async function handleEmbedBatch(req, res) {
 
     const _g = demoGate(req, body)
     if (demo401(res, _g)) return
-    if (_g === 'serve') {
-      const ins = body.inputs || []
-      return json(res, { embeddings: ins.map(t => demoVector(String(t))),
-                         hashes: ins.map(t => hashText((body.modelId || 'demo') + ':' + t)) })
-    }
+    if (_g === 'serve') return demoServeEmbedBatch(res, body)
 
     const settings = appData.settings || {}
     const apiKey   = settings.embedApiKey  || body.apiKey
