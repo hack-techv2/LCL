@@ -37,6 +37,10 @@ before a release-worthy push (esp. before promoting to `main`).
 | U12 | Upload a code/config or no-ext file (`.ts`, `.sql`, `Dockerfile`) and a binary (`.png`) | Text-like files extract + embed (no allowlist); the binary is skipped with "Could not read … unsupported file type (not readable as text)" |
 | U14 | Hover a message → click Copy / Copy for Word / Edit / Regenerate | All fire correctly via one delegated `#messages` listener (`data-act`); buttons carry no inline `onclick` (P2 refactor, behaviour unchanged) |
 | U13 | Settings → set a new embed key → Save | A new/changed embed key is verified with one `/api/embed` call: valid → "Embedding key connected"; bad/truncated → "Embedding key failed: …" (caught at save, not on first RAG embed) |
+| U15 | In `#demo`, open the Embeddings panel and inspect the seeded docs | `policy-handbook.docx` (status `embedding`, no progress data) shows the **indeterminate** orange progress bar + label `Embedding…`; `quarterly-report.pdf` shows `ready`; `scanned-invoice.pdf` shows the error pill **and a Retry button** |
+| U16 | In `#demo`, embed a multi-chunk doc (upload, or `embedDoc()` a synthetic doc with >8 chunks) | The demo server (`demoServeEmbedBatch`) streams simulated `progress` (+ one `pacing`) so the **progress bar** advances with `Embedding — batch x/y` and `done/total` chunks (no per-batch toast), flashes the amber `Rate limit — resuming in Ns` state, then flips to `ready`. Top-bar health shows `Embedding n/total` |
+| U17 | Click **Retry** on the seeded `scanned-invoice.pdf` (now `error` with content) | `retryEmbed(id)` re-embeds just that doc and it goes → `ready` (1 chunk); already-embedded chunks keep their `embHash` and are skipped (resume, not restart). To force a *fresh* failure, put `[[embedfail]]` in a doc's text — the demo embed errors once, then a Retry succeeds |
+| U18 | (Node console) Embed several files at once during a real session | No `MaxListenersExceededWarning` on the TLS socket — `secureConnect`/`error` listeners are wired once per pooled keep-alive socket (`socket._lclWired`). A normal Zscaler-intercepted handshake logs `TLS connected (Zscaler-intercepted, trusted)` instead of bare `authorized = false` |
 
 ## Status log
 Record date + build (index.html / server.txt sha) + which items passed when run,
@@ -51,6 +55,21 @@ so we have a trail.
   notes resolved via slide rels) then `embedDoc()` → "ready" + chunk embedded;
   `JSZip` loads from cdnjs on the gov network. (Real-file upload not yet driven —
   the native file dialog isn't automatable; do it manually when convenient.)
+- 25 Jun 2026 (embed progress + socket-listener fix): added **U15–U18** — per-doc
+  embed progress bar (batch/chunks + amber rate-limit state), Retry button on a
+  failed embed (`retryEmbed`, resumes), and Node-console checks for the
+  once-per-socket listener guard (no `MaxListenersExceededWarning`) + the clearer
+  Zscaler TLS log line. **U15–U17 verified live** (Claude-in-Chrome, `#demo`):
+  ready pill / indeterminate + determinate bar (`batch 2/3`, `28/48`, 58%) /
+  amber pacing (`Rate limit — resuming in 12s`) / error pill + Retry → embedDoc
+  → `ready` (1 chunk). **U18** (Node-console: no listener warning + clearer TLS
+  line) to be eyeballed locally during a real upstream session.
+- 25 Jun 2026 (demo-mode update): seed now ships real content + an error message
+  on the embedding/error docs — **U17 retry-resume re-verified live** on the new
+  client (`scanned-invoice.pdf` error → Retry → `ready`, 1 chunk). Demo
+  `/api/embed-batch` streaming (`progress`/`pacing`) + the `[[embedfail]]` marker
+  are covered by **T21/T22 (22/22 green)**; live `#demo` confirmation of the
+  advancing bar needs a Node restart (server.txt changed) — pending.
 - 22 Jun 2026 (alpha build): **U1–U10 all verified live** — incl. U7 (Stop mid
   `[[slow]]` → "(stopped)") and U10 (Reset demo re-seeds; "+ Many chats" adds 18,
   date-grouped). U6 countdown captured via the `[[429]]` marker.
