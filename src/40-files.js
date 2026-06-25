@@ -488,15 +488,23 @@ async function embedDoc(doc) {
     }
 
     if (toEmbed.length) {
-      // embedBatch handles SSE progress toasts internally
-      const { hashes } = await embedBatch(toEmbed)
+      // Show a persistent per-doc progress bar (renderDocPanel) driven by the
+      // SSE progress/pacing events forwarded from embedBatch.
+      doc.status = 'embedding'
+      doc.error  = null
+      doc.embedProgress = { state: 'embedding', done: 0, total: toEmbed.length, batchDone: 0, batchTotal: 0 }
+      renderDocPanel()
+      const { hashes } = await embedBatch(toEmbed, prog => {
+        doc.embedProgress = prog
+        renderDocPanel()
+      })
       for (let k = 0; k < toEmbedIdx.length; k++) {
         chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
       }
     }
-
     doc.chunks = chunks.filter(Boolean)
     doc.status = 'ready'
+    doc.embedProgress = null
     persist()
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
@@ -504,10 +512,22 @@ async function embedDoc(doc) {
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
+    doc.embedProgress = null
     toast('Embed failed: ' + e.message, 'err')
     setHealth('ok', connectedLabel())
     renderDocPanel()
   }
+}
+// Retry embedding a single doc that previously failed. Chunks already embedded
+// keep their embHash and are skipped inside embedDoc, so a retry RESUMES from
+// where it stopped rather than re-embedding everything.
+async function retryEmbed(id, event) {
+  if (event) event.stopPropagation()
+  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
+  const doc = chat.docs.find(d => d.id === id)
+  if (!doc) return
+  await embedDoc(doc)
+  await persist()
 }
 // Remove an embedded document: evict its vectors, drop it from chat.docs,
 // persist, and refresh the panel.
