@@ -144,6 +144,22 @@ const CASES = [
     const t1 = Date.now(); const f = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('fast baseline', true)); const fast = Date.now() - t1
     check('T20 [[slow]] cadence', s.status === 200 && slow > fast * 2, 'slow=' + slow + 'ms fast=' + fast + 'ms')
   } },
+  { id: 'T21 embed streamed progress', tags: ['embed'], fn: async () => {
+    const inputs = Array.from({ length: 20 }, (_, k) => 'chunk number ' + k + ' lorem ipsum dolor')
+    const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs }))
+    const prog = /"type":"progress"/.test(r.body)
+    const pace = /"type":"pacing"/.test(r.body)
+    const doneLine = (r.body.split('\n').find(l => /"type":"done"/.test(l)) || '').replace(/^data:\s*/, '')
+    const dj = json(doneLine)
+    check('T21 embed streamed progress', r.status === 200 && prog && pace && (dj.embeddings || []).length === 20 && dj.embeddings[0].length === 1024, 'progress=' + prog + ' pacing=' + pace)
+  } },
+  { id: 'T22 [[embedfail]] then retry', tags: ['embed', 'retry'], fn: async () => {
+    const payload = JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: ['[[embedfail]] resume me please'] })
+    const a = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, payload)
+    const b = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, payload)
+    const bj = json(b.body)
+    check('T22 [[embedfail]] then retry', /"type":"error"/.test(a.body) && b.status === 200 && (bj.embeddings || []).length === 1, 'firstErr=' + /"type":"error"/.test(a.body) + ' retry=' + b.status)
+  } },
 ]
 
 // --- runner -----------------------------------------------------------------
