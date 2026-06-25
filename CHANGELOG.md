@@ -3,6 +3,39 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 25 Jun 2026
+
+- **Embedding listener leak fixed (`MaxListenersExceededWarning`).** The buffered
+  upstream call (`callGccJsonOnce`) re-attached `secureConnect`/`error` listeners
+  to pooled keep-alive sockets on every request, so embedding many files at once
+  piled up >10 error listeners on a reused `TLSSocket`. Listeners are now wired
+  exactly once per socket (`socket._lclWired` guard); `secureConnect` doesn't
+  re-fire on a reused socket, so nothing is missed.
+- **Fewer `ECONNRESET` retries behind Zscaler.** `upstreamAgent.keepAliveMsecs`
+  lowered 30s -> 10s so idle sockets are retired before the gateway/Zscaler
+  silently closes them, cutting the "reuse a dead socket" resets. (The 503s and
+  resets were already transparently retried; the `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`
+  log line is expected behind Zscaler, not a failure.)
+- **Clearer TLS log.** The boot/secureConnect log now reads `TLS connected
+  (Zscaler-intercepted, trusted)` (or `chain trusted`) instead of a bare
+  `authorized = false`, so a normal intercepted handshake no longer looks like an
+  error in the console.
+- **Demo mode updated for the new embed UI.** `#demo`'s `/api/embed-batch`
+  (`demoServeEmbedBatch`) now streams simulated per-batch `progress` (+ one
+  `pacing` tick) for multi-batch inputs so the new progress bar actually advances
+  offline; small batches still answer instantly (JSON). A `[[embedfail]]` marker
+  in a doc's text makes the demo embed fail once then succeed on retry (mirrors the
+  chat `[[401]]/[[429]]/[[500]]` markers), so the error-pill + Retry path is
+  demo-drivable. The seeded `policy-handbook.docx` / `scanned-invoice.pdf` docs got
+  real content (+ an error message) so Retry resumes to `ready` with chunks. New
+  regression cases T21 (streamed progress) + T22 (`[[embedfail]]` retry); 22/22 green.
+- **Embed progress bar + retry.** The document panel now shows a live per-file
+  progress bar (batch x/y, chunks done/total) driven by the existing embed SSE
+  events instead of transient toasts, with a distinct amber rate-limit "resuming
+  in Ns" state. A failed embed shows an error pill plus a **Retry** button
+  (`retryEmbed`) that resumes from where it stopped (already-embedded chunks are
+  skipped).
+
 ## 24 Jun 2026
 
 - **Re-uploading the same filename to a chat's documents no longer hangs.** The
