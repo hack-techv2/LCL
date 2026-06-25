@@ -38,7 +38,7 @@ async function hashText(s) {
 // embedBatch — send texts to /api/embed-batch; returns vectors in input order.
 // Full cache hit → plain JSON; partial / full miss → SSE with progress toasts.
 // ---------------------------------------------------------------------------
-async function embedBatch(texts) {
+async function embedBatch(texts, onProgress) {
   const embedModel = creds?.embedModelId
   if (!embedModel) throw new Error('No embedding model configured')
 
@@ -68,14 +68,16 @@ async function embedBatch(texts) {
         let evt
         try { evt = JSON.parse(payload) } catch { return }
         if (evt.type === 'progress') {
-          toast('Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
-            + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
+          // Drive the per-doc progress bar (renderDocPanel) instead of a
+          // transient toast. setHealth keeps the top-bar status in sync.
+          if (onProgress) onProgress({ state: 'embedding', done: evt.done, total: evt.total,
+                                       batchDone: evt.batchDone, batchTotal: evt.batchTotal })
           if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
         } else if (evt.type === 'pacing') {
-          // Server is waiting out the API rate-limit window. Make the pause
-          // obvious so the UI doesn't look frozen.
-          toast('⏳ API rate limit reached — resuming embedding in ~' + evt.waitSec + 's'
-            + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
+          // Server is waiting out the API rate-limit window. The bar switches to
+          // its amber 'pacing' state with a countdown so the UI doesn't look frozen.
+          if (onProgress) onProgress({ state: 'pacing', done: evt.done, total: evt.total,
+                                       batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
           if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
         } else if (evt.type === 'done') {
           settled = true; resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
