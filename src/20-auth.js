@@ -9,12 +9,13 @@ function makeCreds(o){ o=o||{}; return {
   maxTokens: o.maxTokens||CFG.DEFAULT_MAX_TOKENS, systemPrompt: o.systemPrompt||'',
   chunkSize: o.chunkSize||CFG.DEFAULT_CHUNK_SIZE, topK: o.topK||CFG.DEFAULT_TOP_K,
   embedApiKey: o.embedApiKey||'', embedModelId: o.embedModelId||'',
+  embedWarnTokens: (o.embedWarnTokens==null?'auto':o.embedWarnTokens), embedMaxTokens: (o.embedMaxTokens==null?'auto':o.embedMaxTokens),
   classification: o.classification||'' } }
 // Inverse mapping for the on-disk settings shape (model -> modelId).
 function credsToSettings(c){ return {
   apiKey: c.apiKey, modelId: c.model, maxTokens: c.maxTokens, systemPrompt: c.systemPrompt,
   chunkSize: c.chunkSize, topK: c.topK, embedApiKey: c.embedApiKey||'',
-  embedModelId: c.embedModelId||'', classification: c.classification } }
+  embedModelId: c.embedModelId||'', embedWarnTokens: c.embedWarnTokens||'auto', embedMaxTokens: c.embedMaxTokens||'auto', classification: c.classification } }
 
 async function init() {
   // Demo mode (?demo=1) seeds sample content and skips all network work.
