@@ -809,7 +809,7 @@ const DEMO_REPLY_CODE = [
   '',
   'That exercises fenced code-block rendering.'
 ].join('\n')
-const DEMO_RL = { reqRemaining: 58, reqLimit: 60, tokRemaining: 95000, tokLimit: 100000 }
+const DEMO_RL = { reqRemaining: 58, reqLimit: 60, tokRemaining: 142000, tokLimit: 200000 }
 
 // Most recent user text from an OpenAI-style payload (marker detection / routing).
 function demoLastUserText(payload) {
@@ -905,6 +905,7 @@ function demoChatJson(payload) {
 // Serve a /api/chat demo request (stream or buffered, honouring markers).
 function demoServeChat(res, body) {
   const finalPayload = { ...(body.payload || {}), model: body.modelId || 'demo' }
+  demoBurn(estTokens(demoLastUserText(finalPayload)) + 300)
   if (finalPayload.stream === true) return demoChatStream(res, finalPayload)
   const err = demoErrorFor(demoLastUserText(finalPayload))
   if (err) return json(res, err.body, err.status)
@@ -918,6 +919,48 @@ function demoEmbed(inputs) {
     data: arr.map((t, idx) => ({ object: 'embedding', index: idx, embedding: demoVector(String(t)) })) }
 }
 
+// Shared token estimate (~4 chars/token). One source of truth for the budget
+// meter's cumulative tally, the demo burn-down, and (Phase 2) the embed cap.
+function estTokens(texts) {
+  const arr = Array.isArray(texts) ? texts : [texts]
+  let chars = 0
+  for (const t of arr) chars += String(t == null ? '' : t).length
+  return Math.ceil(chars / 4)
+}
+
+// #demo overall token budget (chat + embed share it) — a mutable per-minute
+// remaining that the demo paths draw down so the sidebar meter visibly moves
+// offline. Real mode uses the live rate-limit snapshot from upstream headers.
+let _demoTok = 142000
+const DEMO_TOK_LIMIT = 200000
+function demoBurn(tokens) {
+  _demoTok = Math.max(0, _demoTok - (tokens || 0))
+  return _demoTok
+}
+
+// GET /api/ratelimit — latest overall token budget for the active key. #demo
+// returns the live burn-down; real mode returns the most recent snapshot (null
+// fields until the first upstream response populates it).
+function handleRateLimit(req, res) {
+  if (req.headers['x-lcl-demo'] === '1') {
+    return json(res, { tokLimit: DEMO_TOK_LIMIT, tokRemaining: _demoTok, reqLimit: 60, reqRemaining: 58, ts: Date.now() })
+  }
+  const settings = appData.settings || {}
+  const rl = getLastRateLimit(settings.apiKey || settings.embedApiKey) || {}
+  json(res, { tokLimit: rl.tokLimit ?? null, tokRemaining: rl.tokRemaining ?? null, reqLimit: rl.reqLimit ?? null, reqRemaining: rl.reqRemaining ?? null, ts: rl.ts ?? null })
+}
+
+// Hard token cap for an embed request (Phase 2 backstop). Settings override wins;
+// otherwise ~50% of the live per-minute limit; else a 100k fallback.
+function resolveEmbedHardCap(body) {
+  const st = appData.settings || {}
+  const ov = (typeof st.embedMaxTokens === 'number' && st.embedMaxTokens > 0) ? st.embedMaxTokens : null
+  if (ov) return ov
+  const rl = getLastRateLimit(st.embedApiKey || (body && body.apiKey) || '')
+  if (rl && rl.tokLimit) return Math.round(rl.tokLimit * 0.5)
+  return 100000
+}
+
 // Demo /api/embed-batch. Small batches answer instantly (JSON) as before; larger
 // inputs stream simulated per-batch `progress` (+ one `pacing` tick) then `done`,
 // so the client's per-doc progress bar actually advances in #demo. A chunk whose
@@ -927,6 +970,7 @@ const _demoEmbedFail = new Map()
 const DEMO_EMBED_BATCH = 8
 function demoServeEmbedBatch(res, body) {
   const ins     = (body.inputs || []).map(String)
+  demoBurn(estTokens(ins))
   const modelId = body.modelId || 'demo'
   const mkHash  = t => hashText(modelId + ':' + t)
   const sse  = () => res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
@@ -1105,6 +1149,15 @@ async function waitForEmbedHeadroom(apiKey, tokenEst, notify) {
 async function handleEmbedBatch(req, res) {
   readBody(req, async (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
+
+    // Hard cap backstop: refuse an embed estimated above the token ceiling, so a
+    // bypassed/oversized request can't blow the shared per-minute budget.
+    const _capInputs = body.inputs || []
+    if (_capInputs.length) {
+      const estMiss = estTokens(_capInputs)
+      const hardCap = resolveEmbedHardCap(body)
+      if (estMiss > hardCap) return json(res, { error: 'Embed exceeds the token cap (~' + estMiss + ' > ' + hardCap + ' tokens). Reduce the file or raise "Block above" in Settings.' }, 413)
+    }
 
     const _g = demoGate(req, body)
     if (demo401(res, _g)) return
@@ -1942,6 +1995,7 @@ const ROUTES = {
   'POST /api/update/restart': handleUpdateRestart,
   'POST /api/update/simulate': handleUpdateSimulate,
   'GET /api/health':          (req, res) => json(res, { ok: true, version: APP_VERSION }),
+  'GET /api/ratelimit':       handleRateLimit,
   'GET /skills':              handleSkillsList,
   'POST /skills/reload':      handleSkillsList,
 }
