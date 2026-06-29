@@ -160,6 +160,20 @@ const CASES = [
     const bj = json(b.body)
     check('T22 [[embedfail]] then retry', /"type":"error"/.test(a.body) && b.status === 200 && (bj.embeddings || []).length === 1, 'firstErr=' + /"type":"error"/.test(a.body) + ' retry=' + b.status)
   } },
+  { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
+    const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
+    const r1 = json((await g()).body)
+    await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: Array.from({ length: 12 }, (_, k) => 'budget chunk ' + k + ' lorem ipsum dolor sit amet consectetur') }))
+    const r2 = json((await g()).body)
+    check('T23 budget meter + decrement', r1.tokLimit === 200000 && typeof r2.tokRemaining === 'number' && r2.tokRemaining < r1.tokRemaining, 'rem ' + r1.tokRemaining + ' -> ' + r2.tokRemaining)
+  } },
+  { id: 'T24 embed hard cap', tags: ['embed'], fn: async () => {
+    const big = 'x'.repeat(60000)                       // ~15k tokens each
+    const inputs = Array.from({ length: 8 }, () => big) // ~480k chars => ~120k tokens > 100k fallback cap
+    const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs }))
+    const j = json(r.body)
+    check('T24 embed hard cap', r.status === 413 && /exceeds the token cap/i.test(j.error || ''), 'status=' + r.status)
+  } },
 ]
 
 // --- runner -----------------------------------------------------------------
