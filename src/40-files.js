@@ -454,6 +454,16 @@ function renderChips() {
 // merged from 43-files-embed.js
 // ---------------------------------------------------------------------------
 
+// Budget warning message + confirm dialog. Returns true to proceed with the embed.
+async function confirmEmbedBudget(name, nChunks, est, caps) {
+  const k = n => n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n)))
+  let msg = name + ' is ~' + nChunks + ' chunks (~' + k(est) + ' tokens).'
+  if (caps.remaining != null) msg += ' About ' + k(caps.remaining) + ' left this minute' + (est > caps.remaining ? ' \u2014 this is more than that' : '') + '.'
+  if (caps.limit) { const mins = Math.ceil(est / caps.limit); if (mins > 1) msg += ' It may queue and take ~' + mins + ' min on the shared ' + k(caps.limit) + '/min limit.' }
+  msg += ' Embed anyway?'
+  return confirmDialog({ title: 'Embed large file?', message: msg, okText: 'Embed anyway', cancelText: 'Cancel' })
+}
+
 async function embedDoc(doc) {
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON). In #demo this
   // takes the same real path; the server returns deterministic demo vectors.
@@ -488,6 +498,24 @@ async function embedDoc(doc) {
     }
 
     if (toEmbed.length) {
+      // Token-budget gate (Phase 2): estimate this embed plus recent embeds in the
+      // last 60s; warn if it crosses the soft cap or exceeds what is left this
+      // minute. Cancel aborts without sending anything.
+      const _est = estTokens(toEmbed)
+      const _caps = resolveEmbedCaps()
+      const _recent = recentEmbedTokens()
+      const _over = _est > _caps.warn || (_est + _recent) > _caps.warn || (_caps.remaining != null && _est > _caps.remaining)
+      if (_over && typeof confirmDialog === 'function') {
+        const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
+        if (!proceed) {
+          doc.status = (doc.chunks && doc.chunks.length) ? 'ready' : 'pending'
+          doc.embedProgress = null
+          toast('Embedding cancelled', 'info')
+          setHealth('ok', connectedLabel())
+          renderDocPanel()
+          return
+        }
+      }
       // Show a persistent per-doc progress bar (renderDocPanel) driven by the
       // SSE progress/pacing events forwarded from embedBatch.
       doc.status = 'embedding'
@@ -498,6 +526,7 @@ async function embedDoc(doc) {
         doc.embedProgress = prog
         renderDocPanel()
       })
+      noteEmbed(_est)
       for (let k = 0; k < toEmbedIdx.length; k++) {
         chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
       }
@@ -509,6 +538,7 @@ async function embedDoc(doc) {
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     renderDocPanel()
+    if (typeof renderBudget === 'function') renderBudget()
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
