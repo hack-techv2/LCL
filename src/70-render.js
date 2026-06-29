@@ -458,3 +458,43 @@ function updateDocsBtn() {
     hasEmbed ? 'Embedding configured — RAG ready' :
                'Embed API key not set — click to configure')
 }
+
+// =============================================================================
+// Render — token budget meter (sidebar). Overall PlatformAI tokens/min for the
+// active key (chat + embed share one budget), from /api/ratelimit: a live
+// snapshot in real mode, the demo burn-down in #demo. Green >50, amber >20, red.
+// =============================================================================
+async function renderBudget() {
+  const el = document.getElementById('budget-meter'); if (!el) return
+  let rl = null
+  try { const r = await httpGet('/api/ratelimit'); if (r && r.ok) rl = await r.json() } catch {}
+  if (rl && rl.tokLimit != null && typeof lastBudget !== 'undefined') lastBudget = { tokLimit: rl.tokLimit, tokRemaining: rl.tokRemaining, ts: Date.now() }
+  const fill = document.getElementById('bm-fill')
+  const left = document.getElementById('bm-left')
+  const lim  = document.getElementById('bm-lim')
+  const fmtK = n => (n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n))))
+  el.classList.remove('ok', 'warn', 'crit')
+  if (!rl || rl.tokLimit == null || rl.tokRemaining == null) {
+    if (fill) fill.style.width = '0%'
+    if (left) left.textContent = '—'
+    if (lim)  lim.textContent = 'no data yet'
+    return
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(rl.tokRemaining / rl.tokLimit * 100)))
+  el.classList.add(pct > 50 ? 'ok' : pct > 20 ? 'warn' : 'crit')
+  if (fill) fill.style.width = pct + '%'
+  if (left) left.textContent = fmtK(rl.tokRemaining) + ' left'
+  if (lim)  lim.textContent = '/ ' + fmtK(rl.tokLimit)
+}
+
+// Initial paint + light refresh (the upstream window resets ~every 60s). The
+// poll only reads the local /api/ratelimit snapshot (no upstream call, zero API
+// tokens). Pause polling while the tab is hidden; refresh immediately on return.
+function startBudgetMeter() {
+  if (typeof renderBudget !== 'function') return
+  let timer = null
+  const start = () => { if (!timer) { renderBudget(); timer = setInterval(renderBudget, 10000) } }
+  const stop  = () => { if (timer) { clearInterval(timer); timer = null } }
+  start()
+  document.addEventListener('visibilitychange', () => { document.hidden ? stop() : start() })
+}
