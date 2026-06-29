@@ -166,3 +166,35 @@ async function gcEmbedCache() {
   try { const r = await httpPost('/api/embed-gc'); return await r.json() }
   catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
 }
+
+// ---------------------------------------------------------------------------
+// Token-budget estimation + caps (Phase 2). Shared ~4-chars/token estimate;
+// caps resolve from Settings overrides or adapt to the live per-minute limit.
+// ---------------------------------------------------------------------------
+function estTokens(texts) {
+  const arr = Array.isArray(texts) ? texts : [texts]
+  let chars = 0
+  for (const t of arr) chars += String(t == null ? '' : t).length
+  return Math.ceil(chars / 4)
+}
+function resolveEmbedCaps() {
+  const lim = (typeof lastBudget !== 'undefined' && lastBudget.tokLimit) || 0
+  const num = v => (typeof v === 'number' && v > 0) ? v : null
+  const warnOv = num(creds && creds.embedWarnTokens)
+  const maxOv  = num(creds && creds.embedMaxTokens)
+  const warn = warnOv != null ? warnOv : (lim ? Math.round(lim * 0.10) : 20000)
+  const hard = maxOv  != null ? maxOv  : (lim ? Math.round(lim * 0.50) : 100000)
+  const remaining = (typeof lastBudget !== 'undefined' && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
+  return { warn, hard, limit: lim || null, remaining }
+}
+// Rolling 60s record of embeds so several files in a row accumulate.
+function noteEmbed(tokens) {
+  const now = Date.now()
+  embedTally = (embedTally || []).filter(e => now - e.ts < 60000)
+  embedTally.push({ ts: now, tokens: tokens || 0 })
+}
+function recentEmbedTokens() {
+  const now = Date.now()
+  embedTally = (embedTally || []).filter(e => now - e.ts < 60000)
+  return embedTally.reduce((sum, e) => sum + (e.tokens || 0), 0)
+}
