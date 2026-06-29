@@ -271,6 +271,8 @@ function openSP() {
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
   document.getElementById('s-embm').value  = creds.embedModelId||''
+  document.getElementById('s-embwarn').value = (typeof creds.embedWarnTokens === 'number') ? creds.embedWarnTokens : ''
+  document.getElementById('s-embmax').value  = (typeof creds.embedMaxTokens  === 'number') ? creds.embedMaxTokens  : ''
   if (typeof demoKeyHint === 'function') { demoKeyHint('s-key'); demoKeyHint('s-embk') }
   document.getElementById('s-chunk-v').value = creds.chunkSize||800
   document.getElementById('s-topk-v').value  = creds.topK||5
@@ -585,6 +587,27 @@ async function deleteSkillUI(id) {
     toast('Delete failed: ' + e.message, 'err')
   }
 }
+// Promise-based themed confirm dialog. Resolves true on confirm, false on cancel/Esc.
+function confirmDialog(opts) {
+  opts = opts || {}
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(false); else if (e.key === 'Enter') finish(true) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    const ok = mkEl('button', { class: 'btn-p cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
+    const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(false) }, opts.cancelText || 'Cancel')
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
+      mkEl('div', { class: 'cd-msg' }, opts.message || ''),
+      mkEl('div', { class: 'cd-acts' }, [cancel, ok])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(false) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { ok.focus() } catch {} }, 0)
+  })
+}
+
 function saveSP() {
   const prevEmbedKey = creds.embedApiKey || ''
   creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
@@ -596,6 +619,10 @@ function saveSP() {
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
   creds.embedModelId = document.getElementById('s-embm').value.trim() || creds.embedModelId
+  const _wv = (document.getElementById('s-embwarn').value || '').trim()
+  const _mv = (document.getElementById('s-embmax').value || '').trim()
+  creds.embedWarnTokens = (!_wv || /^auto$/i.test(_wv)) ? 'auto' : Math.max(0, parseInt(_wv) || 0)
+  creds.embedMaxTokens  = (!_mv || /^auto$/i.test(_mv)) ? 'auto' : Math.max(0, parseInt(_mv) || 0)
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
   D.settings = credsToSettings(creds)
