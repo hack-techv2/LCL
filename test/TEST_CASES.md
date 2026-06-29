@@ -48,6 +48,8 @@ is changed) and drives it over HTTP. Every demo request carries the gate header
 | T20 | slow | `[[slow]]` vs normal stream timing | `200` and slow run > 2× the normal run |
 | T21 | embed | `/api/embed-batch` (20 inputs, demo) | SSE streams `progress` + one `pacing` event, then `done` with 20 embeddings (dim 1024) |
 | T22 | embed, retry | `/api/embed-batch` w/ `[[embedfail]]` twice | 1st streams a `type:error` event; 2nd (retry) `200` with the embedding (fail-once-then-succeed) |
+| T23 | embed, rag | `GET /api/ratelimit`, then a demo embed | tokLimit 200000; tokRemaining decreases after the embed (cumulative burn-down) |
+| T24 | embed | `/api/embed-batch` with ~120k-token inputs | `413` + "exceeds the token cap" (Phase 2 server hard-cap backstop) |
 
 > T0 must run before any other plain streamed chat (the every-5 counter is
 > server-global and resets on boot). It is first in the list, so any group that
