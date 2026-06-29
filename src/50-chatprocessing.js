@@ -37,33 +37,33 @@ async function loadSkillsList() {
 }
 
 function renderSkillPicker() {
-  const root = document.getElementById('sb-skills')
-  if (!root) return
+  const sel = document.getElementById('skill-select')
+  if (!sel) return
   const chat = curChat()
-  const current = chat?.skillId || null
-
-  let html = '<div class="sb-skills-hd"><span class="sb-skills-hd-lbl">Skills</span></div>'
-
-  if (!skillsCache.length) {
-    html += '<div class="sb-skill-empty">No skills yet</div>'
-  } else {
-    for (const s of skillsCache) {
-      const active = (s.id === current) ? ' active' : ''
-      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" title="${esc(s.id)}">
-        <span class="sb-skill-dot"></span>
-        <span class="sb-skill-name">${esc(s.title)}</span>
-      </div>`
-    }
-    if (current && !skillsCache.some(s => s.id === current)) {
-      html += `<div class="sb-skill-item active" data-id="${esc(current)}" title="missing skill">
-        <span class="sb-skill-dot"></span>
-        <span class="sb-skill-name">(missing) ${esc(current)}</span>
-      </div>`
-    }
+  const current = chat?.skillId || ''
+  let html = '<option value="">None</option>'
+  for (const s of skillsCache) {
+    html += '<option value="' + esc(s.id) + '"' + (s.id === current ? ' selected' : '') + '>' + esc(s.title) + '</option>'
   }
+  if (current && !skillsCache.some(s => s.id === current)) {
+    html += '<option value="' + esc(current) + '" selected>(missing) ' + esc(current) + '</option>'
+  }
+  sel.innerHTML = html
+  sel.value = current
+  sel.classList.toggle('active', !!current)
+}
 
-  // "Manage skills" now lives in the 2-column sb-bot row next to Settings.
-  root.innerHTML = html
+// Set the active skill for the current chat from the selector (single-select;
+// '' = No skill). Skills are per-chat (stored on chat.skillId).
+function onSkillSelect(id) {
+  const chat = curChat()
+  if (!chat) return
+  chat.skillId = id || null
+  chat.updatedAt = Date.now()
+  persist()
+  renderSkillChip()
+  const sel = document.getElementById('skill-select')
+  if (sel) sel.classList.toggle('active', !!chat.skillId)
 }
 
 function onSkillPicked(id) {
@@ -376,6 +376,7 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
+    if (typeof renderBudget === 'function') renderBudget()   // refresh token meter after each send
     // If this was the first successful exchange in the chat, fire off an
     // auto-title call in the background. Doesn't block; runs at most once
     // per chat (guarded by chat.titledByAI).
