@@ -20,6 +20,32 @@ release.
   (Zscaler-intercepted, trusted)` (or `chain trusted`) instead of a bare
   `authorized = false`, so a normal intercepted handshake no longer looks like an
   error in the console.
+- **Embed token-budget guardrails (Phase 2).** Before embedding, the client estimates
+  the cost (~4 chars/token over the cache-miss chunks) plus recent embeds in the last
+  60s, and if it crosses the soft cap shows a confirm dialog (chunk/token estimate +
+  remaining-this-minute) — Cancel aborts with nothing sent. Caps adapt to the live
+  per-minute limit (soft ~10%, hard ~50%) or use Settings overrides ("Warn above" /
+  "Block above" tokens, blank = auto). Server backstop: `handleEmbedBatch` refuses an
+  embed estimated over the hard cap with HTTP 413 (`resolveEmbedHardCap`). New tests
+  T23/T24; gate verified live in #demo.
+- **Skills footer polish.** Row renamed **Skills**; books (library) icon on the left,
+  selector on the right (mirrors the settings row); empty option is now "None"; the
+  Settings cog is a clean outline gear; a thin divider separates Skills from LCL settings.
+- **Sidebar footer restructured.** The scrolling Skills list and the two big
+  Settings/Skills buttons are replaced by a compact two-row footer under a divider:
+  row 1 **Skill** — a single-select dropdown (per-chat `chat.skillId`, orange-tinted
+  when active, "No skill" clears it) + a manage-skills icon button; row 2 **LCL
+  settings · token usage /min** — a Settings gear icon + the token meter. Skill
+  model unchanged (one per chat); `renderSkillPicker` now fills the `<select>` and
+  `onSkillSelect` sets the active skill. Collapsed sidebar stacks the two icon buttons.
+- **Token budget meter (sidebar, Phase 1).** A "Token budget /min" meter sits below
+  Skills / above Settings showing the overall PlatformAI token budget for the active
+  key (chat + embed share it), from a new `GET /api/ratelimit` (live rate-limit
+  snapshot in real mode; a demo burn-down in #demo so it visibly moves). Bar uses the
+  brand ramp — orange >50%, amber >20%, red <20% (synced with the embed bar / accent,
+  no green) — de-carded soft surface, left-anchored tooltip. Shared `estTokens`
+  (~4 chars/token) added server-side; new test T23. Degrades to "no data yet" on a
+  server without the endpoint.
 - **Demo mode updated for the new embed UI.** `#demo`'s `/api/embed-batch`
   (`demoServeEmbedBatch`) now streams simulated per-batch `progress` (+ one
   `pacing` tick) for multi-batch inputs so the new progress bar actually advances
