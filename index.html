@@ -368,6 +368,43 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .doc-retry{font-size:10px;font-family:var(--mono);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:2px 8px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s}
 .doc-retry:hover{border-color:var(--ac);color:var(--ac)}
 .doc-retry-ic{font-size:12px;line-height:1}
+.budget-meter{flex:1;min-width:0}
+.budget-meter[data-tip-bottom]:hover::after{left:0;right:auto;transform:none}
+.budget-meter[data-tip-bottom]:hover::before{left:14px;right:auto;transform:none}
+.bm-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.bm-lbl{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3)}
+.bm-unit{font-size:9px;font-family:var(--mono);color:var(--tx3)}
+.bm-track{height:6px;border-radius:4px;background:var(--bg4);overflow:hidden}
+.bm-fill{height:100%;width:0;border-radius:4px;background:var(--ac);transition:width .3s ease,background .3s}
+.budget-meter.warn .bm-fill{background:#f0a500}
+.budget-meter.crit .bm-fill{background:var(--red)}
+.bm-meta{display:flex;justify-content:space-between;margin:0 0 4px;font-size:11px;font-family:var(--mono)}
+.bm-left{color:var(--ac)}
+.budget-meter.warn .bm-left{color:#f0a500}
+.budget-meter.crit .bm-left{color:var(--red)}
+.bm-lim{color:var(--tx3)}
+.sb-foot{border-top:1px solid var(--bdr);padding:9px 8px 8px;display:flex;flex-direction:column;gap:5px}
+.sf-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);padding:0 2px}
+.sf-lbl:not(:first-child){margin-top:8px;border-top:1px solid var(--bdr);padding-top:9px}
+.sb-icon[data-tip]:hover::after{left:0;right:auto;transform:none}
+.sb-icon[data-tip]:hover::before{left:14px;right:auto;transform:none}
+.sf-row{display:flex;align-items:center;gap:8px}
+.sb-icon{width:36px;height:36px;flex-shrink:0;border-radius:var(--r);border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.sb-icon:hover{background:var(--bg4);color:var(--tx);border-color:var(--ac)}
+.skill-select{flex:1;min-width:0;height:36px;border-radius:var(--r);border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx);font-family:var(--sans);font-size:13px;font-weight:500;padding:0 30px 0 11px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='%238a93a6' stroke-width='1.6'><path d='M4 6l4 4 4-4'/></svg>");background-repeat:no-repeat;background-position:right 10px center}
+.skill-select.active{border-color:rgba(232,97,10,.35);background-color:rgba(232,97,10,.1);color:var(--ac)}
+.skill-select:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+body.sb-collapsed .sb-foot{padding:9px 0;align-items:center}
+body.sb-collapsed .sf-lbl,body.sb-collapsed .skill-select,body.sb-collapsed .budget-meter{display:none}
+body.sb-collapsed .sf-row{justify-content:center}
+.cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px}
+.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:14px;padding:22px;width:380px;max-width:100%;box-shadow:0 20px 60px var(--modal-shadow)}
+.cd-title{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--tx)}
+.cd-msg{font-size:13px;line-height:1.55;color:var(--tx2);margin-bottom:18px}
+.cd-acts{display:flex;justify-content:flex-end;gap:8px}
+.cd-cancel{font-size:13px;font-family:var(--sans);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:7px 14px;border-radius:8px;cursor:pointer;transition:all .12s}
+.cd-cancel:hover{background:var(--bg4);color:var(--tx)}
+.cd-ok{font-size:13px;padding:7px 16px;border-radius:8px;cursor:pointer}
 .dp-upload{margin:10px;padding:10px;background:transparent;border:1px dashed var(--bdr2);border-radius:var(--r);color:var(--tx3);font-family:var(--sans);font-size:12px;cursor:pointer;width:calc(100% - 20px);transition:all .15s;text-align:center}
 .dp-upload:hover{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .dp-empty{padding:20px;text-align:center;color:var(--tx3);font-size:12px;line-height:1.7}
@@ -717,6 +754,14 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
           <div class="sl-ticks"><span>1</span><span>10</span></div>
         </div>
+        <div class="sf">
+          <div class="sf-head"><label>Warn above (tokens) <span class="tip" title="Show a confirm before embedding a document estimated to use more than this many tokens of the per-minute budget. Blank or auto uses ~10% of the live limit.">ⓘ</span></label></div>
+          <input type="text" id="s-embwarn" class="sf-num" placeholder="auto" style="width:100%">
+        </div>
+        <div class="sf">
+          <div class="sf-head"><label>Block above (tokens) <span class="tip" title="Hard cap: the server refuses an embed estimated above this. Blank or auto uses ~50% of the live limit.">ⓘ</span></label></div>
+          <input type="text" id="s-embmax" class="sf-num" placeholder="auto" style="width:100%">
+        </div>
       </div>
     </div>
     </div>
@@ -811,12 +856,20 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     </button>
   </div>
   <div class="chat-list" id="chat-list"></div>
-  <div class="sb-skills" id="sb-skills"></div>
-  <div class="sb-bot">
-    <button class="sb-btn" onclick="openSP()" data-tip="Settings">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg><span class="sb-btn-lbl">Settings</span></button>
-    <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
+  <div class="sb-foot">
+    <div class="sf-lbl">Skills</div>
+    <div class="sf-row">
+      <button class="sb-icon" onclick="openSkillsManager()" data-tip="Manage skills" aria-label="Manage skills"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 4m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.803 4.56l2.184 -.53c.562 -.135 1.133 .19 1.282 .732l3.695 13.418a1.02 1.02 0 0 1 -.634 1.219l-.133 .041l-2.184 .53c-.562 .135 -1.133 -.19 -1.282 -.732l-3.695 -13.418a1.02 1.02 0 0 1 .634 -1.219l.133 -.041z"/><path d="M14 9l4 -1"/><path d="M16 16l3.923 -.98"/></svg></button>
+      <select class="skill-select" id="skill-select" onchange="onSkillSelect(this.value)" aria-label="Active skill"></select>
+    </div>
+    <div class="sf-lbl">LCL settings · token usage /min</div>
+    <div class="sf-row">
+      <button class="sb-icon" onclick="openSP()" data-tip="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg></button>
+      <div class="budget-meter" id="budget-meter" data-tip-bottom="Tokens left this minute · chat + embed">
+        <div class="bm-meta"><span class="bm-left" id="bm-left">—</span><span class="bm-lim" id="bm-lim"></span></div>
+        <div class="bm-track"><div class="bm-fill" id="bm-fill"></div></div>
+      </div>
+    </div>
   </div>
   <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
 </div>
@@ -1129,6 +1182,8 @@ let busy    = false
 let dpOpen  = false
 let inflightCtl = null  // AbortController for the current streaming request
 let skillsCache = []    // [{ id, title, bytes, mtime }] populated on connect
+let lastBudget = { tokLimit: null, tokRemaining: null, ts: 0 }   // latest /api/ratelimit snapshot (token meter + embed caps)
+let embedTally = []    // [{ ts, tokens }] rolling 60s record of embeds for the cumulative budget gate
 let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
 const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
@@ -1459,6 +1514,38 @@ async function gcEmbedCache() {
   catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
 }
 
+// ---------------------------------------------------------------------------
+// Token-budget estimation + caps (Phase 2). Shared ~4-chars/token estimate;
+// caps resolve from Settings overrides or adapt to the live per-minute limit.
+// ---------------------------------------------------------------------------
+function estTokens(texts) {
+  const arr = Array.isArray(texts) ? texts : [texts]
+  let chars = 0
+  for (const t of arr) chars += String(t == null ? '' : t).length
+  return Math.ceil(chars / 4)
+}
+function resolveEmbedCaps() {
+  const lim = (typeof lastBudget !== 'undefined' && lastBudget.tokLimit) || 0
+  const num = v => (typeof v === 'number' && v > 0) ? v : null
+  const warnOv = num(creds && creds.embedWarnTokens)
+  const maxOv  = num(creds && creds.embedMaxTokens)
+  const warn = warnOv != null ? warnOv : (lim ? Math.round(lim * 0.10) : 20000)
+  const hard = maxOv  != null ? maxOv  : (lim ? Math.round(lim * 0.50) : 100000)
+  const remaining = (typeof lastBudget !== 'undefined' && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
+  return { warn, hard, limit: lim || null, remaining }
+}
+// Rolling 60s record of embeds so several files in a row accumulate.
+function noteEmbed(tokens) {
+  const now = Date.now()
+  embedTally = (embedTally || []).filter(e => now - e.ts < 60000)
+  embedTally.push({ ts: now, tokens: tokens || 0 })
+}
+function recentEmbedTokens() {
+  const now = Date.now()
+  embedTally = (embedTally || []).filter(e => now - e.ts < 60000)
+  return embedTally.reduce((sum, e) => sum + (e.tokens || 0), 0)
+}
+
 // SECTION: 18-store.js
 // =============================================================================
 // Persistence seam — the single owner of client<->server state I/O (R12)
@@ -1534,12 +1621,13 @@ function makeCreds(o){ o=o||{}; return {
   maxTokens: o.maxTokens||CFG.DEFAULT_MAX_TOKENS, systemPrompt: o.systemPrompt||'',
   chunkSize: o.chunkSize||CFG.DEFAULT_CHUNK_SIZE, topK: o.topK||CFG.DEFAULT_TOP_K,
   embedApiKey: o.embedApiKey||'', embedModelId: o.embedModelId||'',
+  embedWarnTokens: (o.embedWarnTokens==null?'auto':o.embedWarnTokens), embedMaxTokens: (o.embedMaxTokens==null?'auto':o.embedMaxTokens),
   classification: o.classification||'' } }
 // Inverse mapping for the on-disk settings shape (model -> modelId).
 function credsToSettings(c){ return {
   apiKey: c.apiKey, modelId: c.model, maxTokens: c.maxTokens, systemPrompt: c.systemPrompt,
   chunkSize: c.chunkSize, topK: c.topK, embedApiKey: c.embedApiKey||'',
-  embedModelId: c.embedModelId||'', classification: c.classification } }
+  embedModelId: c.embedModelId||'', embedWarnTokens: c.embedWarnTokens||'auto', embedMaxTokens: c.embedMaxTokens||'auto', classification: c.classification } }
 
 async function init() {
   // Demo mode (?demo=1) seeds sample content and skips all network work.
@@ -2272,6 +2360,16 @@ function renderChips() {
 // merged from 43-files-embed.js
 // ---------------------------------------------------------------------------
 
+// Budget warning message + confirm dialog. Returns true to proceed with the embed.
+async function confirmEmbedBudget(name, nChunks, est, caps) {
+  const k = n => n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n)))
+  let msg = name + ' is ~' + nChunks + ' chunks (~' + k(est) + ' tokens).'
+  if (caps.remaining != null) msg += ' About ' + k(caps.remaining) + ' left this minute' + (est > caps.remaining ? ' \u2014 this is more than that' : '') + '.'
+  if (caps.limit) { const mins = Math.ceil(est / caps.limit); if (mins > 1) msg += ' It may queue and take ~' + mins + ' min on the shared ' + k(caps.limit) + '/min limit.' }
+  msg += ' Embed anyway?'
+  return confirmDialog({ title: 'Embed large file?', message: msg, okText: 'Embed anyway', cancelText: 'Cancel' })
+}
+
 async function embedDoc(doc) {
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON). In #demo this
   // takes the same real path; the server returns deterministic demo vectors.
@@ -2306,6 +2404,24 @@ async function embedDoc(doc) {
     }
 
     if (toEmbed.length) {
+      // Token-budget gate (Phase 2): estimate this embed plus recent embeds in the
+      // last 60s; warn if it crosses the soft cap or exceeds what is left this
+      // minute. Cancel aborts without sending anything.
+      const _est = estTokens(toEmbed)
+      const _caps = resolveEmbedCaps()
+      const _recent = recentEmbedTokens()
+      const _over = _est > _caps.warn || (_est + _recent) > _caps.warn || (_caps.remaining != null && _est > _caps.remaining)
+      if (_over && typeof confirmDialog === 'function') {
+        const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
+        if (!proceed) {
+          doc.status = (doc.chunks && doc.chunks.length) ? 'ready' : 'pending'
+          doc.embedProgress = null
+          toast('Embedding cancelled', 'info')
+          setHealth('ok', connectedLabel())
+          renderDocPanel()
+          return
+        }
+      }
       // Show a persistent per-doc progress bar (renderDocPanel) driven by the
       // SSE progress/pacing events forwarded from embedBatch.
       doc.status = 'embedding'
@@ -2316,6 +2432,7 @@ async function embedDoc(doc) {
         doc.embedProgress = prog
         renderDocPanel()
       })
+      noteEmbed(_est)
       for (let k = 0; k < toEmbedIdx.length; k++) {
         chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
       }
@@ -2327,6 +2444,7 @@ async function embedDoc(doc) {
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     renderDocPanel()
+    if (typeof renderBudget === 'function') renderBudget()
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
@@ -2402,33 +2520,33 @@ async function loadSkillsList() {
 }
 
 function renderSkillPicker() {
-  const root = document.getElementById('sb-skills')
-  if (!root) return
+  const sel = document.getElementById('skill-select')
+  if (!sel) return
   const chat = curChat()
-  const current = chat?.skillId || null
-
-  let html = '<div class="sb-skills-hd"><span class="sb-skills-hd-lbl">Skills</span></div>'
-
-  if (!skillsCache.length) {
-    html += '<div class="sb-skill-empty">No skills yet</div>'
-  } else {
-    for (const s of skillsCache) {
-      const active = (s.id === current) ? ' active' : ''
-      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" title="${esc(s.id)}">
-        <span class="sb-skill-dot"></span>
-        <span class="sb-skill-name">${esc(s.title)}</span>
-      </div>`
-    }
-    if (current && !skillsCache.some(s => s.id === current)) {
-      html += `<div class="sb-skill-item active" data-id="${esc(current)}" title="missing skill">
-        <span class="sb-skill-dot"></span>
-        <span class="sb-skill-name">(missing) ${esc(current)}</span>
-      </div>`
-    }
+  const current = chat?.skillId || ''
+  let html = '<option value="">None</option>'
+  for (const s of skillsCache) {
+    html += '<option value="' + esc(s.id) + '"' + (s.id === current ? ' selected' : '') + '>' + esc(s.title) + '</option>'
   }
+  if (current && !skillsCache.some(s => s.id === current)) {
+    html += '<option value="' + esc(current) + '" selected>(missing) ' + esc(current) + '</option>'
+  }
+  sel.innerHTML = html
+  sel.value = current
+  sel.classList.toggle('active', !!current)
+}
 
-  // "Manage skills" now lives in the 2-column sb-bot row next to Settings.
-  root.innerHTML = html
+// Set the active skill for the current chat from the selector (single-select;
+// '' = No skill). Skills are per-chat (stored on chat.skillId).
+function onSkillSelect(id) {
+  const chat = curChat()
+  if (!chat) return
+  chat.skillId = id || null
+  chat.updatedAt = Date.now()
+  persist()
+  renderSkillChip()
+  const sel = document.getElementById('skill-select')
+  if (sel) sel.classList.toggle('active', !!chat.skillId)
 }
 
 function onSkillPicked(id) {
@@ -2741,6 +2859,7 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
+    if (typeof renderBudget === 'function') renderBudget()   // refresh token meter after each send
     // If this was the first successful exchange in the chat, fire off an
     // auto-title call in the background. Doesn't block; runs at most once
     // per chat (guarded by chat.titledByAI).
@@ -3567,6 +3686,46 @@ function updateDocsBtn() {
                'Embed API key not set — click to configure')
 }
 
+// =============================================================================
+// Render — token budget meter (sidebar). Overall PlatformAI tokens/min for the
+// active key (chat + embed share one budget), from /api/ratelimit: a live
+// snapshot in real mode, the demo burn-down in #demo. Green >50, amber >20, red.
+// =============================================================================
+async function renderBudget() {
+  const el = document.getElementById('budget-meter'); if (!el) return
+  let rl = null
+  try { const r = await httpGet('/api/ratelimit'); if (r && r.ok) rl = await r.json() } catch {}
+  if (rl && rl.tokLimit != null && typeof lastBudget !== 'undefined') lastBudget = { tokLimit: rl.tokLimit, tokRemaining: rl.tokRemaining, ts: Date.now() }
+  const fill = document.getElementById('bm-fill')
+  const left = document.getElementById('bm-left')
+  const lim  = document.getElementById('bm-lim')
+  const fmtK = n => (n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n))))
+  el.classList.remove('ok', 'warn', 'crit')
+  if (!rl || rl.tokLimit == null || rl.tokRemaining == null) {
+    if (fill) fill.style.width = '0%'
+    if (left) left.textContent = '—'
+    if (lim)  lim.textContent = 'no data yet'
+    return
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(rl.tokRemaining / rl.tokLimit * 100)))
+  el.classList.add(pct > 50 ? 'ok' : pct > 20 ? 'warn' : 'crit')
+  if (fill) fill.style.width = pct + '%'
+  if (left) left.textContent = fmtK(rl.tokRemaining) + ' left'
+  if (lim)  lim.textContent = '/ ' + fmtK(rl.tokLimit)
+}
+
+// Initial paint + light refresh (the upstream window resets ~every 60s). The
+// poll only reads the local /api/ratelimit snapshot (no upstream call, zero API
+// tokens). Pause polling while the tab is hidden; refresh immediately on return.
+function startBudgetMeter() {
+  if (typeof renderBudget !== 'function') return
+  let timer = null
+  const start = () => { if (!timer) { renderBudget(); timer = setInterval(renderBudget, 10000) } }
+  const stop  = () => { if (timer) { clearInterval(timer); timer = null } }
+  start()
+  document.addEventListener('visibilitychange', () => { document.hidden ? stop() : start() })
+}
+
 // SECTION: 80-ui.js
 // =============================================================================
 // Helpers
@@ -3841,6 +4000,8 @@ function openSP() {
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
   document.getElementById('s-embm').value  = creds.embedModelId||''
+  document.getElementById('s-embwarn').value = (typeof creds.embedWarnTokens === 'number') ? creds.embedWarnTokens : ''
+  document.getElementById('s-embmax').value  = (typeof creds.embedMaxTokens  === 'number') ? creds.embedMaxTokens  : ''
   if (typeof demoKeyHint === 'function') { demoKeyHint('s-key'); demoKeyHint('s-embk') }
   document.getElementById('s-chunk-v').value = creds.chunkSize||800
   document.getElementById('s-topk-v').value  = creds.topK||5
@@ -4155,6 +4316,27 @@ async function deleteSkillUI(id) {
     toast('Delete failed: ' + e.message, 'err')
   }
 }
+// Promise-based themed confirm dialog. Resolves true on confirm, false on cancel/Esc.
+function confirmDialog(opts) {
+  opts = opts || {}
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(false); else if (e.key === 'Enter') finish(true) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    const ok = mkEl('button', { class: 'btn-p cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
+    const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(false) }, opts.cancelText || 'Cancel')
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
+      mkEl('div', { class: 'cd-msg' }, opts.message || ''),
+      mkEl('div', { class: 'cd-acts' }, [cancel, ok])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(false) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { ok.focus() } catch {} }, 0)
+  })
+}
+
 function saveSP() {
   const prevEmbedKey = creds.embedApiKey || ''
   creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
@@ -4166,6 +4348,10 @@ function saveSP() {
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
   creds.embedModelId = document.getElementById('s-embm').value.trim() || creds.embedModelId
+  const _wv = (document.getElementById('s-embwarn').value || '').trim()
+  const _mv = (document.getElementById('s-embmax').value || '').trim()
+  creds.embedWarnTokens = (!_wv || /^auto$/i.test(_wv)) ? 'auto' : Math.max(0, parseInt(_wv) || 0)
+  creds.embedMaxTokens  = (!_mv || /^auto$/i.test(_mv)) ? 'auto' : Math.max(0, parseInt(_mv) || 0)
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
   D.settings = credsToSettings(creds)
@@ -5192,6 +5378,7 @@ initEgg()
 initComposerPlaceholder()
 init()
 initUpdates()
+startBudgetMeter()
 </script>
 </body>
 </html>
