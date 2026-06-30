@@ -11,8 +11,10 @@ release.
   `console.warn` / `console.error`, gated dynamically on `readChannel()` so
   toggling the channel starts/stops file logging without a restart, with ~5 MB
   rotation to a single `debug_logs.1.txt` backup and ANSI codes stripped.
-  Redaction is inherited from the call sites (`maskSecret` / `previewText`) — the
-  file never logs more than the console already shows.
+  Request/response payloads are redacted in the file to a byte count + short
+  `sha256` (via `logSensitive`); the full preview still prints to the in-memory
+  console only, so prompt/response content is never persisted to disk. Other
+  lines inherit the existing `maskSecret` masking.
 - **Token-meter diagnostics.** Both upstream paths now log which `x-ratelimit-*`
   headers a response actually carried (or `NONE`), tagged `[stream]` /
   `[api chat|embed]`, plus an explicit "rate-limit ABSENT" line — to pin down why
@@ -23,6 +25,22 @@ release.
   the key *string* (`apiKey || embedApiKey`), so an embed-only snapshot was
   invisible whenever a chat key was set. It now falls back on the lookup *result*
   (`getLastRateLimit(apiKey) || getLastRateLimit(embedApiKey)`).
+- **Sidebar token meter removed.** The upstream gateway omits the `x-ratelimit-*`
+  headers on streamed chats (confirmed in the logs), so the meter could only ever
+  move on embeds and was blind to chat burn — misleading, and it drove a constant
+  10s `/api/ratelimit` poll. The widget, `renderBudget`/`startBudgetMeter`, and the
+  poll are gone. The rate-limit **snapshot and `/api/ratelimit` stay** (still used
+  by the embed gate, the server hard cap, and embed pacing); it's now fetched
+  on-demand via `refreshBudget()` before an embed and refreshed after one.
+- **Embed budget gate reworked — warn only when it won't fit.** The old gate warned
+  at a fixed ~10% of the per-minute limit (~20k tokens), so normal documents tripped
+  it. It now warns only when the estimate (plus recent embeds in the last 60s) won't
+  fit in the tokens left this minute, exceeds the hard cap, or an explicit Settings
+  "warn above" override. The hard cap (client + server `resolveEmbedHardCap`) is
+  raised from 50% → ~90% of the limit (180k fallback).
+- **Canceling an embed no longer leaves a stuck file.** Declining the budget warning
+  for a freshly-added file now removes it from the chat instead of stranding it as a
+  permanent "pending" card. (A file with chunks from a previous embed is kept.)
 
 ## 25 Jun 2026
 
