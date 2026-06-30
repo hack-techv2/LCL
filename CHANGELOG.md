@@ -3,6 +3,27 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 30 Jun 2026
+
+- **Alpha file logging (`debug_logs.txt`).** When the update channel is `alpha`,
+  all server console output is mirrored to `LCL/debug_logs.txt` (console output
+  unchanged; stable writes nothing). Implemented as a tee over `console.log` /
+  `console.warn` / `console.error`, gated dynamically on `readChannel()` so
+  toggling the channel starts/stops file logging without a restart, with ~5 MB
+  rotation to a single `debug_logs.1.txt` backup and ANSI codes stripped.
+  Redaction is inherited from the call sites (`maskSecret` / `previewText`) — the
+  file never logs more than the console already shows.
+- **Token-meter diagnostics.** Both upstream paths now log which `x-ratelimit-*`
+  headers a response actually carried (or `NONE`), tagged `[stream]` /
+  `[api chat|embed]`, plus an explicit "rate-limit ABSENT" line — to pin down why
+  the meter refreshes on embeds but not on streamed chats. `setLastRateLimit`
+  logs each snapshot write; `GET /api/ratelimit` logs which key prefixes it
+  queried and whether a snapshot was found.
+- **Rate-limit snapshot key fallback fixed.** `GET /api/ratelimit` fell back on
+  the key *string* (`apiKey || embedApiKey`), so an embed-only snapshot was
+  invisible whenever a chat key was set. It now falls back on the lookup *result*
+  (`getLastRateLimit(apiKey) || getLastRateLimit(embedApiKey)`).
+
 ## 25 Jun 2026
 
 - **Embedding listener leak fixed (`MaxListenersExceededWarning`).** The buffered
