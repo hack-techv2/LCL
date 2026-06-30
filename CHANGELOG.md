@@ -50,6 +50,13 @@ release.
   after two server round-trips (`persist` + cache GC) finished, so it lagged. The
   card now disappears immediately (optimistic UI) and the persistence + vector
   prune run in the background.
+- **Copy no longer pastes a coloured highlight.** Native Ctrl+C / right-click Copy
+  of chat text used to bleed a red/orange background into Teams, Outlook, and Word,
+  because the browser inlined the dark theme's colours and the `::selection` wash
+  into the clipboard HTML. A `copy` listener scoped to `#messages` now rebuilds the
+  clipboard from the selection's own DOM and strips inline background/colour, so
+  paste keeps bold/italics/links/lists/tables but no background. Copying from
+  inputs and the Copy / Copy-for-Word buttons is unaffected.
 
 ## 25 Jun 2026
 
