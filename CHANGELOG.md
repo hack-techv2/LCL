@@ -3,6 +3,21 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 1 Jul 2026
+
+- **Compact rail footer (UI refresh).** The sidebar footer is reorganised into a
+  single compact icon rail under the active-skill picker: **Skills · Search ·
+  Theme · Settings** as four 28px buttons (icons fixed at 15px). Search and the
+  theme toggle are **removed from the top bar** (which now shows only the
+  connection pill and Embed), consolidating the global controls in one place.
+- **New glyphs.** Skills uses a wand; Settings uses a filled Material gear; the
+  theme toggle uses a defined sun (disc + 8 rays) in light mode and a crescent
+  moon in dark mode.
+- **Skills button reflects active state.** The wand is highlighted orange only
+  when a skill is selected for the chat (mirroring the picker's active state) and
+  is neutral grey when the skill is None (`syncSkillRail`).
+- Collapsed sidebar stacks the rail vertically; tooltips carry the labels.
+
 ## 30 Jun 2026
 
 - **Alpha file logging (`debug_logs.txt`).** When the update channel is `alpha`,
