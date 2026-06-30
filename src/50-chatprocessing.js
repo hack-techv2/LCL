@@ -376,7 +376,6 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
-    if (typeof renderBudget === 'function') renderBudget()   // refresh token meter after each send
     // If this was the first successful exchange in the chat, fire off an
     // auto-title call in the background. Doesn't block; runs at most once
     // per chat (guarded by chat.titledByAI).
