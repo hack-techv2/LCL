@@ -110,7 +110,7 @@ function copyMsg(btn) {
   })
 }
 
-// Native Ctrl+C / right-click "Copy" sanitiser, scoped to the chat transcript.
+// Native Ctrl+C / right-click Copy sanitiser, scoped to the chat transcript.
 // Chrome serialises a selection by inlining computed styles onto the copied HTML
 // (the dark-theme text colour, element backgrounds, and the orange ::selection
 // wash). Rich editors like Teams / Outlook / Word keep those inline background /
