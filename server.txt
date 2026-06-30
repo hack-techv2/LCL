@@ -410,6 +410,20 @@ function previewText(v, max = 4000) {
   return v.length > max ? v.slice(0, max) + ' ...[truncated]' : v
 }
 
+// Sensitive-content logger for request/response payloads. The full preview goes
+// to the CONSOLE only (in-memory, for live debugging via _origConsoleLog so the
+// file tee is bypassed); the alpha file sink (debug_logs.txt) receives only a
+// byte count + short sha256, never the content — so prompts/responses (incl. any
+// RESTRICTED material) are not persisted to disk. On stable the sink is inactive
+// and this behaves exactly like the old dlog(previewText(...)).
+function logSensitive(label, raw) {
+  if (LOG_LEVEL < LOG_LEVELS.debug) return
+  const s = String(raw == null ? '' : raw)
+  _origConsoleLog(label, previewText(s))
+  const digest = crypto.createHash('sha256').update(s).digest('hex').slice(0, 12)
+  dbgWrite('log', [label + ' [redacted ' + Buffer.byteLength(s) + ' bytes, sha256:' + digest + ']'])
+}
+
 // ---------------------------------------------------------------------------
 // Rate-limit header parser
 // PlatformAI returns x-ratelimit-api_key-* headers on every response. We parse
@@ -501,7 +515,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   log.debug('[api] hostname   =', opts.hostname)
   log.debug('[api] path       =', opts.path)
   log.debug('[api] auth       =', maskSecret(apiKey))
-  dlog('[api] payload    =', previewText(bodyStr))
+  logSensitive('[api] payload    =', bodyStr)
   log.debug('======================================')
   log.debug('')
 
@@ -536,7 +550,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
 
     upstreamRes.on('end', () => {
       dlog('[api] response body length =', body.length)
-      dlog('[api] response body =', previewText(body))
+      logSensitive('[api] response body =', body)
       const rlTag = '[api ' + (/embed/i.test(pathName) ? 'embed' : 'chat') + ']'
       const rlHdrKeys = Object.keys(upstreamRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
       log.debug(rlTag + ' x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
@@ -709,7 +723,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   log.debug('[stream] time     =', new Date().toISOString())
   log.debug('[stream] path     =', pathName)
   log.debug('[stream] auth     =', maskSecret(apiKey))
-  dlog('[stream] payload  =', previewText(bodyStr))
+  logSensitive('[stream] payload  =', bodyStr)
   log.debug('========================================')
 
   const upReq = https.request(opts, upRes => {
@@ -742,7 +756,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       let body = ''
       upRes.on('data', c => body += c)
       upRes.on('end', () => {
-        dlog('[stream] non-200 body =', previewText(body))
+        logSensitive('[stream] non-200 body =', body)
         if (!res.headersSent) {
           res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' })
         }
@@ -1024,15 +1038,16 @@ function handleRateLimit(req, res) {
   json(res, { tokLimit: rl.tokLimit ?? null, tokRemaining: rl.tokRemaining ?? null, reqLimit: rl.reqLimit ?? null, reqRemaining: rl.reqRemaining ?? null, ts: rl.ts ?? null })
 }
 
-// Hard token cap for an embed request (Phase 2 backstop). Settings override wins;
-// otherwise ~50% of the live per-minute limit; else a 100k fallback.
+// Hard token cap for an embed request (backstop). Settings override wins;
+// otherwise ~90% of the live per-minute limit (was 50% — too aggressive, it
+// blocked normal documents); else a 180k fallback.
 function resolveEmbedHardCap(body) {
   const st = appData.settings || {}
   const ov = (typeof st.embedMaxTokens === 'number' && st.embedMaxTokens > 0) ? st.embedMaxTokens : null
   if (ov) return ov
   const rl = getLastRateLimit(st.embedApiKey || (body && body.apiKey) || '')
-  if (rl && rl.tokLimit) return Math.round(rl.tokLimit * 0.5)
-  return 100000
+  if (rl && rl.tokLimit) return Math.round(rl.tokLimit * 0.9)
+  return 180000
 }
 
 // Demo /api/embed-batch. Small batches answer instantly (JSON) as before; larger
