@@ -498,21 +498,40 @@ async function embedDoc(doc) {
     }
 
     if (toEmbed.length) {
-      // Token-budget gate (Phase 2): estimate this embed plus recent embeds in the
-      // last 60s; warn if it crosses the soft cap or exceeds what is left this
-      // minute. Cancel aborts without sending anything.
+      // Token-budget gate: warn ONLY when this embed (plus recent embeds in the
+      // last 60s) won't fit in the tokens left this minute, or exceeds the hard
+      // cap, or an explicit Settings "warn above" override. No fixed soft cap —
+      // that tripped on normal documents. Refresh the snapshot first so the
+      // "won't fit" check uses the live remaining budget. Cancel aborts cleanly.
       const _est = estTokens(toEmbed)
+      if (typeof refreshBudget === 'function') await refreshBudget()
       const _caps = resolveEmbedCaps()
       const _recent = recentEmbedTokens()
-      const _over = _est > _caps.warn || (_est + _recent) > _caps.warn || (_caps.remaining != null && _est > _caps.remaining)
+      const _wontFit = _caps.remaining != null && (_est + _recent) > _caps.remaining
+      const _overWarn = _caps.warnOverride != null && _est > _caps.warnOverride
+      const _overHard = _est > _caps.hard
+      const _over = _wontFit || _overWarn || _overHard
       if (_over && typeof confirmDialog === 'function') {
         const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
         if (!proceed) {
-          doc.status = (doc.chunks && doc.chunks.length) ? 'ready' : 'pending'
-          doc.embedProgress = null
-          toast('Embedding cancelled', 'info')
+          // A canceled, never-embedded file shouldn't linger as "pending" — drop
+          // it from the chat entirely. (If it already had chunks from a previous
+          // embed, keep those and just stop.)
+          if (doc.chunks && doc.chunks.length) {
+            doc.status = 'ready'
+            doc.embedProgress = null
+            toast('Embedding cancelled', 'info')
+          } else {
+            const _chat = curChat()
+            if (_chat && Array.isArray(_chat.docs)) {
+              const _i = _chat.docs.findIndex(d => d.id === doc.id)
+              if (_i >= 0) _chat.docs.splice(_i, 1)
+            }
+            toast('Embedding cancelled — ' + doc.name + ' removed', 'info')
+          }
           setHealth('ok', connectedLabel())
-          renderDocPanel()
+          await persist()
+          renderDocPanel(); updateDocsBtn()
           return
         }
       }
@@ -538,7 +557,7 @@ async function embedDoc(doc) {
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     renderDocPanel()
-    if (typeof renderBudget === 'function') renderBudget()
+    if (typeof refreshBudget === 'function') refreshBudget()   // pull the post-embed snapshot for the next fit check
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
