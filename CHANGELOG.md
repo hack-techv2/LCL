@@ -41,6 +41,15 @@ release.
 - **Canceling an embed no longer leaves a stuck file.** Declining the budget warning
   for a freshly-added file now removes it from the chat instead of stranding it as a
   permanent "pending" card. (A file with chunks from a previous embed is kept.)
+- **Footer settings control redesigned.** With the meter gone the settings row was
+  a lone floating cog; it's now a full-width **Settings** button (gear + label) that
+  mirrors the skill dropdown above it, so the two footer rows read as paired
+  controls. Collapses to a centered gear icon when the sidebar is collapsed. Dead
+  `.budget-meter` / `.bm-*` CSS removed.
+- **Removing a file is now instant.** Clicking ✕ on a doc dropped the card only
+  after two server round-trips (`persist` + cache GC) finished, so it lagged. The
+  card now disappears immediately (optimistic UI) and the persistence + vector
+  prune run in the background.
 
 ## 25 Jun 2026
 
