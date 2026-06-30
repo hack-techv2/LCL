@@ -862,13 +862,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <button class="sb-icon" onclick="openSkillsManager()" data-tip="Manage skills" aria-label="Manage skills"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 4m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.803 4.56l2.184 -.53c.562 -.135 1.133 .19 1.282 .732l3.695 13.418a1.02 1.02 0 0 1 -.634 1.219l-.133 .041l-2.184 .53c-.562 .135 -1.133 -.19 -1.282 -.732l-3.695 -13.418a1.02 1.02 0 0 1 .634 -1.219l.133 -.041z"/><path d="M14 9l4 -1"/><path d="M16 16l3.923 -.98"/></svg></button>
       <select class="skill-select" id="skill-select" onchange="onSkillSelect(this.value)" aria-label="Active skill"></select>
     </div>
-    <div class="sf-lbl">LCL settings · token usage /min</div>
+    <div class="sf-lbl">LCL settings</div>
     <div class="sf-row">
       <button class="sb-icon" onclick="openSP()" data-tip="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg></button>
-      <div class="budget-meter" id="budget-meter" data-tip-bottom="Tokens left this minute · chat + embed">
-        <div class="bm-meta"><span class="bm-left" id="bm-left">—</span><span class="bm-lim" id="bm-lim"></span></div>
-        <div class="bm-track"><div class="bm-fill" id="bm-fill"></div></div>
-      </div>
     </div>
   </div>
   <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
@@ -1525,14 +1521,17 @@ function estTokens(texts) {
   return Math.ceil(chars / 4)
 }
 function resolveEmbedCaps() {
+  // Gate policy: don't warn on a fixed fraction of the limit (that tripped on
+  // normal-sized documents). Warn only when an embed won't fit in what's left
+  // this minute, or exceeds the hard cap, or an explicit Settings "warn above"
+  // override. Hard cap defaults to ~90% of the per-minute limit (was 50%).
   const lim = (typeof lastBudget !== 'undefined' && lastBudget.tokLimit) || 0
   const num = v => (typeof v === 'number' && v > 0) ? v : null
-  const warnOv = num(creds && creds.embedWarnTokens)
+  const warnOverride = num(creds && creds.embedWarnTokens)   // explicit opt-in, else null (no fixed soft cap)
   const maxOv  = num(creds && creds.embedMaxTokens)
-  const warn = warnOv != null ? warnOv : (lim ? Math.round(lim * 0.10) : 20000)
-  const hard = maxOv  != null ? maxOv  : (lim ? Math.round(lim * 0.50) : 100000)
+  const hard = maxOv != null ? maxOv : (lim ? Math.round(lim * 0.90) : 180000)
   const remaining = (typeof lastBudget !== 'undefined' && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
-  return { warn, hard, limit: lim || null, remaining }
+  return { warnOverride, hard, limit: lim || null, remaining }
 }
 // Rolling 60s record of embeds so several files in a row accumulate.
 function noteEmbed(tokens) {
@@ -2404,21 +2403,40 @@ async function embedDoc(doc) {
     }
 
     if (toEmbed.length) {
-      // Token-budget gate (Phase 2): estimate this embed plus recent embeds in the
-      // last 60s; warn if it crosses the soft cap or exceeds what is left this
-      // minute. Cancel aborts without sending anything.
+      // Token-budget gate: warn ONLY when this embed (plus recent embeds in the
+      // last 60s) won't fit in the tokens left this minute, or exceeds the hard
+      // cap, or an explicit Settings "warn above" override. No fixed soft cap —
+      // that tripped on normal documents. Refresh the snapshot first so the
+      // "won't fit" check uses the live remaining budget. Cancel aborts cleanly.
       const _est = estTokens(toEmbed)
+      if (typeof refreshBudget === 'function') await refreshBudget()
       const _caps = resolveEmbedCaps()
       const _recent = recentEmbedTokens()
-      const _over = _est > _caps.warn || (_est + _recent) > _caps.warn || (_caps.remaining != null && _est > _caps.remaining)
+      const _wontFit = _caps.remaining != null && (_est + _recent) > _caps.remaining
+      const _overWarn = _caps.warnOverride != null && _est > _caps.warnOverride
+      const _overHard = _est > _caps.hard
+      const _over = _wontFit || _overWarn || _overHard
       if (_over && typeof confirmDialog === 'function') {
         const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
         if (!proceed) {
-          doc.status = (doc.chunks && doc.chunks.length) ? 'ready' : 'pending'
-          doc.embedProgress = null
-          toast('Embedding cancelled', 'info')
+          // A canceled, never-embedded file shouldn't linger as "pending" — drop
+          // it from the chat entirely. (If it already had chunks from a previous
+          // embed, keep those and just stop.)
+          if (doc.chunks && doc.chunks.length) {
+            doc.status = 'ready'
+            doc.embedProgress = null
+            toast('Embedding cancelled', 'info')
+          } else {
+            const _chat = curChat()
+            if (_chat && Array.isArray(_chat.docs)) {
+              const _i = _chat.docs.findIndex(d => d.id === doc.id)
+              if (_i >= 0) _chat.docs.splice(_i, 1)
+            }
+            toast('Embedding cancelled — ' + doc.name + ' removed', 'info')
+          }
           setHealth('ok', connectedLabel())
-          renderDocPanel()
+          await persist()
+          renderDocPanel(); updateDocsBtn()
           return
         }
       }
@@ -2444,7 +2462,7 @@ async function embedDoc(doc) {
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     renderDocPanel()
-    if (typeof renderBudget === 'function') renderBudget()
+    if (typeof refreshBudget === 'function') refreshBudget()   // pull the post-embed snapshot for the next fit check
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
@@ -2859,7 +2877,6 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
-    if (typeof renderBudget === 'function') renderBudget()   // refresh token meter after each send
     // If this was the first successful exchange in the chat, fire off an
     // auto-title call in the background. Doesn't block; runs at most once
     // per chat (guarded by chat.titledByAI).
@@ -3687,43 +3704,22 @@ function updateDocsBtn() {
 }
 
 // =============================================================================
-// Render — token budget meter (sidebar). Overall PlatformAI tokens/min for the
-// active key (chat + embed share one budget), from /api/ratelimit: a live
-// snapshot in real mode, the demo burn-down in #demo. Green >50, amber >20, red.
+// Budget snapshot (no UI). The sidebar token meter was removed: the upstream
+// gateway omits the x-ratelimit-* headers on streamed chats, so the meter could
+// only ever move on embeds and was blind to chat burn — misleading, and it cost
+// a constant 10s poll. The snapshot is still fetched ON DEMAND (before an embed,
+// and refreshed after one) to drive the embed "won't fit" gate (resolveEmbedCaps).
+// /api/ratelimit only reads the server's last-seen snapshot — zero API tokens.
 // =============================================================================
-async function renderBudget() {
-  const el = document.getElementById('budget-meter'); if (!el) return
-  let rl = null
-  try { const r = await httpGet('/api/ratelimit'); if (r && r.ok) rl = await r.json() } catch {}
-  if (rl && rl.tokLimit != null && typeof lastBudget !== 'undefined') lastBudget = { tokLimit: rl.tokLimit, tokRemaining: rl.tokRemaining, ts: Date.now() }
-  const fill = document.getElementById('bm-fill')
-  const left = document.getElementById('bm-left')
-  const lim  = document.getElementById('bm-lim')
-  const fmtK = n => (n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n))))
-  el.classList.remove('ok', 'warn', 'crit')
-  if (!rl || rl.tokLimit == null || rl.tokRemaining == null) {
-    if (fill) fill.style.width = '0%'
-    if (left) left.textContent = '—'
-    if (lim)  lim.textContent = 'no data yet'
-    return
-  }
-  const pct = Math.max(0, Math.min(100, Math.round(rl.tokRemaining / rl.tokLimit * 100)))
-  el.classList.add(pct > 50 ? 'ok' : pct > 20 ? 'warn' : 'crit')
-  if (fill) fill.style.width = pct + '%'
-  if (left) left.textContent = fmtK(rl.tokRemaining) + ' left'
-  if (lim)  lim.textContent = '/ ' + fmtK(rl.tokLimit)
-}
-
-// Initial paint + light refresh (the upstream window resets ~every 60s). The
-// poll only reads the local /api/ratelimit snapshot (no upstream call, zero API
-// tokens). Pause polling while the tab is hidden; refresh immediately on return.
-function startBudgetMeter() {
-  if (typeof renderBudget !== 'function') return
-  let timer = null
-  const start = () => { if (!timer) { renderBudget(); timer = setInterval(renderBudget, 10000) } }
-  const stop  = () => { if (timer) { clearInterval(timer); timer = null } }
-  start()
-  document.addEventListener('visibilitychange', () => { document.hidden ? stop() : start() })
+async function refreshBudget() {
+  try {
+    const r = await httpGet('/api/ratelimit')
+    if (!r || !r.ok) return
+    const rl = await r.json()
+    if (rl && rl.tokLimit != null && typeof lastBudget !== 'undefined') {
+      lastBudget = { tokLimit: rl.tokLimit, tokRemaining: rl.tokRemaining, ts: Date.now() }
+    }
+  } catch {}
 }
 
 // SECTION: 80-ui.js
@@ -5378,7 +5374,6 @@ initEgg()
 initComposerPlaceholder()
 init()
 initUpdates()
-startBudgetMeter()
 </script>
 </body>
 </html>
