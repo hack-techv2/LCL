@@ -178,14 +178,17 @@ function estTokens(texts) {
   return Math.ceil(chars / 4)
 }
 function resolveEmbedCaps() {
+  // Gate policy: don't warn on a fixed fraction of the limit (that tripped on
+  // normal-sized documents). Warn only when an embed won't fit in what's left
+  // this minute, or exceeds the hard cap, or an explicit Settings "warn above"
+  // override. Hard cap defaults to ~90% of the per-minute limit (was 50%).
   const lim = (typeof lastBudget !== 'undefined' && lastBudget.tokLimit) || 0
   const num = v => (typeof v === 'number' && v > 0) ? v : null
-  const warnOv = num(creds && creds.embedWarnTokens)
+  const warnOverride = num(creds && creds.embedWarnTokens)   // explicit opt-in, else null (no fixed soft cap)
   const maxOv  = num(creds && creds.embedMaxTokens)
-  const warn = warnOv != null ? warnOv : (lim ? Math.round(lim * 0.10) : 20000)
-  const hard = maxOv  != null ? maxOv  : (lim ? Math.round(lim * 0.50) : 100000)
+  const hard = maxOv != null ? maxOv : (lim ? Math.round(lim * 0.90) : 180000)
   const remaining = (typeof lastBudget !== 'undefined' && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
-  return { warn, hard, limit: lim || null, remaining }
+  return { warnOverride, hard, limit: lim || null, remaining }
 }
 // Rolling 60s record of embeds so several files in a row accumulate.
 function noteEmbed(tokens) {
