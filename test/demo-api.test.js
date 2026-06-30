@@ -168,8 +168,8 @@ const CASES = [
     check('T23 budget meter + decrement', r1.tokLimit === 200000 && typeof r2.tokRemaining === 'number' && r2.tokRemaining < r1.tokRemaining, 'rem ' + r1.tokRemaining + ' -> ' + r2.tokRemaining)
   } },
   { id: 'T24 embed hard cap', tags: ['embed'], fn: async () => {
-    const big = 'x'.repeat(60000)                       // ~15k tokens each
-    const inputs = Array.from({ length: 8 }, () => big) // ~480k chars => ~120k tokens > 100k fallback cap
+    const big = 'x'.repeat(60000)                        // ~15k tokens each
+    const inputs = Array.from({ length: 16 }, () => big)  // ~960k chars => ~240k tokens > 180k fallback cap
     const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs }))
     const j = json(r.body)
     check('T24 embed hard cap', r.status === 413 && /exceeds the token cap/i.test(j.error || ''), 'status=' + r.status)
