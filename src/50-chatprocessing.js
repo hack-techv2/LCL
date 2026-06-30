@@ -36,6 +36,13 @@ async function loadSkillsList() {
   }
 }
 
+// Mirror the active-skill highlight onto the rail's Skills (wand) button:
+// orange only when a skill is selected, neutral when None.
+function syncSkillRail(on) {
+  const b = document.getElementById('skill-rail-btn')
+  if (b) b.classList.toggle('active', !!on)
+}
+
 function renderSkillPicker() {
   const sel = document.getElementById('skill-select')
   if (!sel) return
@@ -51,6 +58,7 @@ function renderSkillPicker() {
   sel.innerHTML = html
   sel.value = current
   sel.classList.toggle('active', !!current)
+  syncSkillRail(current)
 }
 
 // Set the active skill for the current chat from the selector (single-select;
@@ -64,6 +72,7 @@ function onSkillSelect(id) {
   renderSkillChip()
   const sel = document.getElementById('skill-select')
   if (sel) sel.classList.toggle('active', !!chat.skillId)
+  syncSkillRail(chat.skillId)
 }
 
 function onSkillPicked(id) {
