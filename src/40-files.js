@@ -585,10 +585,14 @@ async function removeDoc(id, event) {
   const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
   const idx = chat.docs.findIndex(d => d.id === id)
   if (idx === -1) return
-  const doc = chat.docs[idx]
-  chat.docs.splice(idx, 1)
-  await persist()                                  // server now has the updated doc list
-  try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc]', e.message) }  // prune vectors no longer referenced
+  const doc = chat.docs.splice(idx, 1)[0]
+  // Optimistic UI: drop the card and refresh immediately so the ✕ feels instant,
+  // then persist the doc list and prune orphaned vectors in the background. The
+  // two server round-trips no longer block the card from disappearing.
   renderDocPanel(); updateDocsBtn()
   toast('Removed ' + doc.name, 'ok')
+  ;(async () => {
+    try { await persist() } catch (e) { console.warn('[removeDoc] persist', e.message) }
+    try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc] gc', e.message) }
+  })()
 }
