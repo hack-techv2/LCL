@@ -86,6 +86,56 @@ function resolveLCLDir() {
 const LCL_DIR = resolveLCLDir()
 
 // ---------------------------------------------------------------------------
+// Alpha file logging. When the user is on the 'alpha' update channel, mirror
+// ALL server console output to LCL/debug_logs.txt so testers can capture a full
+// session and send it back for diagnosis. Stable users write nothing and the
+// console output is unchanged in every mode. Secrets and payloads are already
+// masked / truncated at the call sites (maskSecret / previewText), so the file
+// inherits that redaction — we never write more than the console already shows.
+// Gated dynamically (readChannel is re-checked per line) so toggling the channel
+// in Settings starts/stops file logging without a restart.
+// ---------------------------------------------------------------------------
+const util = require('util')
+const DEBUG_LOG_FILE   = path.join(LCL_DIR, 'debug_logs.txt')
+const DEBUG_LOG_BACKUP = path.join(LCL_DIR, 'debug_logs.1.txt')
+const DEBUG_LOG_MAX    = 5 * 1024 * 1024   // rotate at ~5 MB, keep one .1 backup
+let _dbgStream = null
+let _dbgBytes  = 0
+function fileLogActive() {
+  // readChannel() reads appData, defined later; guard against any early-boot or
+  // load error and default to OFF so logging can never crash the server.
+  try { return typeof readChannel === 'function' && readChannel() === 'alpha' } catch { return false }
+}
+const _stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '')
+function dbgRotateIfNeeded() {
+  if (_dbgBytes < DEBUG_LOG_MAX) return
+  try { if (_dbgStream) { _dbgStream.end(); _dbgStream = null } } catch {}
+  try { fs.renameSync(DEBUG_LOG_FILE, DEBUG_LOG_BACKUP) } catch {}
+  _dbgBytes = 0
+}
+function dbgWrite(level, args) {
+  if (!fileLogActive()) return
+  try {
+    dbgRotateIfNeeded()
+    if (!_dbgStream) {
+      _dbgStream = fs.createWriteStream(DEBUG_LOG_FILE, { flags: 'a' })
+      try { _dbgBytes = fs.existsSync(DEBUG_LOG_FILE) ? fs.statSync(DEBUG_LOG_FILE).size : 0 } catch { _dbgBytes = 0 }
+    }
+    const body = args.map(a => (typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity }))).join(' ')
+    const line = new Date().toISOString() + ' [' + level + '] ' + _stripAnsi(body) + '\n'
+    _dbgStream.write(line)
+    _dbgBytes += Buffer.byteLength(line)
+  } catch {}
+}
+// Tee console -> file. Originals are preserved; a log call must never throw.
+const _origConsoleLog   = console.log.bind(console)
+const _origConsoleWarn  = console.warn.bind(console)
+const _origConsoleError = console.error.bind(console)
+console.log   = (...a) => { _origConsoleLog(...a);   dbgWrite('log',  a) }
+console.warn  = (...a) => { _origConsoleWarn(...a);  dbgWrite('warn', a) }
+console.error = (...a) => { _origConsoleError(...a); dbgWrite('error', a) }
+
+// ---------------------------------------------------------------------------
 // Update channel TLS. A TLS-intercepting proxy (Zscaler) re-signs the GitHub
 // certificate with its own root, which Node won't verify against the public
 // store (UNABLE_TO_GET_ISSUER_CERT_LOCALLY). We let the handshake proceed,
@@ -403,7 +453,12 @@ function getLastRateLimit(apiKey) {
   return rateLimitSnapshots.get(snapshotKey(apiKey)) || null
 }
 function setLastRateLimit(apiKey, rl) {
-  if (rl) rateLimitSnapshots.set(snapshotKey(apiKey), { ...rl, ts: Date.now() })
+  if (rl) {
+    rateLimitSnapshots.set(snapshotKey(apiKey), { ...rl, ts: Date.now() })
+    log.debug('[rl] snapshot SET key=' + snapshotKey(apiKey) +
+              ' tok=' + rl.tokRemaining + '/' + rl.tokLimit +
+              ' req=' + rl.reqRemaining + '/' + rl.reqLimit)
+  }
 }
 
 // Keep-alive pool so we don't pay a fresh TLS handshake on every call.
@@ -482,13 +537,18 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     upstreamRes.on('end', () => {
       dlog('[api] response body length =', body.length)
       dlog('[api] response body =', previewText(body))
+      const rlTag = '[api ' + (/embed/i.test(pathName) ? 'embed' : 'chat') + ']'
+      const rlHdrKeys = Object.keys(upstreamRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
+      log.debug(rlTag + ' x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
       const rl = extractRateLimit(upstreamRes.headers)
       if (rl) {
         // One-line summary so console scans cleanly without dumping full headers.
         const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
-        log.debug('[api] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
+        log.debug(rlTag + ' rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
                     '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
         setLastRateLimit(apiKey, rl)
+      } else {
+        log.debug(rlTag + ' rate-limit ABSENT')
       }
       done(null, {
         statusCode: upstreamRes.statusCode || 500,
@@ -662,12 +722,19 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       return
     }
     log.debug('[stream] response status  =', upRes.statusCode)
+    // Diagnostic: which (if any) x-ratelimit-* headers the STREAMING response
+    // carried. The token meter only refreshes when these are present; if the
+    // gateway omits them on text/event-stream this line proves it.
+    const rlHdrKeys = Object.keys(upRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
+    log.debug('[stream] x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
     const rl = extractRateLimit(upRes.headers)
     if (rl) {
       setLastRateLimit(apiKey, rl)
       const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
       log.debug('[stream] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
                   '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
+    } else {
+      log.debug('[stream] rate-limit ABSENT — token meter will NOT refresh from this chat')
     }
 
     // Non-200: drain the body and surface it as a single JSON error event.
@@ -946,7 +1013,14 @@ function handleRateLimit(req, res) {
     return json(res, { tokLimit: DEMO_TOK_LIMIT, tokRemaining: _demoTok, reqLimit: 60, reqRemaining: 58, ts: Date.now() })
   }
   const settings = appData.settings || {}
-  const rl = getLastRateLimit(settings.apiKey || settings.embedApiKey) || {}
+  // Fall back on the lookup RESULT, not the key string: if chat and embed use
+  // different keys, the chat-key snapshot may be empty while the embed-key one is
+  // populated (or vice-versa). The old `apiKey || embedApiKey` only ever queried
+  // the chat key when it was set, so an embed-only snapshot was invisible.
+  const rl = getLastRateLimit(settings.apiKey) || getLastRateLimit(settings.embedApiKey) || {}
+  log.debug('[rl] /api/ratelimit read chatKey=' + snapshotKey(settings.apiKey) +
+            ' embedKey=' + snapshotKey(settings.embedApiKey) +
+            ' -> ' + (rl.tokRemaining != null ? ('tok=' + rl.tokRemaining + '/' + rl.tokLimit) : 'no snapshot'))
   json(res, { tokLimit: rl.tokLimit ?? null, tokRemaining: rl.tokRemaining ?? null, reqLimit: rl.reqLimit ?? null, reqRemaining: rl.reqRemaining ?? null, ts: rl.ts ?? null })
 }
 
