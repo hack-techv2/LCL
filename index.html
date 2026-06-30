@@ -3829,6 +3829,46 @@ function copyMsg(btn) {
   })
 }
 
+// Native Ctrl+C / right-click Copy sanitiser, scoped to the chat transcript.
+// Chrome serialises a selection by inlining computed styles onto the copied HTML
+// (the dark-theme text colour, element backgrounds, and the orange ::selection
+// wash). Rich editors like Teams / Outlook / Word keep those inline background /
+// colour styles, so pasted text arrives with a red-ish highlight behind it. We
+// intercept the copy event, rebuild the clipboard from the selection's OWN DOM
+// (semantic tags + class names, no inlined computed styles), strip any inline
+// background/colour, and write clean text/html + text/plain ourselves. Bold,
+// italics, links, lists and tables survive; the colour bleed does not. Only the
+// #messages transcript is touched — copying from inputs/settings is left alone,
+// and the Copy buttons (navigator.clipboard.write) never dispatch this event.
+function wireCopySanitizer() {
+  document.addEventListener('copy', e => {
+    try {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
+      const msgs = document.getElementById('messages')
+      if (!msgs) return
+      const inMsgs = (node) => {
+        const el = node && (node.nodeType === 1 ? node : node.parentElement)
+        return !!(el && msgs.contains(el))
+      }
+      if (!inMsgs(sel.anchorNode) && !inMsgs(sel.focusNode)) return   // not the transcript -> leave native copy alone
+      const wrap = document.createElement('div')
+      for (let i = 0; i < sel.rangeCount; i++) wrap.appendChild(sel.getRangeAt(i).cloneContents())
+      wrap.querySelectorAll('*').forEach(el => {
+        if (!el.style) return
+        el.style.removeProperty('background')
+        el.style.removeProperty('background-color')
+        el.style.removeProperty('color')
+        if (el.getAttribute('style') === '') el.removeAttribute('style')
+      })
+      if (!e.clipboardData) return
+      e.clipboardData.setData('text/html', wrap.innerHTML)
+      e.clipboardData.setData('text/plain', sel.toString())
+      e.preventDefault()
+    } catch (err) { /* fall back to native copy */ }
+  })
+}
+
 // Resolve CSS custom properties (var(--x)) to their computed values so the
 // copied HTML renders correctly in Word / Outlook which don't understand vars.
 function resolveCssVars(html) {
@@ -5368,6 +5408,7 @@ initEgg()
 initComposerPlaceholder()
 init()
 initUpdates()
+wireCopySanitizer()
 </script>
 </body>
 </html>
