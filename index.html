@@ -368,21 +368,6 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .doc-retry{font-size:10px;font-family:var(--mono);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:2px 8px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s}
 .doc-retry:hover{border-color:var(--ac);color:var(--ac)}
 .doc-retry-ic{font-size:12px;line-height:1}
-.budget-meter{flex:1;min-width:0}
-.budget-meter[data-tip-bottom]:hover::after{left:0;right:auto;transform:none}
-.budget-meter[data-tip-bottom]:hover::before{left:14px;right:auto;transform:none}
-.bm-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-.bm-lbl{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3)}
-.bm-unit{font-size:9px;font-family:var(--mono);color:var(--tx3)}
-.bm-track{height:6px;border-radius:4px;background:var(--bg4);overflow:hidden}
-.bm-fill{height:100%;width:0;border-radius:4px;background:var(--ac);transition:width .3s ease,background .3s}
-.budget-meter.warn .bm-fill{background:#f0a500}
-.budget-meter.crit .bm-fill{background:var(--red)}
-.bm-meta{display:flex;justify-content:space-between;margin:0 0 4px;font-size:11px;font-family:var(--mono)}
-.bm-left{color:var(--ac)}
-.budget-meter.warn .bm-left{color:#f0a500}
-.budget-meter.crit .bm-left{color:var(--red)}
-.bm-lim{color:var(--tx3)}
 .sb-foot{border-top:1px solid var(--bdr);padding:9px 8px 8px;display:flex;flex-direction:column;gap:5px}
 .sf-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);padding:0 2px}
 .sf-lbl:not(:first-child){margin-top:8px;border-top:1px solid var(--bdr);padding-top:9px}
@@ -391,11 +376,17 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .sf-row{display:flex;align-items:center;gap:8px}
 .sb-icon{width:36px;height:36px;flex-shrink:0;border-radius:var(--r);border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
 .sb-icon:hover{background:var(--bg4);color:var(--tx);border-color:var(--ac)}
+.sf-set-row{margin-top:8px;border-top:1px solid var(--bdr);padding-top:9px}
+.sb-set{flex:1;height:36px;border-radius:var(--r);border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx2);display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:500;font-family:var(--sans);cursor:pointer;transition:all .15s}
+.sb-set:hover{background:var(--bg4);color:var(--tx);border-color:var(--ac)}
+.sb-set svg{flex-shrink:0}
 .skill-select{flex:1;min-width:0;height:36px;border-radius:var(--r);border:1px solid var(--bdr2);background:var(--bg3);color:var(--tx);font-family:var(--sans);font-size:13px;font-weight:500;padding:0 30px 0 11px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='%238a93a6' stroke-width='1.6'><path d='M4 6l4 4 4-4'/></svg>");background-repeat:no-repeat;background-position:right 10px center}
 .skill-select.active{border-color:rgba(232,97,10,.35);background-color:rgba(232,97,10,.1);color:var(--ac)}
 .skill-select:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 body.sb-collapsed .sb-foot{padding:9px 0;align-items:center}
-body.sb-collapsed .sf-lbl,body.sb-collapsed .skill-select,body.sb-collapsed .budget-meter{display:none}
+body.sb-collapsed .sf-lbl,body.sb-collapsed .skill-select,body.sb-collapsed .sb-set-lbl{display:none}
+body.sb-collapsed .sf-set-row{border-top:none;margin-top:0;padding-top:0}
+body.sb-collapsed .sb-set{flex:0 0 36px;width:36px;gap:0}
 body.sb-collapsed .sf-row{justify-content:center}
 .cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px}
 .cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:14px;padding:22px;width:380px;max-width:100%;box-shadow:0 20px 60px var(--modal-shadow)}
@@ -862,9 +853,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <button class="sb-icon" onclick="openSkillsManager()" data-tip="Manage skills" aria-label="Manage skills"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 4m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.803 4.56l2.184 -.53c.562 -.135 1.133 .19 1.282 .732l3.695 13.418a1.02 1.02 0 0 1 -.634 1.219l-.133 .041l-2.184 .53c-.562 .135 -1.133 -.19 -1.282 -.732l-3.695 -13.418a1.02 1.02 0 0 1 .634 -1.219l.133 -.041z"/><path d="M14 9l4 -1"/><path d="M16 16l3.923 -.98"/></svg></button>
       <select class="skill-select" id="skill-select" onchange="onSkillSelect(this.value)" aria-label="Active skill"></select>
     </div>
-    <div class="sf-lbl">LCL settings</div>
-    <div class="sf-row">
-      <button class="sb-icon" onclick="openSP()" data-tip="Settings" aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg></button>
+    <div class="sf-row sf-set-row">
+      <button class="sb-set" onclick="openSP()" aria-label="LCL settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg><span class="sb-set-lbl">Settings</span></button>
     </div>
   </div>
   <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
@@ -2490,12 +2480,16 @@ async function removeDoc(id, event) {
   const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
   const idx = chat.docs.findIndex(d => d.id === id)
   if (idx === -1) return
-  const doc = chat.docs[idx]
-  chat.docs.splice(idx, 1)
-  await persist()                                  // server now has the updated doc list
-  try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc]', e.message) }  // prune vectors no longer referenced
+  const doc = chat.docs.splice(idx, 1)[0]
+  // Optimistic UI: drop the card and refresh immediately so the ✕ feels instant,
+  // then persist the doc list and prune orphaned vectors in the background. The
+  // two server round-trips no longer block the card from disappearing.
   renderDocPanel(); updateDocsBtn()
   toast('Removed ' + doc.name, 'ok')
+  ;(async () => {
+    try { await persist() } catch (e) { console.warn('[removeDoc] persist', e.message) }
+    try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc] gc', e.message) }
+  })()
 }
 
 // SECTION: 50-chatprocessing.js
