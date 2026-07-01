@@ -90,85 +90,308 @@ function getExt(name) { return (name.split('.').pop()||'').toLowerCase() }
 // merged from 41-files-extract.js
 // ---------------------------------------------------------------------------
 
+// Structured extraction helpers. These keep parser output RAG-friendly while
+// remaining browser-only. PDF uses pdf.js coordinates; DOCX uses Mammoth HTML.
+const PDFJS_WORKER_SRC = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs'
+
+async function ensurePdfJsReady() {
+  // pdf.js v5 is an ES module (loaded in <head>); window.pdfjsLib is set once it
+  // resolves. Poll briefly so a very-early upload doesn't race the module load.
+  for (let i = 0; i < 100 && typeof pdfjsLib === 'undefined'; i++) {
+    await new Promise(r => setTimeout(r, 50))
+  }
+  if (typeof pdfjsLib === 'undefined') throw new Error('PDF needs pdf.js library (module not loaded)')
+  if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC
+  }
+}
+
+async function loadPdfDocumentFromBytes(bytes) {
+  await ensurePdfJsReady()
+  const first = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
+  try {
+    return await pdfjsLib.getDocument({ data: first, verbosity: 0 }).promise
+  } catch (e) {
+    // Corporate proxies/CDN blockers sometimes return HTML for pdf.worker.min.js,
+    // which shows up in the browser as a PDF "content type"/MIME error. Retry
+    // with workers disabled so extraction can still proceed entirely in-page.
+    if (/worker|module|mime|content.?type|script/i.test(String(e && e.message || e))) {
+      console.warn('[pdf] worker failed; retrying with disableWorker:', e.message || e)
+      const second = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
+      return await pdfjsLib.getDocument({ data: second, verbosity: 0, disableWorker: true }).promise
+    }
+    throw e
+  }
+}
+
+function pdfItemsToLines(items) {
+  const clean = (items || []).filter(it => it && it.str && it.str.trim()).map(it => ({
+    text: it.str.trim(),
+    x: it.transform ? it.transform[4] : 0,
+    y: it.transform ? it.transform[5] : 0,
+    h: Math.abs((it.transform && (it.transform[3] || it.transform[0])) || 0)
+  }))
+  clean.sort((a,b) => Math.abs(b.y - a.y) > 3 ? b.y - a.y : a.x - b.x)
+  const lines = []
+  for (const item of clean) {
+    let line = lines.find(l => Math.abs(l.y - item.y) <= 3)
+    if (!line) { line = { y: item.y, items: [] }; lines.push(line) }
+    line.items.push(item)
+  }
+  return lines.map(l => {
+    const sorted = l.items.sort((a,b)=>a.x-b.x)
+    return {
+      y: l.y,
+      text: sorted.map(i=>i.text).join(' ').replace(/\s+/g, ' ').trim(),
+      avgFontHeight: sorted.reduce((n,i)=>n+(i.h||0),0) / Math.max(1, sorted.length)
+    }
+  }).filter(l => l.text)
+}
+
+function pdfLinesToStructuredText(lines) {
+  if (!lines || !lines.length) return ''
+  const sizes = lines.map(l => l.avgFontHeight).filter(Boolean).sort((a,b)=>a-b)
+  const median = sizes[Math.floor(sizes.length / 2)] || 10
+  const out = []
+  for (const line of lines) {
+    const t = line.text.trim()
+    if (!t) continue
+    const looksHeading =
+      line.avgFontHeight > median * 1.25 ||
+      /^\d+(\.\d+)*\s+[A-Z]/.test(t) ||
+      (/^[A-Z0-9 /&()\-:]{8,}$/.test(t) && t.length < 120)
+    out.push((looksHeading ? '## ' : '') + t)
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n')
+}
+
+async function extractPdfStructured(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const pdf = await loadPdfDocumentFromBytes(bytes)
+  const totalPages = pdf.numPages
+  const pages = []
+  const emptyPageNums = []
+
+  for (let i = 1; i <= totalPages; i++) {
+    const page = await pdf.getPage(i)
+    const tc = await page.getTextContent({ normalizeWhitespace: true, disableCombineTextItems: false })
+    const lines = pdfItemsToLines(tc.items)
+    let pageText = pdfLinesToStructuredText(lines).trim()
+    if (!pageText) {
+      // Fallback: if coordinate grouping fails, preserve the raw pdf.js text runs.
+      pageText = (tc.items || []).map(it => it && it.str ? it.str : '').join(' ').replace(/\s+/g, ' ').trim()
+    }
+    if (!pageText) emptyPageNums.push(i)
+    pages.push({ pageNum: i, text: pageText, lines })
+  }
+
+  const text = pages.map(p => '=== Page ' + p.pageNum + ' ===\n' + (p.text || '')).join('\n\n').trim() || '[No text found in PDF]'
+  const emptyShare = totalPages ? emptyPageNums.length / totalPages : 0
+  const looksScanned = emptyPageNums.length >= CFG.SCAN_MIN_PAGES && emptyShare >= CFG.SCAN_MIN_SHARE
+  const scanWarning = looksScanned
+    ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text - this PDF may be partially or fully scanned. Embedded content will be incomplete.'
+    : null
+  return { text, scanWarning, pdfDoc: scanWarning ? pdf : null, emptyPageNums, pages, structure: { kind: 'pdf-structured', totalPages } }
+}
+function tableToMarkdown(table) {
+  const rows = [...table.querySelectorAll('tr')].map(tr => [...tr.children].map(td => td.textContent.replace(/\s+/g, ' ').trim()))
+  if (!rows.length) return ''
+  const width = Math.max(...rows.map(r => r.length))
+  const norm = rows.map(r => [...r, ...Array(width - r.length).fill('')])
+  const header = norm[0]
+  const sep = header.map(() => '---')
+  return [header, sep, ...norm.slice(1)].map(r => '| ' + r.join(' | ') + ' |').join('\n')
+}
+
+function htmlToRagText(html) {
+  const dom = new DOMParser().parseFromString(html || '', 'text/html')
+  const out = []
+  function emit(s) { s = String(s || '').replace(/\s+/g, ' ').trim(); if (s) out.push(s) }
+  function walk(node) {
+    for (const el of [...node.children]) {
+      const tag = el.tagName.toLowerCase()
+      if (tag === 'h1') out.push('\n# ' + el.textContent.trim() + '\n')
+      else if (tag === 'h2') out.push('\n## ' + el.textContent.trim() + '\n')
+      else if (tag === 'h3') out.push('\n### ' + el.textContent.trim() + '\n')
+      else if (tag === 'h4') out.push('\n#### ' + el.textContent.trim() + '\n')
+      else if (tag === 'p') emit(el.textContent)
+      else if (tag === 'li') emit('- ' + el.textContent)
+      else if (tag === 'table') out.push('\n[TABLE]\n' + tableToMarkdown(el) + '\n[/TABLE]\n')
+      else walk(el)
+    }
+  }
+  walk(dom.body)
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function decodeXmlEntities(s) {
+  return String(s || '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+}
+
+function xmlTextRuns(xml) {
+  const out = []
+  const re = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g
+  let m
+  while ((m = re.exec(xml || ''))) out.push(decodeXmlEntities(m[1]))
+  return out.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+async function extractDocxWithZip(ab) {
+  if (typeof JSZip === 'undefined') throw new Error('DOCX fallback needs JSZip library')
+  const zip = await JSZip.loadAsync(ab)
+  const parts = []
+  const docFile = zip.file('word/document.xml')
+  if (docFile) parts.push(await docFile.async('string'))
+  const headerFooter = Object.keys(zip.files).filter(n => /^word\/(header|footer)\d+\.xml$/.test(n)).sort()
+  for (const n of headerFooter) parts.push(await zip.file(n).async('string'))
+  const text = parts.map(xmlTextRuns).filter(Boolean).join('\n\n')
+  return text || '[No text found in DOCX]'
+}
+
+async function extractDocxStructured(file) {
+  const ab = await file.arrayBuffer()
+  const warnings = []
+
+  if (typeof mammoth !== 'undefined') {
+    try {
+      const result = await mammoth.convertToHtml({ arrayBuffer: ab.slice(0) }, {
+        styleMap: [
+          "p[style-name='Title'] => h1:fresh",
+          "p[style-name='Subtitle'] => h2:fresh",
+          "p[style-name='Heading 1'] => h1:fresh",
+          "p[style-name='Heading 2'] => h2:fresh",
+          "p[style-name='Heading 3'] => h3:fresh",
+          "p[style-name='Heading 4'] => h4:fresh"
+        ],
+        includeDefaultStyleMap: true
+      })
+      let text = inferHeadingNumbers(htmlToRagText(result.value || ''))
+      if (!text) {
+        const raw = await mammoth.extractRawText({ arrayBuffer: ab.slice(0) })
+        text = inferHeadingNumbers((raw.value || '').trim())
+      }
+      if (result.messages && result.messages.length) warnings.push('DOCX parsed with ' + result.messages.length + ' Mammoth warning(s).')
+      return { text: text || '[No text found in DOCX]', scanWarning: null, parseWarning: warnings.join(' '), structure: { kind: 'docx-html' } }
+    } catch (e) {
+      warnings.push('Mammoth failed (' + e.message + '); used DOCX XML fallback.')
+    }
+  } else {
+    warnings.push('Mammoth library unavailable; used DOCX XML fallback.')
+  }
+
+  const fallbackText = inferHeadingNumbers(await extractDocxWithZip(ab.slice(0)))
+  return { text: fallbackText, scanWarning: null, parseWarning: warnings.join(' '), structure: { kind: 'docx-xml-fallback' } }
+}
 // File-type extractor registry: extension -> async (file) => { text, scanWarning, ... }.
 // Adding a new file type is a single entry here; preview/embed stay generic.
+async function extractXlsxStructured(file) {
+  if (typeof XLSX === 'undefined') throw new Error('Spreadsheet parsing needs the XLSX library')
+  const ab = await file.arrayBuffer()
+  const wb = XLSX.read(ab, { type: 'array', cellDates: true, dense: false })
+  const blocks = []
+  for (const name of wb.SheetNames || []) {
+    const ws = wb.Sheets[name]
+    if (!ws) continue
+    const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false, FS: ',', RS: '\n' }).trim()
+    if (csv) blocks.push('=== Sheet: ' + name + ' ===\n' + csv)
+  }
+  return { text: blocks.join('\n\n').trim() || '[No data found in spreadsheet]', scanWarning: null, structure: { kind: 'xlsx-sheets', sheetCount: (wb.SheetNames || []).length } }
+}
+
+function pptxResolveTarget(baseName, target) {
+  if (!target) return null
+  if (target.startsWith('/')) return target.replace(/^\//, '')
+  const baseParts = baseName.split('/'); baseParts.pop()
+  for (const part of target.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') baseParts.pop()
+    else baseParts.push(part)
+  }
+  return baseParts.join('/')
+}
+
+async function extractPptxStructured(file) {
+  if (typeof JSZip === 'undefined') throw new Error('PPTX needs the JSZip library')
+  const zip = await JSZip.loadAsync(await file.arrayBuffer())
+  const runs = xml => {
+    const out = []
+    const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g
+    let m
+    while ((m = re.exec(xml || ''))) out.push(m[1])
+    return decodeXmlEntities(out.join(' ')).replace(/\s+/g, ' ').trim()
+  }
+  const num = n => { const m = n.match(/slide(\d+)\.xml$/); return m ? +m[1] : 0 }
+  const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b))
+  const blocks = []
+  let empty = 0
+  for (let i = 0; i < slides.length; i++) {
+    const slideName = slides[i]
+    const body = runs(await zip.file(slideName).async('string'))
+    let notes = ''
+    const relsName = 'ppt/slides/_rels/' + slideName.split('/').pop() + '.rels'
+    const relsFile = zip.file(relsName)
+    if (relsFile) {
+      const relsXml = await relsFile.async('string')
+      const rm = relsXml.match(/Type="[^"]*notesSlide"[^>]*Target="([^"]+)"/i) || relsXml.match(/Target="([^"]*notesSlide\d+\.xml)"/i)
+      const np = rm ? pptxResolveTarget(slideName, rm[1]) : null
+      if (np && zip.file(np)) notes = runs(await zip.file(np).async('string'))
+    }
+    if (!body && !notes) empty++
+    let block = '=== Slide ' + (i + 1) + ' ===\n' + (body || '[no slide text]')
+    if (notes) block += '\n[Notes] ' + notes
+    blocks.push(block)
+  }
+  const text = blocks.join('\n\n').trim() || '[No text found in PPTX]'
+  const total = slides.length
+  const imageOnly = total > 0 && empty >= (CFG.SCAN_MIN_PAGES || 2) && (empty / total) >= (CFG.SCAN_MIN_SHARE || 0.15)
+  const scanWarning = imageOnly
+    ? empty + ' of ' + total + ' slides had no extractable text - this deck may be image-only. Embedded content will be incomplete.'
+    : null
+  return { text, scanWarning, structure: { kind: 'pptx-slides', slideCount: total } }
+}
+
+async function extractLegacyPptText(file) {
+  const ab = await file.arrayBuffer()
+  const u8 = new Uint8Array(ab)
+  const ascii = new TextDecoder('latin1').decode(u8)
+  const utf16 = new TextDecoder('utf-16le').decode(u8)
+  const strings = []
+  const addMatches = (s) => {
+    const re = /[\p{L}\p{N}\p{P}\p{Zs}]{5,}/gu
+    let m
+    while ((m = re.exec(s || ''))) {
+      const t = m[0].replace(/\s+/g, ' ').trim()
+      if (t.length >= 5 && !/^\d+$/.test(t)) strings.push(t)
+    }
+  }
+  addMatches(ascii)
+  addMatches(utf16)
+  const seen = new Set()
+  const cleaned = strings.filter(t => {
+    const key = t.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, 2000)
+  const text = cleaned.join('\n')
+  if (!text) throw new Error('No readable text found in legacy .ppt. Save as .pptx or PDF and upload again.')
+  return { text, scanWarning: 'Legacy .ppt was parsed with best-effort binary text extraction. For reliable slide order/layout, save as .pptx or PDF.', structure: { kind: 'ppt-legacy-best-effort' } }
+}
+
 const EXTRACTORS = {
-  pdf: async (file) => {
-    const ab = await file.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: ab, verbosity: 0 }).promise
-    const totalPages   = pdf.numPages
-    const pages        = []
-    const emptyPageNums = []
-    for (let i = 1; i <= totalPages; i++) {
-      const page = await pdf.getPage(i)
-      const tc   = await page.getTextContent()
-      const pageText = tc.items.map(it => it.str).join(' ').trim()
-      if (!pageText) emptyPageNums.push(i)
-      pages.push({ pageNum: i, text: pageText })
-    }
-    const text = pages.map(p => p.text).join('\n').trim() || '[No text found in PDF]'
-    const emptyShare   = totalPages ? emptyPageNums.length / totalPages : 0
-    const looksScanned = emptyPageNums.length >= CFG.SCAN_MIN_PAGES && emptyShare >= CFG.SCAN_MIN_SHARE
-    const scanWarning = looksScanned
-      ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text \u2014 this PDF may be partially or fully scanned. Embedded content will be incomplete.'
-      : null
-    return { text, scanWarning, pdfDoc: scanWarning ? pdf : null, emptyPageNums, pages }
-  },
-  docx: async (file) => {
-    const ab = await file.arrayBuffer()
-    const result = await mammoth.extractRawText({ arrayBuffer: ab })
-    return { text: result.value.trim() || '[No text found in DOCX]', scanWarning: null }
-  },
-  xlsx: async (file) => {
-    const ab = await file.arrayBuffer()
-    const wb = XLSX.read(ab, { type: 'array' })
-    let out = ''
-    for (const name of wb.SheetNames) {
-      const ws  = wb.Sheets[name]
-      const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false })
-      if (csv.trim()) out += '=== Sheet: ' + name + ' ===\n' + csv + '\n\n'
-    }
-    return { text: out.trim() || '[No data found in spreadsheet]', scanWarning: null }
-  },
-  // PowerPoint (.pptx) is a zip of slide XML; unzip (JSZip) and pull the
-  // DrawingML <a:t> text runs per slide (also covers table cells). Speaker notes
-  // are resolved per slide via the slide's .rels so they attach to the right
-  // slide. Image-only decks yield no text (no OCR) and raise a scan warning.
-  pptx: async (file) => {
-    if (typeof JSZip === 'undefined') throw new Error('PPTX needs the JSZip library (offline / blocked?) — export the deck to PDF instead')
-    const zip = await JSZip.loadAsync(await file.arrayBuffer())
-    const ent = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-    const runs = xml => { const out = []; const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g; let m; while ((m = re.exec(xml))) out.push(m[1]); return ent(out.join(' ')).replace(/\s+/g, ' ').trim() }
-    const num = n => { const m = n.match(/slide(\d+)\.xml$/); return m ? +m[1] : 0 }
-    const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b))
-    const blocks = []
-    let empty = 0
-    for (let i = 0; i < slides.length; i++) {
-      const body = runs(await zip.file(slides[i]).async('string'))
-      // notes: resolve via the slide's rels (../notesSlides/notesSlideN.xml)
-      let notes = ''
-      const relsName = 'ppt/slides/_rels/' + slides[i].split('/').pop() + '.rels'
-      const relsFile = zip.file(relsName)
-      if (relsFile) {
-        const rm = (await relsFile.async('string')).match(/Target="([^"]*notesSlide\d+\.xml)"/i)
-        if (rm) {
-          const np = ('ppt/slides/' + rm[1]).replace(/[^/]+\/\.\.\//g, '')
-          if (zip.file(np)) notes = runs(await zip.file(np).async('string'))
-        }
-      }
-      if (!body && !notes) empty++
-      let block = '=== Slide ' + (i + 1) + ' ===\n' + (body || '[no slide text]')
-      if (notes) block += '\n[Notes] ' + notes
-      blocks.push(block)
-    }
-    const text = blocks.join('\n\n').trim() || '[No text found in PPTX]'
-    const total = slides.length
-    const imageOnly = total > 0 && empty >= (CFG.SCAN_MIN_PAGES || 3) && (empty / total) >= (CFG.SCAN_MIN_SHARE || 0.5)
-    const scanWarning = imageOnly
-      ? empty + ' of ' + total + ' slides had no extractable text — this deck may be image-only. Embedded content will be incomplete.'
-      : null
-    return { text, scanWarning }
-  },
+  pdf:  async (file) => extractPdfStructured(file),
+  docx: async (file) => extractDocxStructured(file),
+  xlsx: async (file) => extractXlsxStructured(file),
+  xlsm: async (file) => extractXlsxStructured(file),
+  xls:  async (file) => extractXlsxStructured(file),
+  pptx: async (file) => extractPptxStructured(file),
+  pptm: async (file) => extractPptxStructured(file),
+  ppsx: async (file) => extractPptxStructured(file),
+  potx: async (file) => extractPptxStructured(file),
+  ppt:  async (file) => extractLegacyPptText(file),
   // Any other file: read it as UTF-8 text. If it sniffs as binary (NUL bytes,
   // or a high share of U+FFFD replacement chars from undecodable bytes), reject
   // it as unsupported. queueFilesForPreview() catches this, shows a per-file
@@ -182,14 +405,13 @@ const EXTRACTORS = {
       if (head.indexOf('\u0000') !== -1 || (head.length && bad / head.length > 0.1)) {
         reject(new Error('unsupported file type (not readable as text)'))
       } else {
-        resolve({ text: s, scanWarning: null })
+        resolve({ text: s, scanWarning: null, structure: { kind: 'plain-text' } })
       }
     }
     r.onerror = () => reject(new Error('read error'))
     r.readAsText(file)
   }),
 }
-EXTRACTORS.xls = EXTRACTORS.xlsx   // legacy spreadsheet alias
 
 async function extractText(file) {
   const ext = getExt(file.name)
@@ -272,8 +494,10 @@ async function queueFilesForPreview(files, target) {
   toast('Extracting text...', 'info')
   for (const f of valid) {
     try {
-      const { text, scanWarning, pdfDoc, emptyPageNums, pages } = await extractText(f)
-      previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, pdfDoc, emptyPageNums, pages })
+      const extracted = await extractText(f)
+      const { text, scanWarning, pdfDoc, emptyPageNums, pages, structure, parseWarning } = extracted
+      previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure })
+      if (parseWarning) toast(f.name + ': ' + parseWarning, 'info')
     } catch (err) {
       toast('Could not read ' + f.name + ': ' + err.message, 'err')
     }
@@ -312,12 +536,7 @@ async function queueFilesForPreview(files, target) {
     previewQueue  = []
     previewTarget = null
     await commitDocs(items)
-    // Reset the DOCS picker (id="doc-file-in"), not the attach input — otherwise
-    // its value stays set and re-selecting the SAME filename won't refire the
-    // change event, so the upload silently does nothing. (file-in is reset
-    // separately on the attach/preview path.)
-    const docIn = document.getElementById('doc-file-in')
-    if (docIn) docIn.value = ''
+    document.getElementById('file-in').value = ''
     return
   }
 
@@ -364,7 +583,8 @@ function updateFpHint() {
   let text = total > 1
     ? `File ${previewTabIdx + 1} of ${total} — review each tab before confirming`
     : 'Review and edit the text above if needed'
-  if (f?.scanWarning) text += ' · ⚠️ ' + f.scanWarning
+  if (f?.scanWarning) text += ' · Warning: ' + f.scanWarning
+  if (f?.parseWarning) text += ' · Note: ' + f.parseWarning
   hint.textContent = text
 }
 
@@ -416,8 +636,10 @@ async function commitDocs(files) {
     const doc = {
       id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       name: f.name, size: f.size, content: f.extractedText,
+      structure: f.structure || null, sections: [], docAliases: [],
       chunks: [], status: creds ? 'pending' : 'ready', addedAt: Date.now()
     }
+    doc.docAliases = buildDocAliases(doc)
     chat.docs.push(doc)
     renderDocPanel(); updateDocsBtn()
     if (creds) {
@@ -454,7 +676,7 @@ function renderChips() {
 // merged from 43-files-embed.js
 // ---------------------------------------------------------------------------
 
-// Budget warning message + confirm dialog. Returns true to proceed with the embed.
+// Budget warning message + confirm dialog (alpha Phase 2). True = proceed.
 async function confirmEmbedBudget(name, nChunks, est, caps) {
   const k = n => n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n)))
   let msg = name + ' is ~' + nChunks + ' chunks (~' + k(est) + ' tokens).'
@@ -463,19 +685,24 @@ async function confirmEmbedBudget(name, nChunks, est, caps) {
   msg += ' Embed anyway?'
   return confirmDialog({ title: 'Embed large file?', message: msg, okText: 'Embed anyway', cancelText: 'Cancel' })
 }
-
 async function embedDoc(doc) {
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON). In #demo this
   // takes the same real path; the server returns deterministic demo vectors.
-  // Only the 16-char SHA-1 hash is stored per chunk (embHash) — the actual
-  // vector lives in the server's binary cache (embed_cache.bin).
+  // Normally only the 16-char SHA-1 hash is stored per chunk (embHash);
+  // vectors live in the server cache and are retrieved later through
+  // /api/embed-lookup. Upload embeddings always use /api/embed-batch.
   try {
     if (!creds?.embedApiKey || !creds?.embedModelId) {
       throw new Error('Embedding API key / model not configured')
     }
     const embedModel = creds.embedModelId
-    const size = creds.chunkSize || 800
-    const raw  = chunkText(doc.content, size, Math.floor(size * 0.2))
+    // Item 8: clamp chunk size to the embed model's max input (e.g. Cohere v3 = 512
+    // tokens) so no single chunk exceeds it. Default 800 chars is already safe.
+    let size = creds.chunkSize || CFG.DEFAULT_CHUNK_SIZE || 800
+    const _embMax = (typeof getEmbedMaxTokens === 'function') ? getEmbedMaxTokens(embedModel) : null
+    if (_embMax) size = Math.min(size, Math.floor(_embMax * 4 * 0.9))
+    const records = makeRagChunks(doc, size)
+    const raw = records.map(r => r.text)
     if (!raw.length) {
       doc.chunks = []; doc.status = 'ready'
       toast(doc.name + ' ready (no chunks)', 'ok')
@@ -484,80 +711,86 @@ async function embedDoc(doc) {
 
     setHealth('warn', 'Embedding 0/' + raw.length)
 
-    // Re-use existing embHash for chunks that haven't changed
+    // Re-use existing embHash for chunks that haven't changed.
+    // Metadata is refreshed every embed so section/parent context can improve
+    // without forcing unchanged text to be re-embedded.
     const existing = Array.isArray(doc.chunks) ? doc.chunks : []
     const chunks   = new Array(raw.length).fill(null)
     const toEmbed  = [], toEmbedIdx = []
 
     for (let i = 0; i < raw.length; i++) {
+      const rec = records[i]
       if (existing[i]?.text === raw[i] && existing[i]?.embHash) {
-        chunks[i] = { text: raw[i], embHash: existing[i].embHash }
+        const embHash = existing[i].embHash
+        chunks[i] = {
+          ...rec,
+          embHash,
+          chunkId: existing[i].chunkId || makeChunkId(doc, rec, i, embHash),
+          ...(Array.isArray(existing[i].embedding) ? { embedding: existing[i].embedding } : {})
+        }
       } else {
         toEmbed.push(raw[i]); toEmbedIdx.push(i)
       }
     }
 
     if (toEmbed.length) {
-      // Token-budget gate: warn ONLY when this embed (plus recent embeds in the
-      // last 60s) won't fit in the tokens left this minute, or exceeds the hard
-      // cap, or an explicit Settings "warn above" override. No fixed soft cap —
-      // that tripped on normal documents. Refresh the snapshot first so the
-      // "won't fit" check uses the live remaining budget. Cancel aborts cleanly.
+      // Token-budget gate (alpha Phase 2): warn only when this embed + recent
+      // embeds won't fit in the tokens left this minute, exceed the hard cap, or
+      // a Settings "warn above" override. Refresh the snapshot first; Cancel aborts.
       const _est = estTokens(toEmbed)
       if (typeof refreshBudget === 'function') await refreshBudget()
       const _caps = resolveEmbedCaps()
       const _recent = recentEmbedTokens()
-      const _wontFit = _caps.remaining != null && (_est + _recent) > _caps.remaining
-      const _overWarn = _caps.warnOverride != null && _est > _caps.warnOverride
-      const _overHard = _est > _caps.hard
-      const _over = _wontFit || _overWarn || _overHard
+      const _over = (_caps.remaining != null && (_est + _recent) > _caps.remaining)
+        || (_caps.warnOverride != null && _est > _caps.warnOverride)
+        || (_est > _caps.hard)
       if (_over && typeof confirmDialog === 'function') {
         const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
         if (!proceed) {
-          // A canceled, never-embedded file shouldn't linger as "pending" — drop
-          // it from the chat entirely. (If it already had chunks from a previous
-          // embed, keep those and just stop.)
           if (doc.chunks && doc.chunks.length) {
-            doc.status = 'ready'
-            doc.embedProgress = null
+            doc.status = 'ready'; doc.embedProgress = null
             toast('Embedding cancelled', 'info')
           } else {
-            const _chat = curChat()
-            if (_chat && Array.isArray(_chat.docs)) {
-              const _i = _chat.docs.findIndex(d => d.id === doc.id)
-              if (_i >= 0) _chat.docs.splice(_i, 1)
+            for (const ch of Object.values(D.chats || {})) {
+              if (Array.isArray(ch.docs)) ch.docs = ch.docs.filter(d => d.id !== doc.id)
             }
-            toast('Embedding cancelled — ' + doc.name + ' removed', 'info')
+            toast('Embedding cancelled \u2014 ' + doc.name + ' removed', 'info')
           }
           setHealth('ok', connectedLabel())
-          await persist()
-          renderDocPanel(); updateDocsBtn()
+          await persist(); renderDocPanel(); updateDocsBtn()
           return
         }
       }
-      // Show a persistent per-doc progress bar (renderDocPanel) driven by the
-      // SSE progress/pacing events forwarded from embedBatch.
-      doc.status = 'embedding'
-      doc.error  = null
+      // Persistent per-doc progress bar driven by embedBatch's SSE progress/pacing.
+      doc.status = 'embedding'; doc.error = null
       doc.embedProgress = { state: 'embedding', done: 0, total: toEmbed.length, batchDone: 0, batchTotal: 0 }
       renderDocPanel()
-      const { hashes } = await embedBatch(toEmbed, prog => {
-        doc.embedProgress = prog
-        renderDocPanel()
+      const { hashes, embeddings, storeVectors } = await embedBatch(toEmbed, prog => {
+        doc.embedProgress = prog; renderDocPanel()
       })
       noteEmbed(_est)
       for (let k = 0; k < toEmbedIdx.length; k++) {
-        chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
+        const idx = toEmbedIdx[k]
+        const rec = records[idx]
+        const embHash = hashes[k]
+        chunks[idx] = {
+          ...rec,
+          embHash,
+          chunkId: makeChunkId(doc, rec, idx, embHash),
+          ...(storeVectors && Array.isArray(embeddings?.[k]) ? { embedding: embeddings[k] } : {})
+        }
       }
     }
+
     doc.chunks = chunks.filter(Boolean)
+    ragKeywordIndexCache = { signature: '', index: null, records: [] }
     doc.status = 'ready'
     doc.embedProgress = null
     persist()
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     renderDocPanel()
-    if (typeof refreshBudget === 'function') refreshBudget()   // pull the post-embed snapshot for the next fit check
+    if (typeof refreshBudget === 'function') refreshBudget()
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
@@ -567,32 +800,32 @@ async function embedDoc(doc) {
     renderDocPanel()
   }
 }
-// Retry embedding a single doc that previously failed. Chunks already embedded
-// keep their embHash and are skipped inside embedDoc, so a retry RESUMES from
-// where it stopped rather than re-embedding everything.
+// Retry embedding a doc that previously failed. Chunks already embedded keep
+// their embHash and are skipped inside embedDoc, so retry RESUMES.
 async function retryEmbed(id, event) {
   if (event) event.stopPropagation()
-  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
-  const doc = chat.docs.find(d => d.id === id)
-  if (!doc) return
-  await embedDoc(doc)
+  const found = findDocInAnyChat(id)
+  if (!found) return
+  await embedDoc(found.doc)
   await persist()
 }
-// Remove an embedded document: evict its vectors, drop it from chat.docs,
-// persist, and refresh the panel.
+// Remove an embedded document across all chats (shared RAG memory), then GC
+// orphaned vectors. Optimistic: card drops + panel refreshes immediately.
 async function removeDoc(id, event) {
   if (event) event.stopPropagation()
-  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
-  const idx = chat.docs.findIndex(d => d.id === id)
-  if (idx === -1) return
-  const doc = chat.docs.splice(idx, 1)[0]
-  // Optimistic UI: drop the card and refresh immediately so the ✕ feels instant,
-  // then persist the doc list and prune orphaned vectors in the background. The
-  // two server round-trips no longer block the card from disappearing.
+  const found = findDocInAnyChat(id)
+  if (!found) return
+  const doc = found.doc
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    ch.docs = ch.docs.filter(d => d.id !== id)
+  }
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
   renderDocPanel(); updateDocsBtn()
-  toast('Removed ' + doc.name, 'ok')
+  toast('Removed ' + doc.name + ' from RAG memory', 'ok')
   ;(async () => {
     try { await persist() } catch (e) { console.warn('[removeDoc] persist', e.message) }
     try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc] gc', e.message) }
   })()
 }
+
