@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Whole-doc split + map-reduce summaries (alpha)
+
+Turns the over-limit whole-doc summary from a dead-end into a completed job. Version stays v0.67d.
+
+- When a whole-doc turn exceeds the token cap and the chat has ready docs, the guard now OFFERS to split it into one request per document (`offerDocSplit`) instead of only declining. Accepting runs them sequentially (`runSplitSummaries`), paced ~1.2s apart, each summary streamed as its own message; Stop aborts the rest.
+- A single document that is itself over-cap is summarised map-reduce style (`summariseDoc`): split into cap-sized parts, summarise each, then combine the part-summaries into one — nothing dropped.
+- A partial-budget 429 mid-run is waited out and retried; an unwinnable/terminal error skips just that doc with a note. New helpers `streamChatOnce`/`summariseInto`; `onToken` added to the build.js undefined-fn allowlist (callback param).
+
 ## 2 Jul 2026 — Stronger light-mode contrast (alpha)
 
 First contrast pass was too soft in practice. Version stays v0.67d.
