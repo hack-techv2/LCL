@@ -562,13 +562,21 @@ function getAllChunkRecords(docs) {
 async function hydrateChunkEmbeddings(records) {
   const needLookup = records.filter(c => c.embHash && !c.embedding)
   if (!needLookup.length) return
+  // The server caps /api/embed-lookup at 1500 hashes per request (400 above that).
+  // A large corpus (big docs + shared past-chat memory) easily exceeds that, so
+  // batch the lookup — otherwise vector hydration fails and retrieval silently
+  // degrades to keyword-only (docs only found when the query matches literally).
+  const BATCH = 1000
   try {
-    const r = await httpPost('/api/embed-lookup', { hashes: needLookup.map(c => c.embHash) })
-    if (!r.ok) throw new Error('lookup HTTP ' + r.status)
-    const data = await r.json()
-    const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
-    for (let i = 0; i < needLookup.length; i++) {
-      if (Array.isArray(vecs[i])) needLookup[i].embedding = vecs[i]
+    for (let i = 0; i < needLookup.length; i += BATCH) {
+      const slice = needLookup.slice(i, i + BATCH)
+      const r = await httpPost('/api/embed-lookup', { hashes: slice.map(c => c.embHash) })
+      if (!r.ok) throw new Error('lookup HTTP ' + r.status)
+      const data = await r.json()
+      const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
+      for (let j = 0; j < slice.length; j++) {
+        if (Array.isArray(vecs[j])) slice[j].embedding = vecs[j]
+      }
     }
   } catch (e) {
     console.warn('[hydrateChunkEmbeddings] lookup failed:', e.message)
