@@ -1098,7 +1098,11 @@ async function retrieveRagChunks(query, docs, topK, stickyChunks) {
     const ranked = rerankMode === 'none' ? candidates.map(c => ({ ...c, retrievalEvidence: retrievalEvidence(query, c) })) : heuristicRerank(query, candidates)
     const filtered = ranked.filter(h => isRelevantHit(query, h))
     if (!filtered.length) {
-      best = []
+      // No candidate cleared the relevance bar. Rather than return zero context
+      // (leaving a general/paraphrased query ungrounded on a doc the user just
+      // embedded), fall back to the best-scoring candidates. displayedSourceNames
+      // still gates what shows as a cited source, so no misleading citation.
+      best = ranked.slice(0, finalSlots)
       break
     }
     const selected = filtered.slice(0, finalSlots).map(h => {
