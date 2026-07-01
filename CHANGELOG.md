@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Diagnostic logging upgrade (alpha)
+
+Richer debug_logs.txt so alpha bug reports capture the chat path and the browser side, without ever persisting message content. Version stays v0.67d.
+
+- **Stream response detail** (`server.txt`, `callGccStreaming`): the streaming chat path now logs full response headers (parity with the buffered path), the GovTech `x-models-call-id` correlation id, time-to-first-byte, total duration, SSE byte/event counts, and the terminal `finish_reason` + `usage` (prompt/completion/total tokens) parsed from the final SSE event. Counts only — the message text is never logged. Previously a chat turn logged just status + 'upstream end'.
+- **Browser action breadcrumbs** (`src/10-state.js` helper `lclCrumb`, wired in `30-chatlist`, `40-files`, `50-chatprocessing`, `18-store`): key UI actions (send, stop, regenerate, new/switch/delete chat, attach files, save settings) tee to `/api/clientlog` at info level as `[crumb] …` lines — event name + safe metadata (model, char/byte sizes, ids) only, no message content. Local only; no remote telemetry. Complements the existing console.error/warn + uncaught-error capture.
+- **Chunk-noise reduction** (`server.txt`, buffered path): per-chunk `chunk bytes = …` lines (dozens per embed batch) are off by default and collapsed into a one-line `response body | N chunks | M bytes` summary. Set `LCL_LOG_CHUNKS=1` to restore per-chunk lines.
+
 ## 1 Jul 2026 — v0.67e RAG integration (alpha)
 
 Integration of a contributor's v0.67e RAG rebuild onto alpha, merged module-by-module
