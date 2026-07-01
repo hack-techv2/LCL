@@ -297,6 +297,7 @@ async function runStream(chat, payload, ragSources) {
     // parsed the error body + classified it; we own the response UX here.
     if (!r.ok) {
       const errData = r.errData
+      if (typeof lclCrumb === 'function') lclCrumb('chat_error', { status: r.status, kind: r.kind, reset: r.resetMs ? 'parsed' : 'none' })
       try { typingEl.remove() } catch {}
 
       // 429 with a usable reset time → countdown + auto-retry when it expires.
