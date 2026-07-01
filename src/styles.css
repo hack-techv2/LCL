@@ -704,3 +704,11 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 
 /* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
 .rag-term{border-bottom:1px dotted currentColor;cursor:help}
+
+/* Embed 'Search mode' segmented control (Auto / Specific / Whole doc). */
+.dp-search-label{font-size:11px;font-weight:500;color:var(--tx2);margin-bottom:2px}
+.dp-seg{display:flex;border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
+.dp-seg-btn{flex:1;padding:6px 4px;font-size:11px;background:transparent;color:var(--tx2);border:none;border-left:1px solid var(--bdr);cursor:pointer}
+.dp-seg-btn:first-child{border-left:none}
+.dp-seg-btn.on{background:var(--ac);color:#fff;font-weight:500}
+.dp-scope{margin-top:2px}
