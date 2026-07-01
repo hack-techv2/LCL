@@ -5,12 +5,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Local Comet LLM (LCL)</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- pdf.js v5 (ESM) via jsDelivr — exposes window.pdfjsLib for the app; fixes CVE-2024-4367 in 3.11.174 -->
+<script type="module">
+  import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.min.mjs";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs";
+  window.pdfjsLib = pdfjsLib;
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/minisearch@7.2.0/dist/umd/index.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap');
 :root {
@@ -702,6 +708,12 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-new{color:var(--ok)}
 .upd-exp{font-size:11px;font-weight:600;color:#fff;background:var(--ac);padding:2px 8px;border-radius:5px}
 
+/* Shared RAG memory toggle (v0.67e item 3) */
+.dp-options{margin:0 10px 8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);display:flex;flex-direction:column;gap:6px}
+.dp-check{display:flex;align-items:flex-start;gap:8px;color:var(--tx2);font-size:12px;line-height:1.4;cursor:pointer}
+.dp-check input{margin-top:2px;accent-color:var(--ac)}
+.dp-check small{display:block;color:var(--tx3);font-size:10px;line-height:1.35;margin-top:2px}
+
 </style>
 </head>
 <body>
@@ -755,8 +767,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           <div class="sl-ticks"><span>200</span><span>2000</span></div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="1" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
-          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
+          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sl"><input type="range" min="3" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
           <div class="sl-ticks"><span>1</span><span>10</span></div>
         </div>
         <div class="sf">
@@ -971,6 +983,12 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <input type="file" id="doc-file-in" style="display:none" multiple
           onchange="uploadDocs(this.files)">
       </label>
+      <div class="dp-options">
+        <label class="dp-check" title="Allow this chat to search files embedded in previous chats. Turn this off to only use files uploaded in this chat.">
+          <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
+          <span>Search past embeddings<small>Use files embedded in previous chats as shared RAG memory for this chat.</small></span>
+        </label>
+      </div>
       <div class="dp-body" id="dp-body"></div>
     </div>
   </div>
@@ -989,18 +1007,43 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 const CFG = {
   // Tokens
   MAX_TOKENS_CAP: 131072,   // hard ceiling accepted by Save (custom input)
-  MAX_TOKENS_SLIDER: 32768, // slider max (custom input may exceed, up to CAP)
+  MAX_TOKENS_SLIDER: 32768, // slider max 
   DEFAULT_MAX_TOKENS: 8192,
 
   // Chat / RAG
-  DOC_FULLTEXT_LIMIT: 200000, // chars; below this a doc is sent in full vs RAG
+  DOC_FULLTEXT_LIMIT: 10000,  // chars; conservative fallback for unknown/custom models
+  DOC_FULLTEXT_FLOOR: 40000,  // item 2a: min full-text budget when model window is known
+  DOC_FULLTEXT_CEILING: 250000, // item 2a: max full-text budget (cost/latency/quality cap)
   STICKY_CHUNK_RATIO: 0.3,    // share of topK reserved for previous-turn chunks
   RATE_LIMIT_GRACE_MS: 2000,  // extra wait past a 429 reset before auto-retry
+
+  // Retrieval pipeline
+  DEFAULT_RETRIEVAL_MODE: 'hybrid', // vector | keyword | hybrid | auto
+  DEFAULT_RERANK_MODE: 'heuristic', 
+  HYBRID_RRF_K: 60,
+  HYBRID_CANDIDATE_MULT: 5,
+  HYBRID_MAX_CANDIDATES: 80,
+  MAX_RETRIEVAL_ROUNDS: 2,
+  ENABLE_AUTO_RETRIEVE_MORE: true,
+  RETRIEVAL_MIN_VECTOR_SCORE: 0.4,
+  RETRIEVAL_STRONG_VECTOR_SCORE: 0.48,
+  RETRIEVAL_SHORT_QUERY_MIN_VECTOR_SCORE: 0.4,
+  RETRIEVAL_MIN_TERM_COVERAGE: 0.5,
+  CONTEXT_EXPAND_NEIGHBORS: 1,
+  CONTEXT_EXPAND_MIN_VECTOR_SCORE: 0.4,
+  CONTEXT_EXPAND_MIN_TERM_COVERAGE: 0.4,
+  CONTEXT_MAX_CHARS: 40000,
+  PARENT_SECTION_MAX_CHARS: 4000,
+  STRUCTURAL_SECTION_MAX_CHARS: 40000,
+  SUFFICIENCY_MIN_TERM_COVERAGE: 0.6,
 
   // Chunking / embeddings
   DEFAULT_CHUNK_SIZE: 800,
   CHUNK_OVERLAP_RATIO: 0.2,
   MIN_CHUNK_CHARS: 40,
+  MIN_SECTION_CHARS: 160,
+  TOP_K_MIN: 3,
+  TOP_K_MAX: 10,
   DEFAULT_TOP_K: 5,
   HASH_LEN: 16,               // shared with server hashText() — keep in sync
 
@@ -1061,7 +1104,52 @@ const MODEL_TIERS = {
 
 const EMBED_TIERS = {
   cce: [ { label: 'Embedding models', ids: ['cohere.embed-english-v3','cohere.embed-multilingual-v3','gemini-embedding-001'] } ],
-  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0'] } ],
+  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0','gemini-embedding-2'] } ],
+}
+
+// ---------------------------------------------------------------------------
+// Model context windows (tokens) — powers query-aware full-document injection
+// (dynamic scaling, v0.67e item 2). Source: PlatformAI Models panel
+// (see MODEL_CONTEXT_REFERENCE.md). Keyed by prefix-stripped base model+version;
+// provider prefixes (azure./bedrock./vertex_ai./rsn./cce./rsn.vertex_ai.) do NOT
+// change the window. Unknown / "Custom…" ids fall back to CFG.DOC_FULLTEXT_FLOOR.
+// ---------------------------------------------------------------------------
+const MODEL_CONTEXT = {
+  'claude-3-5-sonnet': 200000, 'claude-haiku-4-5': 200000,
+  'claude-opus-4-1': 200000,  'claude-opus-4-5': 200000,
+  'claude-opus-4-6': 1000000, 'claude-opus-4-7': 1000000, 'claude-opus-4-8': 1000000,
+  'claude-sonnet-4-0': 1000000, 'claude-sonnet-4-5': 1000000, 'claude-sonnet-4-6': 1000000,
+  'gpt-4o': 128000, 'gpt-4o-mini': 128000, 'gpt-4o-pt': 128000,
+  'gpt-4.1': 1047576, 'gpt-4.1-mini': 1047576, 'gpt-4.1-nano': 1047576,
+  'o3': 200000, 'o3-mini': 200000, 'o4-mini': 200000,
+  'gpt-5': 272000, 'gpt-5-mini': 272000, 'gpt-5-nano': 272000,
+  'gpt-5.1': 272000, 'gpt-5.2': 272000, 'gpt-5.2-chat': 111616, 'gpt-5.3-codex': 272000,
+  'gpt-5.4': 1050000, 'gpt-5.4-pro': 1050000, 'gpt-5.5': 1050000,
+  'gemini-2.5-flash': 1048576, 'gemini-2.5-flash-pt': 1048576, 'gemini-2.5-flash-lite': 1048576,
+  'gemini-2.5-pro': 1048576, 'gemini-3-flash-preview': 1048576,
+  'gemini-3.1-flash-lite': 1000000, 'gemini-3.1-flash-lite-preview': 1048576,
+  'gemini-3.1-pro-preview': 1048576, 'gemini-3.5-flash': 1000000,
+}
+// Embed models: max input tokens per request (governs chunk/batch sizing, item 8).
+const EMBED_MAX_TOKENS = {
+  'cohere.embed-english-v3': 512, 'cohere.embed-multilingual-v3': 512,
+  'cohere.embed-v4:0': 128000, 'gemini-embedding-001': 2048, 'gemini-embedding-2': 8192,
+  'text-embedding-3-large': 8192, 'text-embedding-3-small': 8192, 'text-embedding-ada-002': 8192,
+}
+function normalizeModelId(id) {
+  return (id || '').trim().replace(/^(rsn\.vertex_ai\.|rsn\.|cce\.|azure\.|bedrock\.|vertex_ai\.)/, '')
+}
+// Chat-model context window in tokens, or null when unknown (caller uses floor).
+function getModelContext(id) { return MODEL_CONTEXT[normalizeModelId(id)] || null }
+// Embed-model max input tokens, or null when unknown.
+function getEmbedMaxTokens(id) { return EMBED_MAX_TOKENS[(id || '').trim()] || null }
+// clampTopK: constrain Top-K to CFG bounds (3-10, default 5) — v0.67e item 5.
+function clampTopK(v) {
+  const n = parseInt(v, 10)
+  const min = CFG.TOP_K_MIN || 3
+  const max = CFG.TOP_K_MAX || 10
+  const dft = CFG.DEFAULT_TOP_K || 5
+  return Math.max(min, Math.min(max, isNaN(n) ? dft : n))
 }
 
 function tierGroups(kind, tier) {
@@ -1181,6 +1269,7 @@ let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
 const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
 let ragStickyChunks = []
+let ragKeywordIndexCache = { signature: '', index: null, records: [] }   // v0.67e: MiniSearch keyword-index cache (invalidated on embed/remove)
 
 // =============================================================================
 // Reliability layer: fetchWithRetry + health pill
@@ -1351,16 +1440,326 @@ function cosine(a, b) {
   return dot / (Math.sqrt(na)*Math.sqrt(nb) + 1e-10)
 }
 
-function chunkText(text, size, overlap) {
-  size=size||800; overlap=overlap||150
-  const chunks=[]; let i=0
-  while (i<text.length) {
-    const end=Math.min(i+size, text.length)
-    chunks.push(text.slice(i,end).trim())
-    if (end===text.length) break
-    i+=size-overlap
+function chunkTextWithOffsets(text, size, overlap) {
+  text = String(text || '')
+  size = size || CFG.DEFAULT_CHUNK_SIZE
+  overlap = Math.min(overlap || Math.floor(size * CFG.CHUNK_OVERLAP_RATIO), Math.floor(size * 0.5))
+  const chunks = []
+  let i = 0
+  while (i < text.length) {
+    const end = Math.min(i + size, text.length)
+    const raw = text.slice(i, end)
+    const trimmed = raw.trim()
+    if (trimmed.length > (CFG.MIN_CHUNK_CHARS || 40)) {
+      const leading = raw.length - raw.trimStart().length
+      chunks.push({ text: trimmed, start: i + leading, end })
+    }
+    if (end === text.length) break
+    i += Math.max(1, size - overlap)
   }
-  return chunks.filter(c=>c.length>40)
+  return chunks
+}
+
+function normalizeRagText(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim()
+}
+
+function normalizeSearchPhrase(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\.[a-z0-9]{1,5}$/i, '')
+    .replace(/[^a-z0-9.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function titleCaseCandidate(s) {
+  return String(s || '')
+    .replace(/^#+\s*/, '')
+    .replace(/^===\s*|\s*===$/g, '')
+    .replace(/^\d+(?:\.\d+)*[a-z]?\s*[).:-]?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseSectionNumber(title) {
+  const raw = String(title || '').replace(/^#+\s*/, '').trim()
+  const m = raw.match(/^(?:(?:section|sections|clause|clauses|point|points|part|article|item|para|paragraph|subsection)\s*)?(\d+(?:\.\d+)*[a-z]?)(?=\s|[).:-]|$)/i)
+  return m ? m[1].toLowerCase() : null
+}
+
+function sectionDepthFromNo(no) {
+  no = String(no || '').trim()
+  return no ? no.split('.').length : null
+}
+
+function parentSectionNo(no) {
+  no = String(no || '').trim()
+  if (!no || !no.includes('.')) return null
+  return no.split('.').slice(0, -1).join('.')
+}
+
+function sectionRefMatches(sectionNo, ref) {
+  sectionNo = String(sectionNo || '').toLowerCase().trim()
+  ref = String(ref || '').toLowerCase().trim()
+  return !!sectionNo && !!ref && (sectionNo === ref || sectionNo.startsWith(ref + '.'))
+}
+
+function extractSectionRefs(q) {
+  const refs = []
+  const seen = new Set()
+  const re = /\b(?:section|sections|clause|clauses|point|points|part|article|item|para|paragraph|subsection)\s*(?:no\.?|number|#)?\s*(\d+(?:\.\d+)*[a-z]?)\b/gi
+  let m
+  while ((m = re.exec(q || ''))) {
+    const v = m[1].toLowerCase()
+    if (!seen.has(v)) { seen.add(v); refs.push(v) }
+  }
+  return refs
+}
+
+function enrichSectionMeta(section) {
+  const sectionNo = section?.sectionNo || parseSectionNumber(section?.title) || parseSectionNumber(section?.text)
+  const depth = sectionDepthFromNo(sectionNo)
+  return {
+    ...section,
+    sectionNo: sectionNo || null,
+    sectionDepth: depth,
+    parentSectionNo: sectionNo ? parentSectionNo(sectionNo) : null
+  }
+}
+
+function inferHeadingNumbers(text) {
+  const lines = String(text || '').split('\n')
+  const headings = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+(.+)$/)
+    if (m) headings.push({ i, level: m[1].length, title: m[2].trim() })
+  }
+  if (headings.length < 3) return text
+  const numbered = headings.filter(h => parseSectionNumber(h.title)).length
+  if (numbered >= Math.max(2, Math.ceil(headings.length * 0.25))) return text
+
+  let start = 0
+  const h1s = headings.filter(h => h.level === 1)
+  if (h1s.length > 1) {
+    const first = normalizeSearchPhrase(h1s[0].title)
+    if (first.length > 70 || /\b(code of practice|annual report|report|handbook|manual|standard|guideline|revision|edition|policy document)\b/.test(first)) {
+      start = headings.findIndex(h => h.i === h1s[1].i)
+    }
+  }
+
+  const nums = []
+  for (let hi = 0; hi < headings.length; hi++) {
+    const h = headings[hi]
+    const m = lines[h.i].match(/^(#{1,6})\s+(.+)$/)
+    if (!m) continue
+    const currentNo = parseSectionNumber(m[2])
+    if (currentNo) {
+      const parts = currentNo.split('.').map(x => parseInt(x, 10)).filter(n => Number.isFinite(n))
+      for (let j = 0; j < parts.length; j++) nums[j] = parts[j]
+      nums.length = parts.length
+      continue
+    }
+    if (hi < start) continue
+    const level = h.level
+    for (let j = 0; j < level - 1; j++) if (!nums[j]) nums[j] = 1
+    nums[level - 1] = (nums[level - 1] || 0) + 1
+    nums.length = level
+    const no = nums.join('.')
+    lines[h.i] = m[1] + ' ' + no + ' ' + m[2].trim()
+  }
+  return lines.join('\n')
+}
+
+function acronymFromPhrase(s) {
+  const words = normalizeSearchPhrase(s).split(' ').filter(w => w && !/^\d/.test(w))
+  if (words.length < 2) return ''
+  const ac = words.map(w => w[0]).join('')
+  return ac.length >= 2 && ac.length <= 12 ? ac : ''
+}
+
+function firstDocTitle(doc) {
+  const sections = Array.isArray(doc?.sections) ? doc.sections : []
+  for (const s of sections.slice(0, 6)) {
+    const t = titleCaseCandidate(s?.title || '')
+    if (t && t.toLowerCase() !== 'document') return t
+  }
+  const m = String(doc?.content || '').match(/^#{1,2}\s+(.+)$/m)
+  return m ? titleCaseCandidate(m[1]) : ''
+}
+
+function buildDocAliases(doc) {
+  const values = []
+  const add = v => {
+    v = normalizeSearchPhrase(v)
+    if (v && v.length >= 2 && !values.includes(v)) values.push(v)
+  }
+  const name = String(doc?.name || '')
+  const base = name.replace(/\.[^.]+$/, '')
+  add(name); add(base)
+  base.split(/[\s_\-()[\]{}]+/).forEach(add)
+  add(acronymFromPhrase(base))
+  const title = firstDocTitle(doc)
+  add(title); add(acronymFromPhrase(title))
+  if (Array.isArray(doc?.docAliases)) doc.docAliases.forEach(add)
+  if (Array.isArray(doc?.aliases)) doc.aliases.forEach(add)
+  return values
+}
+
+function docAliasesText(doc) {
+  return buildDocAliases(doc).join(' ')
+}
+
+function analyzeRagQuery(query, docs) {
+  const terms = tokenizeQuery(query)
+  const sectionRefs = extractSectionRefs(query)
+  const structuralTerms = new Set(['section','sections','clause','clauses','point','points','part','article','item','para','paragraph','subsection'])
+  const docTerms = terms.filter(t => !/^\d/.test(t) && !structuralTerms.has(t))
+  const qNorm = normalizeSearchPhrase(query)
+  const docMatches = []
+  for (const doc of docs || []) {
+    const aliases = buildDocAliases(doc)
+    const name = normalizeSearchPhrase(doc?.name || '')
+    let score = 0
+    for (const a of aliases) {
+      if (!a || a.length < 2) continue
+      if (qNorm === a) score += 12
+      else if (qNorm.includes(a) && a.length >= 3) score += Math.min(10, 2 + a.length / 3)
+    }
+    for (const t of docTerms) {
+      if (hasTerm(name, t)) score += 4
+      if (aliases.some(a => hasTerm(a, t) || a === t)) score += 5
+    }
+    if (score > 0) docMatches.push({ doc, score })
+  }
+  docMatches.sort((a, b) => b.score - a.score)
+  return { query, terms, sectionRefs, docTerms, docMatches }
+}
+
+function narrowDocsForQuery(plan, docs) {
+  docs = docs || []
+  const matches = plan?.docMatches || []
+  if (!matches.length) return docs
+  const best = matches[0].score
+  const floor = Math.max(4, best * 0.45)
+  const picked = matches.filter(m => m.score >= floor).map(m => m.doc)
+  return picked.length ? picked : docs
+}
+
+function splitIntoRagSections(text) {
+  text = normalizeRagText(text)
+  const lines = text.split('\n')
+  const sections = []
+  let pageNum = null
+  let headingPath = []
+  let cur = null
+  let charCursor = 0
+
+  function startSection(title, kind) {
+    flush()
+    cur = { title: title || 'Document', kind: kind || 'body', headingPath: headingPath.slice(), pageStart: pageNum, pageEnd: pageNum, lines: [], charStart: charCursor }
+    if (title) cur.lines.push(title)
+  }
+  function flush() {
+    if (!cur) return
+    const body = cur.lines.join('\n').trim()
+    if (body.length >= (CFG.MIN_SECTION_CHARS || 120) || !sections.length) {
+      sections.push(enrichSectionMeta({
+        sectionIndex: sections.length,
+        sectionId: 'sec_' + sections.length,
+        title: cur.title || 'Document',
+        kind: cur.kind || 'body',
+        headingPath: cur.headingPath || [],
+        pageStart: cur.pageStart,
+        pageEnd: cur.pageEnd,
+        charStart: cur.charStart || 0,
+        charEnd: cur.charStart + body.length,
+        text: body
+      }))
+    } else if (sections.length) {
+      sections[sections.length - 1].text += '\n' + body
+      sections[sections.length - 1].charEnd += body.length + 1
+      sections[sections.length - 1].pageEnd = cur.pageEnd || sections[sections.length - 1].pageEnd
+    }
+    cur = null
+  }
+
+  for (const line of lines) {
+    const t = line.trim()
+    const pageM = t.match(/^===\s*Page\s+(\d+)\s*===/i)
+    const structuralM = t.match(/^===\s*(Slide\s+\d+|Sheet:\s*.+?)\s*===/i)
+    const headingM = t.match(/^(#{1,6})\s+(.+)$/)
+
+    if (pageM) {
+      pageNum = parseInt(pageM[1], 10)
+      startSection(t, 'page')
+    } else if (structuralM) {
+      startSection(t, 'structure')
+    } else if (headingM) {
+      const level = headingM[1].length
+      const heading = headingM[2].trim()
+      headingPath = headingPath.slice(0, Math.max(0, level - 1))
+      headingPath[level - 1] = heading
+      headingPath = headingPath.filter(Boolean)
+      startSection(t, 'heading')
+    } else {
+      if (!cur) startSection(headingPath[headingPath.length - 1] || 'Document', 'body')
+      cur.lines.push(line)
+      if (pageNum) cur.pageEnd = pageNum
+    }
+    charCursor += line.length + 1
+  }
+  flush()
+
+  if (!sections.length && text) {
+    sections.push(enrichSectionMeta({ sectionIndex: 0, sectionId: 'sec_0', title: 'Document', kind: 'body', headingPath: [], pageStart: null, pageEnd: null, charStart: 0, charEnd: text.length, text }))
+  }
+  return sections
+}
+
+function makeRagChunks(doc, size) {
+  const sections = splitIntoRagSections(doc.content || '')
+  doc.sections = sections.map((s, i) => enrichSectionMeta({ ...s, sectionId: s.sectionId || ('sec_' + i), sectionIndex: i }))
+  doc.docAliases = buildDocAliases(doc)
+
+  const chunks = []
+  const overlap = Math.floor(size * (CFG.CHUNK_OVERLAP_RATIO || 0.2))
+  for (const sec of doc.sections) {
+    const childParts = sec.text.length <= Math.floor(size * 1.35)
+      ? [{ text: sec.text, start: 0, end: sec.text.length }]
+      : chunkTextWithOffsets(sec.text, size, overlap)
+    for (let j = 0; j < childParts.length; j++) {
+      const part = childParts[j]
+      chunks.push({
+        text: part.text,
+        docId: doc.id,
+        docName: doc.name,
+        chunkIndex: chunks.length,
+        chunkIndexInSection: j,
+        sectionId: sec.sectionId,
+        sectionIndex: sec.sectionIndex,
+        sectionNo: sec.sectionNo || null,
+        sectionDepth: sec.sectionDepth || null,
+        parentSectionNo: sec.parentSectionNo || null,
+        sectionTitle: sec.title,
+        headingPath: sec.headingPath || [],
+        pageStart: sec.pageStart,
+        pageEnd: sec.pageEnd,
+        charStart: sec.charStart + (part.start || 0),
+        charEnd: sec.charStart + (part.end || part.text.length)
+      })
+    }
+  }
+  return chunks
+}
+
+function makeChunkId(doc, rec, i, embHash) {
+  return [doc.id || 'doc', rec.sectionId || 'sec', i, embHash || 'nohash'].join(':')
 }
 
 // ---------------------------------------------------------------------------
@@ -1381,124 +1780,765 @@ async function hashText(s) {
 async function embedBatch(texts, onProgress) {
   const embedModel = creds?.embedModelId
   if (!embedModel) throw new Error('No embedding model configured')
+  if (!creds?.embedApiKey) throw new Error('No embedding API key configured')
 
-  return new Promise((resolve, reject) => {
-    httpPost('/api/embed-batch', {
+  const inputs = (texts || []).map(t => String(t || '')).filter(t => t.trim())
+  if (!inputs.length) return { embeddings: [], hashes: [], storeVectors: false }
+
+  const MAX_POST_TEXTS = 1500
+  const MAX_POST_CHARS = 8 * 1024 * 1024
+
+  function shortBody(t) {
+    return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 700)
+  }
+
+  function isVector(v) {
+    return Array.isArray(v) && v.length > 0 && v.every(n => typeof n === 'number' && Number.isFinite(n))
+  }
+
+  function extractEmbeddingsFromAnyJson(data) {
+    if (!data) return []
+    if (Array.isArray(data.data)) {
+      const rows = data.data.slice().sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0))
+      const vecs = rows.map(r => r && r.embedding).filter(isVector)
+      if (vecs.length) return vecs
+    }
+    if (Array.isArray(data.embeddings)) {
+      if (isVector(data.embeddings)) return [data.embeddings]
+      const vecs = data.embeddings.filter(isVector)
+      if (vecs.length) return vecs
+    }
+    if (isVector(data.embedding)) return [data.embedding]
+    const candidates = [data.output, data.result, data.results, data.response]
+    for (const c of candidates) {
+      if (!c) continue
+      if (isVector(c.embedding)) return [c.embedding]
+      if (isVector(c)) return [c]
+      if (Array.isArray(c)) {
+        const vecs = c.map(x => (x && x.embedding) || x).filter(isVector)
+        if (vecs.length) return vecs
+      }
+    }
+    return []
+  }
+
+  function embedErrorFromJson(data, status) {
+    const msg = data?.error?.message || data?.error || data?.message || data?.detail || ('HTTP ' + status)
+    return typeof msg === 'string' ? msg : JSON.stringify(msg)
+  }
+
+  function splitEmbedInputs(items) {
+    const groups = []
+    let cur = []
+    let chars = 0
+    for (const item of items) {
+      const len = item.length
+      if (cur.length && (cur.length >= MAX_POST_TEXTS || chars + len > MAX_POST_CHARS)) {
+        groups.push(cur)
+        cur = []
+        chars = 0
+      }
+      cur.push(item)
+      chars += len
+    }
+    if (cur.length) groups.push(cur)
+    return groups
+  }
+
+  async function normaliseBatchResult(result, expectedInputs) {
+    const embeddings = Array.isArray(result?.embeddings) ? result.embeddings : []
+    if (embeddings.length !== expectedInputs.length) {
+      throw new Error('Embed response count mismatch: got ' + embeddings.length + ', expected ' + expectedInputs.length)
+    }
+    const hashes = Array.isArray(result?.hashes) && result.hashes.length === expectedInputs.length
+      ? result.hashes
+      : await Promise.all(expectedInputs.map(t => hashText(embedModel + ':' + t)))
+    return { embeddings, hashes }
+  }
+
+  async function embedBatchRequest(batchInputs, groupNum, groupTotal) {
+    if (groupTotal > 1 && !onProgress) {
+      toast('Embedding request group ' + groupNum + '/' + groupTotal + ' (' + batchInputs.length + ' chunks)', 'info')
+    }
+
+    const res = await httpPost('/api/embed-batch', {
       apiKey:  creds?.embedApiKey,
       modelId: embedModel,
-      inputs:  texts
-    }).then(async res => {
-      const contentType = res.headers.get('content-type') || ''
+      inputs:  batchInputs
+    })
 
-      if (contentType.includes('application/json')) {
-        const data = await res.json()
-        if (!res.ok) return reject(new Error('Embed failed: ' + (data.error || res.status)))
-        if (!data || !Array.isArray(data.embeddings)) return reject(new Error('Embed response missing embeddings'))
-        return resolve({ embeddings: data.embeddings, hashes: data.hashes })
-      }
+    const contentType = (res.headers.get('content-type') || '').toLowerCase()
 
-      if (!contentType.includes('text/event-stream')) {
-        return reject(new Error('Unexpected content-type: ' + contentType))
-      }
+    if (contentType.includes('application/json')) {
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error('Embed failed: ' + embedErrorFromJson(data, res.status))
+      const embeddings = extractEmbeddingsFromAnyJson(data)
+      return normaliseBatchResult({ embeddings, hashes: data.hashes || [] }, batchInputs)
+    }
 
-      // Shared SSE consumption (streamSse, 12-transport); events resolve/reject
-      // the outer promise. A normal end without a done event is an error.
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error('Embed failed (' + res.status + ', ' + (contentType || 'no content-type') + '): ' + shortBody(body))
+    }
+
+    if (!contentType.includes('text/event-stream')) {
+      const body = await res.text().catch(() => '')
+      const hint = contentType.includes('text/html')
+        ? ' The running server returned HTML instead of /api/embed-batch. Restart Node.js with the matching server.txt, then retry.'
+        : ''
+      throw new Error('Embed failed: expected JSON/SSE from /api/embed-batch but got ' + (contentType || 'no content-type') + '. ' + shortBody(body) + hint)
+    }
+
+    const streamed = await new Promise(async (resolve, reject) => {
       let settled = false
-      await streamSse(res, payload => {
-        let evt
-        try { evt = JSON.parse(payload) } catch { return }
-        if (evt.type === 'progress') {
-          // Drive the per-doc progress bar (renderDocPanel) instead of a
-          // transient toast. setHealth keeps the top-bar status in sync.
-          if (onProgress) onProgress({ state: 'embedding', done: evt.done, total: evt.total,
-                                       batchDone: evt.batchDone, batchTotal: evt.batchTotal })
-          if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
-        } else if (evt.type === 'pacing') {
-          // Server is waiting out the API rate-limit window. The bar switches to
-          // its amber 'pacing' state with a countdown so the UI doesn't look frozen.
-          if (onProgress) onProgress({ state: 'pacing', done: evt.done, total: evt.total,
-                                       batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
-          if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
-        } else if (evt.type === 'done') {
-          settled = true; resolve({ embeddings: evt.embeddings, hashes: evt.hashes })
-        } else if (evt.type === 'error') {
-          settled = true; reject(new Error(evt.message))
-        }
-      })
-      if (!settled) reject(new Error('SSE stream ended without a done event'))
-    }).catch(reject)
-  })
+      try {
+        await streamSse(res, payload => {
+          let evt
+          try { evt = JSON.parse(payload) } catch { return }
+          if (evt.type === 'progress') {
+            if (onProgress) {
+              onProgress({ state: 'embedding', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal })
+            } else {
+              const prefix = groupTotal > 1 ? ('Group ' + groupNum + '/' + groupTotal + ' - ') : ''
+              toast(prefix + 'Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
+                + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
+            }
+            if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
+          } else if (evt.type === 'pacing') {
+            if (onProgress) {
+              onProgress({ state: 'pacing', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
+            } else {
+              toast('API rate limit reached - resuming batch embedding in ~' + evt.waitSec + 's'
+                + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
+            }
+            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit - resuming in ' + evt.waitSec + 's')
+          } else if (evt.type === 'done') {
+            settled = true
+            const embeddings = extractEmbeddingsFromAnyJson(evt)
+            resolve({ embeddings: embeddings.length ? embeddings : (evt.embeddings || []), hashes: evt.hashes || [] })
+          } else if (evt.type === 'error') {
+            settled = true
+            reject(new Error(evt.message || 'Embedding stream error'))
+          }
+        })
+        if (!settled) reject(new Error('SSE stream ended without a done event'))
+      } catch (e) {
+        reject(e)
+      }
+    })
+    return normaliseBatchResult(streamed, batchInputs)
+  }
+
+  const groups = splitEmbedInputs(inputs)
+  const allEmbeddings = []
+  const allHashes = []
+  for (let i = 0; i < groups.length; i++) {
+    const part = await embedBatchRequest(groups[i], i + 1, groups.length)
+    allEmbeddings.push(...part.embeddings)
+    allHashes.push(...part.hashes)
+  }
+  return { embeddings: allEmbeddings, hashes: allHashes, storeVectors: false }
+}
+// ---------------------------------------------------------------------------
+// Hybrid retrieval — vector + keyword recall, RRF fusion, heuristic reranking,
+// parent/neighbor context expansion, and one optional "retrieve more" round.
+// ---------------------------------------------------------------------------
+function getChunkRecord(doc, ch, i) {
+  const legacyVec = Array.isArray(ch.embHash) ? ch.embHash : null
+  const hashStr   = (typeof ch.embHash === 'string') ? ch.embHash : null
+  const chunkId   = ch.chunkId || [doc.id || doc.name || 'doc', ch.sectionId || 'sec', i, hashStr || 'legacy'].join(':')
+  return {
+    id: chunkId,
+    chunkId,
+    docId: ch.docId || doc.id,
+    docName: ch.docName || doc.name,
+    docTitle: firstDocTitle(doc),
+    docAliases: buildDocAliases(doc),
+    text: ch.text || '',
+    embHash: hashStr,
+    embedding: ch.embedding || legacyVec || null,
+    chunkIndex: Number.isFinite(ch.chunkIndex) ? ch.chunkIndex : i,
+    chunkIndexInSection: Number.isFinite(ch.chunkIndexInSection) ? ch.chunkIndexInSection : null,
+    sectionId: ch.sectionId || null,
+    sectionIndex: Number.isFinite(ch.sectionIndex) ? ch.sectionIndex : null,
+    sectionNo: ch.sectionNo || parseSectionNumber(ch.sectionTitle) || null,
+    sectionDepth: ch.sectionDepth || sectionDepthFromNo(ch.sectionNo || parseSectionNumber(ch.sectionTitle)) || null,
+    parentSectionNo: ch.parentSectionNo || parentSectionNo(ch.sectionNo || parseSectionNumber(ch.sectionTitle)) || null,
+    sectionTitle: ch.sectionTitle || '',
+    headingPath: Array.isArray(ch.headingPath) ? ch.headingPath : [],
+    pageStart: ch.pageStart || null,
+    pageEnd: ch.pageEnd || null,
+    charStart: ch.charStart || null,
+    charEnd: ch.charEnd || null
+  }
 }
 
-// ---------------------------------------------------------------------------
-// retrieveChunks — embed query, lookup chunk vectors by hash, rank + merge
-// with sticky chunks from the previous turn (30% of topK slots).
-// ---------------------------------------------------------------------------
-async function retrieveChunks(query, docs, topK, stickyChunks) {
+function getAllChunkRecords(docs) {
   const all = []
-  for (const d of docs) {
-    if (!d.chunks) continue
-    for (const ch of d.chunks) {
-      // Back-compat: older builds mistakenly stored the vector itself in embHash.
-      const legacyVec = Array.isArray(ch.embHash) ? ch.embHash : null
-      const hashStr   = (typeof ch.embHash === 'string') ? ch.embHash : null
-      if (hashStr || ch.embedding || legacyVec) {
-        all.push({ docName: d.name, text: ch.text, embHash: hashStr, embedding: ch.embedding || legacyVec || null })
-      }
+  for (const d of docs || []) {
+    if (!Array.isArray(d.chunks)) continue
+    for (let i = 0; i < d.chunks.length; i++) {
+      const rec = getChunkRecord(d, d.chunks[i], i)
+      if (rec.text) all.push(rec)
     }
   }
-  if (!all.length) return []
-
-  // Fetch vectors for hash-only chunks (live in server cache, not client memory)
-  const needLookup = all.filter(c => c.embHash && !c.embedding)
-  if (needLookup.length) {
-    try {
-      const r    = await httpPost('/api/embed-lookup', { hashes: needLookup.map(c => c.embHash) })
-      if (!r.ok) throw new Error('lookup HTTP ' + r.status)
-      const data = await r.json()
-      const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
-      for (let i = 0; i < needLookup.length; i++) {
-        if (Array.isArray(vecs[i])) needLookup[i].embedding = vecs[i]
-      }
-    } catch (e) {
-      console.warn('[retrieveChunks] lookup failed:', e.message)
-    }
-  }
-
-  const { embeddings: queryEmbeddings } = await embedBatch([query])
-  const qe = queryEmbeddings[0]
-
-  const scored = all
-    .filter(c => c.embedding)
-    .map(c => ({ docName: c.docName, text: c.text, score: cosine(qe, c.embedding) }))
-    .sort((a, b) => b.score - a.score)
-
-  // Reserve 30% of slots for sticky chunks from the prior turn
-  const stickySlots = Math.max(1, Math.floor(topK * 0.3))
-  const freshSlots  = topK - stickySlots
-  const freshChunks = scored.slice(0, freshSlots)
-
-  const freshTexts = new Set(freshChunks.map(c => c.text))
-  const carried    = (stickyChunks || [])
-    .filter(c => !freshTexts.has(c.text))
-    .slice(0, stickySlots)
-
-  return [...freshChunks, ...carried]
+  return all
 }
 
-// ---------------------------------------------------------------------------
-// evictDocFromCache — remove a document's vectors from the server cache
-// ---------------------------------------------------------------------------
-async function evictDocFromCache(doc) {
-  if (!Array.isArray(doc?.chunks)) return
-  const hashes = doc.chunks.map(c => c.embHash).filter(Boolean)
-  if (!hashes.length) return
+async function hydrateChunkEmbeddings(records) {
+  const needLookup = records.filter(c => c.embHash && !c.embedding)
+  if (!needLookup.length) return
   try {
-    await httpPost('/api/embed-evict', { hashes })
+    const r = await httpPost('/api/embed-lookup', { hashes: needLookup.map(c => c.embHash) })
+    if (!r.ok) throw new Error('lookup HTTP ' + r.status)
+    const data = await r.json()
+    const vecs = (data && Array.isArray(data.vectors)) ? data.vectors : []
+    for (let i = 0; i < needLookup.length; i++) {
+      if (Array.isArray(vecs[i])) needLookup[i].embedding = vecs[i]
+    }
   } catch (e) {
-    console.warn('[evictDocFromCache]', e.message)
+    console.warn('[hydrateChunkEmbeddings] lookup failed:', e.message)
   }
 }
+
+function ragDocsSignature(docs) {
+  return (docs || []).map(d => {
+    const hashes = (d.chunks || []).map(c => c.chunkId || c.embHash || '').join(',')
+    const aliases = buildDocAliases(d).join(',')
+    const sections = (d.sections || []).map(s => s.sectionNo || parseSectionNumber(s.title) || '').join(',')
+    return [d.id || d.name, d.name, (d.chunks || []).length, hashes, aliases, sections].join('|')
+  }).join('||')
+}
+
+function tokenizeQuery(q) {
+  const stop = new Set(['the','and','for','that','this','with','from','into','about','what','when','where','which','who','why','how','does','have','has','are','was','were','been','being','shall','should','would','could','can','may','must','will','not','you','your','their','there','then','than','also','please','tell','give','show','list','explain'])
+  const toks = String(q || '').toLowerCase().match(/\d+(?:\.\d+)*[a-z]?|[a-z][a-z0-9_./:-]{1,}/g) || []
+  return toks.filter(t => /^\d/.test(t) || (!stop.has(t) && t.length > 2))
+}
+
+function escapeRegExp(s) {
+  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasTerm(text, term) {
+  text = String(text || '').toLowerCase()
+  term = String(term || '').toLowerCase().trim()
+  if (!text || !term) return false
+  return new RegExp('(^|[^a-z0-9_./:-])' + escapeRegExp(term) + '($|[^a-z0-9_./:-])').test(text)
+}
+
+function countTermHits(text, term, cap) {
+  text = String(text || '').toLowerCase()
+  term = String(term || '').toLowerCase().trim()
+  if (!text || !term) return 0
+  const re = new RegExp('(^|[^a-z0-9_./:-])' + escapeRegExp(term) + '($|[^a-z0-9_./:-])', 'g')
+  let hits = 0
+  while (re.exec(text)) {
+    hits++
+    if (hits >= cap) break
+  }
+  return hits
+}
+
+function phraseMatches(text, phrase, minLen) {
+  text = String(text || '').toLowerCase()
+  phrase = String(phrase || '').toLowerCase().trim()
+  minLen = minLen || 4
+  return phrase.length >= minLen && text.includes(phrase)
+}
+
+function headingText(c) {
+  return [...(c.headingPath || []), c.sectionTitle || ''].filter(Boolean).join(' > ')
+}
+
+function getKeywordIndex(docs) {
+  const records = getAllChunkRecords(docs)
+  const sig = ragDocsSignature(docs)
+  if (ragKeywordIndexCache.signature === sig && ragKeywordIndexCache.index) return ragKeywordIndexCache
+
+  if (typeof MiniSearch === 'undefined') {
+    ragKeywordIndexCache = { signature: sig, index: null, records }
+    return ragKeywordIndexCache
+  }
+  const index = new MiniSearch({
+    idField: 'id',
+    fields: ['docName', 'docTitle', 'docAliases', 'sectionNo', 'sectionTitle', 'headingText', 'text'],
+    storeFields: ['chunkId','docId','docName','docTitle','docAliases','text','embHash','chunkIndex','sectionId','sectionIndex','sectionNo','sectionDepth','parentSectionNo','sectionTitle','headingText','pageStart','pageEnd']
+  })
+  index.addAll(records.map(r => ({ ...r, id: r.chunkId, headingText: headingText(r), docAliases: (r.docAliases || []).join(' ') })))
+  ragKeywordIndexCache = { signature: sig, index, records }
+  return ragKeywordIndexCache
+}
+
+function keywordSearchFallback(query, records, limit) {
+  const terms = tokenizeQuery(query)
+  const refs = extractSectionRefs(query)
+  const phrase = String(query || '').toLowerCase().trim()
+  if (!terms.length && !phrase && !refs.length) return []
+  return records.map(r => {
+    const text = (r.text || '').toLowerCase()
+    const head = headingText(r).toLowerCase()
+    const aliases = (r.docAliases || []).join(' ').toLowerCase()
+    const sectionNo = String(r.sectionNo || '').toLowerCase()
+    let score = 0
+    for (const ref of refs) {
+      if (sectionRefMatches(sectionNo, ref)) score += 12
+    }
+    for (const t of terms) {
+      if (hasTerm(aliases, t)) score += 3
+      if (hasTerm(String(r.docName || '').toLowerCase(), t)) score += 2.5
+      if (sectionNo && (sectionNo === t || sectionNo.startsWith(t + '.'))) score += 8
+      if (hasTerm(head, t)) score += 2.5
+      if (hasTerm(text, t)) score += 1
+    }
+    if (phraseMatches(head, phrase, 4)) score += 5
+    if (phraseMatches(text, phrase, 4)) score += 3
+    return score > 0 ? { ...r, keywordScore: score, via: 'keyword' } : null
+  }).filter(Boolean).sort((a,b)=>b.keywordScore-a.keywordScore).slice(0, limit)
+}
+
+function keywordSearch(query, docs, limit) {
+  const { index, records } = getKeywordIndex(docs)
+  if (!index) return keywordSearchFallback(query, records, limit)
+  try {
+    return index.search(query, {
+      prefix: true,
+      fuzzy: 0.1,
+      combineWith: 'OR',
+      boost: { docAliases: 6, docTitle: 5, docName: 4, sectionNo: 8, sectionTitle: 5, headingText: 4, text: 1 }
+    }).slice(0, limit).map(r => ({
+      ...r,
+      id: r.chunkId || r.id,
+      chunkId: r.chunkId || r.id,
+      keywordScore: r.score,
+      via: 'keyword'
+    }))
+  } catch (e) {
+    console.warn('[keywordSearch] MiniSearch failed; using fallback:', e.message)
+    return keywordSearchFallback(query, records, limit)
+  }
+}
+
+async function retrieveVectorChunks(query, docs, limit, queryEmbedding) {
+  const all = getAllChunkRecords(docs)
+  if (!all.length) return []
+  await hydrateChunkEmbeddings(all)
+  const qe = queryEmbedding || (await embedBatch([query])).embeddings[0]
+  return all
+    .filter(c => c.embedding)
+    .map(c => ({ ...c, vectorScore: cosine(qe, c.embedding), score: cosine(qe, c.embedding), via: 'vector' }))
+    .sort((a, b) => b.vectorScore - a.vectorScore)
+    .slice(0, limit)
+}
+
+function rrfFuse(rankedLists, opts) {
+  opts = opts || {}
+  const k = opts.k || CFG.HYBRID_RRF_K || 60
+  const weights = opts.weights || []
+  const byId = new Map()
+  rankedLists.forEach((list, li) => {
+    const weight = weights[li] == null ? 1 : weights[li]
+    ;(list || []).forEach((item, rank) => {
+      const id = item.chunkId || item.id || (item.docName + ':' + item.text)
+      const cur = byId.get(id) || { ...item, chunkId: id, rrfScore: 0, via: [] }
+      cur.rrfScore += weight * (1 / (k + rank + 1))
+      cur.vectorScore = cur.vectorScore ?? item.vectorScore
+      cur.keywordScore = cur.keywordScore ?? item.keywordScore
+      cur.vectorRank = cur.vectorRank ?? (item.via === 'vector' ? rank + 1 : item.vectorRank)
+      cur.keywordRank = cur.keywordRank ?? (item.via === 'keyword' ? rank + 1 : item.keywordRank)
+      if (!cur.via.includes(item.via || ('list' + li))) cur.via.push(item.via || ('list' + li))
+      byId.set(id, cur)
+    })
+  })
+  return [...byId.values()].sort((a,b)=>b.rrfScore-a.rrfScore)
+}
+
+function heuristicRerank(query, candidates) {
+  const phrase = String(query || '').toLowerCase().trim()
+  return (candidates || []).map((c, idx) => {
+    const ev = retrievalEvidence(query, c)
+    const rr = c.rrfScore || c.score || 0
+    const vector = Math.max(0, ev.vectorScore || 0)
+    const keyword = Math.log1p(Math.max(0, c.keywordScore || 0)) / 8
+    const exactBoost = ev.exactSectionHit ? 8 : 0
+    const docBoost = ev.docAliasHits ? 1.5 : 0
+    const headingBoost = ev.headingHits * 0.8
+    const bodyBoost = ev.textHits * 0.25
+    const phraseBoost = ev.phraseHit && phrase.length > 12 ? 1.5 : 0
+    const semanticOnlyPenalty = (!ev.termHits && vector > 0) ? 0.8 : 0
+    const rerankScore = exactBoost + docBoost + headingBoost + bodyBoost + phraseBoost + ev.coverage * 2.2 + keyword + vector + rr * 10 - semanticOnlyPenalty - idx * 0.0001
+    return { ...c, score: rerankScore, rerankScore, retrievalEvidence: ev }
+  }).sort((a,b)=>b.rerankScore-a.rerankScore)
+}
+
+function retrievalEvidence(query, item) {
+  const terms = tokenizeQuery(query)
+  const refs = extractSectionRefs(query)
+  const phrase = String(query || '').toLowerCase().trim()
+  const name = String(item?.docName || item?.name || '').toLowerCase()
+  const aliases = Array.isArray(item?.docAliases) ? item.docAliases.join(' ').toLowerCase() : docAliasesText(item || {}).toLowerCase()
+  const head = headingText(item || {}).toLowerCase()
+  const section = String(item?.sectionTitle || '').toLowerCase()
+  const sectionNo = String(item?.sectionNo || parseSectionNumber(section) || '').toLowerCase()
+  const text = String(item?.text || item?.content || '').toLowerCase()
+  const exactSectionHit = refs.some(ref => sectionRefMatches(sectionNo, ref))
+  let termHits = 0
+  let headingHits = 0
+  let textHits = 0
+  let docAliasHits = 0
+  for (const t of terms) {
+    const isNum = /^\d/.test(t)
+    const inName = hasTerm(name, t) || hasTerm(aliases, t)
+    const inSectionNo = isNum && sectionNo && (sectionNo === t || sectionNo.startsWith(t + '.'))
+    const inHead = hasTerm(head, t) || hasTerm(section, t) || inSectionNo
+    const inText = hasTerm(text, t)
+    if (inName || inHead || inText) termHits++
+    if (inName) docAliasHits++
+    if (inName || inHead) headingHits++
+    if (inText) textHits++
+  }
+  const coverage = terms.length ? termHits / terms.length : (exactSectionHit ? 1 : 0)
+  const hay = [name, aliases, head, sectionNo, section, text].join('\n')
+  const phraseHit = phraseMatches(hay, phrase, terms.length > 1 ? 6 : 4)
+  const vectorScore = Number.isFinite(item?.vectorScore) ? item.vectorScore : -1
+  const hasUsableQuery = terms.length > 0 || phrase.length >= 4 || refs.length > 0
+  return { termsLength: terms.length, termHits, headingHits, textHits, docAliasHits, coverage, phraseHit, exactSectionHit, vectorScore, hasUsableQuery }
+}
+
+function isRelevantHit(query, hit) {
+  const ev = hit?.retrievalEvidence || retrievalEvidence(query, hit)
+  if (!ev.hasUsableQuery) return false
+  const minVector = CFG.RETRIEVAL_MIN_VECTOR_SCORE || 0.4
+  const strongVector = CFG.RETRIEVAL_STRONG_VECTOR_SCORE || 0.48
+  const shortVector = CFG.RETRIEVAL_SHORT_QUERY_MIN_VECTOR_SCORE || 0.45
+  const minCoverage = CFG.RETRIEVAL_MIN_TERM_COVERAGE || 0.5
+  if (ev.exactSectionHit) return true
+  if (ev.docAliasHits && ev.headingHits) return true
+  if (ev.phraseHit) return true
+  if (ev.termsLength <= 2) return ev.termHits > 0 || ev.vectorScore >= Math.max(shortVector, minVector)
+  if (ev.coverage >= minCoverage) return true
+  if (ev.vectorScore >= strongVector) return true
+  return ev.vectorScore >= minVector && ev.coverage >= Math.max(0.34, minCoverage * 0.6)
+}
+
+function canExpandHit(query, hit) {
+  const ev = hit?.retrievalEvidence || retrievalEvidence(query, hit)
+  if (!isRelevantHit(query, hit)) return false
+  const minVector = CFG.CONTEXT_EXPAND_MIN_VECTOR_SCORE || CFG.RETRIEVAL_MIN_VECTOR_SCORE || 0.4
+  const strongVector = CFG.RETRIEVAL_STRONG_VECTOR_SCORE || 0.48
+  const minCoverage = CFG.CONTEXT_EXPAND_MIN_TERM_COVERAGE || 0.5
+  if (ev.exactSectionHit) return true
+  if (ev.phraseHit) return true
+  if (ev.termsLength <= 2) return ev.headingHits > 0 || ev.vectorScore >= strongVector || (ev.termHits > 0 && ev.vectorScore >= minVector)
+  return ev.coverage >= minCoverage || ev.vectorScore >= strongVector || (ev.termHits > 0 && ev.vectorScore >= minVector)
+}
+
+function findSourceDoc(docs, hit) {
+  return (docs || []).find(d => d.id === hit.docId || d.name === hit.docName) || null
+}
+
+function sectionFamilySections(doc, sectionNo) {
+  if (!doc) return []
+  let sections = Array.isArray(doc.sections) && doc.sections.length ? doc.sections : []
+  if (!sections.length && doc.content) sections = splitIntoRagSections(doc.content)
+  sectionNo = String(sectionNo || '').toLowerCase().trim()
+  return sections.map(enrichSectionMeta).filter(s => sectionRefMatches(s.sectionNo, sectionNo))
+}
+
+function sectionContextText(section, no) {
+  const title = titleCaseCandidate(section?.title || '') || section?.title || 'Document section'
+  const label = no ? ('[Section ' + no + ': ' + title + ']') : ('[Section: ' + title + ']')
+  return label + '\n' + String(section?.text || '').trim()
+}
+
+function exactSectionLookup(refs, docs) {
+  refs = (refs || []).filter(Boolean)
+  if (!refs.length) return []
+  const out = []
+  const seen = new Set()
+  for (const doc of docs || []) {
+    let sections = Array.isArray(doc.sections) && doc.sections.length ? doc.sections : []
+    if (!sections.length && doc.content) sections = splitIntoRagSections(doc.content)
+    sections = sections.map(enrichSectionMeta)
+    for (const sec of sections) {
+      const no = sec.sectionNo || parseSectionNumber(sec.title) || parseSectionNumber(sec.text)
+      if (!refs.some(ref => sectionRefMatches(no, ref))) continue
+      const key = (doc.id || doc.name) + '|' + (no || sec.sectionId) + '|' + sec.sectionIndex
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({
+        id: key,
+        chunkId: key,
+        docId: doc.id,
+        docName: doc.name,
+        docTitle: firstDocTitle(doc),
+        docAliases: buildDocAliases(doc),
+        sectionId: sec.sectionId,
+        sectionIndex: sec.sectionIndex,
+        sectionNo: no || null,
+        sectionDepth: sectionDepthFromNo(no),
+        parentSectionNo: parentSectionNo(no),
+        sectionTitle: sec.title,
+        headingPath: sec.headingPath || [],
+        pageStart: sec.pageStart,
+        pageEnd: sec.pageEnd,
+        text: sectionContextText(sec, no),
+        exactSectionHit: true,
+        via: 'exact-section'
+      })
+    }
+  }
+  return packContextChunks(out, CFG.STRUCTURAL_SECTION_MAX_CHARS || CFG.CONTEXT_MAX_CHARS)
+}
+
+function expandChunkWithContext(hit, docs, neighborCount) {
+  const doc = findSourceDoc(docs, hit)
+  if (!doc || !Array.isArray(doc.chunks)) return hit
+  const idx = Number.isFinite(hit.chunkIndex) ? hit.chunkIndex : doc.chunks.findIndex(c => (c.chunkId && c.chunkId === hit.chunkId) || c.text === hit.text)
+  const section = Array.isArray(doc.sections) ? doc.sections.map(enrichSectionMeta).find(s => s.sectionId === hit.sectionId) : null
+
+  const secNo = hit.sectionNo || section?.sectionNo
+  if (secNo) {
+    const family = sectionFamilySections(doc, secNo)
+    const familyText = family.map(s => sectionContextText(s, s.sectionNo)).join('\n\n')
+    const limit = CFG.STRUCTURAL_SECTION_MAX_CHARS || CFG.CONTEXT_MAX_CHARS || 40000
+    if (familyText && familyText.length <= limit) {
+      return {
+        ...hit,
+        text: familyText,
+        expanded: 'section-family'
+      }
+    }
+  }
+
+  if (section && section.text && section.text.length <= (CFG.PARENT_SECTION_MAX_CHARS || 6000)) {
+    return {
+      ...hit,
+      text: '[Section: ' + (section.title || hit.sectionTitle || 'Document section') + ']\n' + section.text,
+      expanded: 'parent-section'
+    }
+  }
+
+  if (idx < 0) return hit
+  const start = Math.max(0, idx - neighborCount)
+  const end = Math.min(doc.chunks.length - 1, idx + neighborCount)
+  const parts = []
+  for (let i = start; i <= end; i++) {
+    const ch = doc.chunks[i]
+    if (!ch) continue
+    if (hit.sectionId && ch.sectionId && ch.sectionId !== hit.sectionId) continue
+    parts.push(ch.text)
+  }
+  const merged = [...new Set(parts)].join('\n\n[continued]\n\n').trim()
+  return merged ? { ...hit, text: merged, expanded: 'neighbors' } : hit
+}
+
+function packContextChunks(chunks, maxChars) {
+  maxChars = maxChars || CFG.CONTEXT_MAX_CHARS || 60000
+  const out = []
+  let used = 0
+  const seen = new Set()
+  for (const c of chunks || []) {
+    const key = c.chunkId || (c.docName + ':' + c.text.slice(0, 80))
+    if (seen.has(key)) continue
+    seen.add(key)
+    let text = c.text || ''
+    if (!text) continue
+    const remaining = maxChars - used
+    if (remaining <= 0) break
+    if (text.length > remaining) text = text.slice(0, Math.max(0, remaining - 80)) + '\n[truncated to fit context budget]'
+    out.push({ ...c, text })
+    used += text.length
+  }
+  return out
+}
+
+function contextLooksSufficient(query, chunks) {
+  if (!chunks || !chunks.length) return false
+  const terms = tokenizeQuery(query)
+  const phrase = String(query || '').toLowerCase().trim()
+  if (!terms.length && phrase.length < 4) return false
+  if ((chunks || []).some(c => c.exactSectionHit || retrievalEvidence(query, c).exactSectionHit || canExpandHit(query, c))) return true
+  const ctx = chunks.map(c => c.text || '').join('\n').toLowerCase()
+  const hits = terms.filter(t => hasTerm(ctx, t)).length
+  const coverage = hits / Math.max(1, terms.length)
+  if (terms.length <= 2) return hits === terms.length
+  return coverage >= (CFG.SUFFICIENCY_MIN_TERM_COVERAGE || 0.6)
+}
+
+
+function docSearchCorpus(doc, maxChars) {
+  maxChars = maxChars || 200000
+  const parts = [doc?.name || '']
+  if (Array.isArray(doc?.sections)) parts.push(doc.sections.map(s => s?.title || '').filter(Boolean).join('\n'))
+  if (Array.isArray(doc?.chunks)) {
+    let used = parts.join('\n').length
+    for (const ch of doc.chunks) {
+      const t = String(ch?.text || '')
+      if (!t) continue
+      if (used + t.length > maxChars) { parts.push(t.slice(0, Math.max(0, maxChars - used))); break }
+      parts.push(t); used += t.length
+    }
+  } else if (doc?.content) {
+    parts.push(String(doc.content).slice(0, maxChars))
+  }
+  return parts.join('\n').toLowerCase()
+}
+
+function scoreDocForQuery(query, doc) {
+  const terms = tokenizeQuery(query)
+  const phrase = String(query || '').toLowerCase().trim()
+  if (!terms.length && phrase.length < 4) return 0
+  const refs = extractSectionRefs(query)
+  const name = String(doc?.name || '').toLowerCase()
+  const aliases = docAliasesText(doc).toLowerCase()
+  const headings = Array.isArray(doc?.sections) ? doc.sections.map(s => [s?.sectionNo || parseSectionNumber(s?.title) || '', s?.title || ''].join(' ')).join(' ').toLowerCase() : ''
+  const corpus = docSearchCorpus(doc)
+  let score = 0
+  for (const ref of refs) {
+    if ((doc.sections || []).some(s => sectionRefMatches(s.sectionNo || parseSectionNumber(s.title), ref))) score += 8
+  }
+  for (const t of terms) {
+    if (hasTerm(name, t) || hasTerm(aliases, t)) score += 5
+    if (hasTerm(headings, t)) score += 3
+    const hits = countTermHits(corpus, t, 5)
+    if (hits) score += Math.min(4, hits)
+  }
+  if (phrase.length > 12) {
+    if (phraseMatches(name, phrase, 12)) score += 6
+    if (phraseMatches(corpus, phrase, 12)) score += 8
+  }
+  return score
+}
+
+function selectRelevantFullDocs(query, docs, maxDocs) {
+  docs = (docs || []).filter(d => d && d.content)
+  if (!docs.length) return []
+  maxDocs = Math.max(1, Math.min(docs.length, clampTopK(maxDocs || CFG.DEFAULT_TOP_K || 5)))
+  const terms = tokenizeQuery(query)
+  const phrase = String(query || '').trim()
+  if (!terms.length && phrase.length < 4) return []
+
+  const scored = docs.map((doc, idx) => ({ doc, idx, score: scoreDocForQuery(query, doc) }))
+    .sort((a, b) => b.score - a.score || a.idx - b.idx)
+  const positives = scored.filter(x => x.score > 0)
+  if (!positives.length) return []
+
+  const best = positives[0].score
+  const floor = Math.max(1, best * 0.2)
+  return positives.filter(x => x.score >= floor).slice(0, maxDocs).map(x => x.doc)
+}
+
+function uniqueSourceNames(items) {
+  const out = []
+  const seen = new Set()
+  for (const item of items || []) {
+    const name = String(item?.docName || item?.name || '').trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    out.push(name)
+  }
+  return out
+}
+
+function sourceItemEvidence(query, item) {
+  const ev = retrievalEvidence(query, item)
+  if (!ev.hasUsableQuery) return { score: 0, hits: 0, coverage: 0 }
+  let score = 0
+  if (ev.exactSectionHit) score += 10
+  score += ev.docAliasHits * 3
+  score += ev.headingHits * 2
+  score += ev.textHits
+  score += ev.coverage * 2
+  if (ev.phraseHit) score += 2
+  if (Number.isFinite(item?.rerankScore)) score += Math.min(1, Math.max(0, item.rerankScore) / 5)
+  else if (Number.isFinite(item?.score)) score += Math.min(0.5, Math.max(0, item.score) / 10)
+  return { score, hits: ev.termHits + (ev.exactSectionHit ? 1 : 0), coverage: ev.coverage }
+}
+
+function displayedSourceNames(query, items) {
+  const byName = new Map()
+  const terms = tokenizeQuery(query)
+  for (const item of items || []) {
+    const name = String(item?.docName || item?.name || '').trim()
+    if (!name) continue
+    const ev = sourceItemEvidence(query, item)
+    if (ev.score <= 0) continue
+    const cur = byName.get(name)
+    if (!cur || ev.score > cur.score) byName.set(name, { name, ...ev, firstIndex: byName.size })
+  }
+
+  const rows = [...byName.values()].sort((a,b)=>b.score-a.score || a.firstIndex-b.firstIndex)
+  if (!rows.length) return []
+
+  const minHits = terms.length >= 5 ? 2 : (terms.length >= 2 ? 1 : 0)
+  const viable = rows.filter(r => r.hits >= minHits)
+  if (!viable.length) return []
+
+  const best = viable[0].score
+  const floor = Math.max(best * 0.55, minHits ? (minHits + 0.5) : 0.5)
+  return viable
+    .filter(r => r.score >= floor)
+    .slice(0, clampTopK(creds?.topK || CFG.DEFAULT_TOP_K || 5))
+    .map(r => r.name)
+}
+
+async function retrieveRagChunks(query, docs, topK, stickyChunks) {
+  topK = clampTopK(topK || CFG.DEFAULT_TOP_K || 5)
+  const mode = CFG.DEFAULT_RETRIEVAL_MODE || 'hybrid'
+  const rerankMode = CFG.DEFAULT_RERANK_MODE || 'heuristic'
+  const autoMore = creds?.autoRetrieveMore !== false && CFG.ENABLE_AUTO_RETRIEVE_MORE
+  const maxRounds = autoMore ? (CFG.MAX_RETRIEVAL_ROUNDS || 2) : 1
+  const baseCandidateK = Math.min(CFG.HYBRID_MAX_CANDIDATES || 80, Math.max(topK, topK * (creds?.candidateMult || CFG.HYBRID_CANDIDATE_MULT || 5)))
+  const stickySlots = Math.max(0, Math.floor(topK * (CFG.STICKY_CHUNK_RATIO || 0.3)))
+  const finalSlots = Math.max(1, topK - stickySlots)
+  const plan = analyzeRagQuery(query, docs)
+  if (plan.sectionRefs.length) {
+    const exact = exactSectionLookup(plan.sectionRefs, docs)
+    if (exact.length) return exact
+  }
+  const queryEmbedding = (mode === 'keyword') ? null : (await embedBatch([query])).embeddings[0]
+  let best = []
+
+  for (let round = 1; round <= maxRounds; round++) {
+    const candidateK = Math.min(CFG.HYBRID_MAX_CANDIDATES || 80, baseCandidateK * round)
+    let candidates = []
+    if (mode === 'vector') {
+      candidates = await retrieveVectorChunks(query, docs, candidateK, queryEmbedding)
+    } else if (mode === 'keyword') {
+      candidates = keywordSearch(query, docs, candidateK)
+    } else {
+      const vectorHits = await retrieveVectorChunks(query, docs, candidateK, queryEmbedding)
+      const keywordHits = keywordSearch(query, docs, candidateK)
+      candidates = rrfFuse([vectorHits, keywordHits], { k: CFG.HYBRID_RRF_K || 60 })
+    }
+
+    const ranked = rerankMode === 'none' ? candidates.map(c => ({ ...c, retrievalEvidence: retrievalEvidence(query, c) })) : heuristicRerank(query, candidates)
+    const filtered = ranked.filter(h => isRelevantHit(query, h))
+    if (!filtered.length) {
+      best = []
+      break
+    }
+    const selected = filtered.slice(0, finalSlots).map(h => {
+      if (!canExpandHit(query, h)) return h
+      return expandChunkWithContext(h, docs, creds?.expandNeighbors ?? CFG.CONTEXT_EXPAND_NEIGHBORS ?? 1)
+    })
+
+    const selectedTexts = new Set(selected.map(c => c.text))
+    const carried = selected.length ? (stickyChunks || []).filter(c => !selectedTexts.has(c.text) && isRelevantHit(query, c)).slice(0, stickySlots) : []
+    best = packContextChunks([...selected, ...carried], CFG.CONTEXT_MAX_CHARS)
+
+    if (round >= maxRounds || contextLooksSufficient(query, best)) break
+    toast('Retrieved context looks thin — pulling more chunks...', 'info')
+  }
+  return best
+}
+
+// Back-compatible wrapper for older call sites.
+async function retrieveChunks(query, docs, topK, stickyChunks) {
+  return retrieveRagChunks(query, docs, topK, stickyChunks)
+}
+
 
 // Ask the server to prune vectors no longer referenced by any doc (called after
 // a doc is removed). More thorough than per-hash eviction: clears orphans too.
@@ -1507,9 +2547,12 @@ async function gcEmbedCache() {
   catch (e) { console.warn('[gcEmbedCache]', e.message); return null }
 }
 
+
 // ---------------------------------------------------------------------------
-// Token-budget estimation + caps (Phase 2). Shared ~4-chars/token estimate;
-// caps resolve from Settings overrides or adapt to the live per-minute limit.
+// Token-budget estimation + caps (alpha Phase 2 gate; re-grafted after the
+// v0.67e RAG adopt). Shared ~4-chars/token estimate; caps resolve from Settings
+// overrides or adapt to the live per-minute limit. Also used by dynamic
+// full-text injection (item 2). Depends on lastBudget/embedTally (10-state.js).
 // ---------------------------------------------------------------------------
 function estTokens(texts) {
   const arr = Array.isArray(texts) ? texts : [texts]
@@ -1518,13 +2561,12 @@ function estTokens(texts) {
   return Math.ceil(chars / 4)
 }
 function resolveEmbedCaps() {
-  // Gate policy: don't warn on a fixed fraction of the limit (that tripped on
-  // normal-sized documents). Warn only when an embed won't fit in what's left
-  // this minute, or exceeds the hard cap, or an explicit Settings "warn above"
-  // override. Hard cap defaults to ~90% of the per-minute limit (was 50%).
+  // Warn only when an embed won't fit in what's left this minute, or exceeds the
+  // hard cap, or an explicit Settings "warn above" override. Hard cap ~90% of
+  // the per-minute limit.
   const lim = (typeof lastBudget !== 'undefined' && lastBudget.tokLimit) || 0
   const num = v => (typeof v === 'number' && v > 0) ? v : null
-  const warnOverride = num(creds && creds.embedWarnTokens)   // explicit opt-in, else null (no fixed soft cap)
+  const warnOverride = num(creds && creds.embedWarnTokens)
   const maxOv  = num(creds && creds.embedMaxTokens)
   const hard = maxOv != null ? maxOv : (lim ? Math.round(lim * 0.90) : 180000)
   const remaining = (typeof lastBudget !== 'undefined' && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
@@ -1612,6 +2654,64 @@ async function saveSettings(settings) {
 // Factory for the in-memory creds object so its shape + defaults live in ONE
 // place (was hand-built in init/connect/demo). Accepts `model` or `modelId`;
 // callers that compute classification pass it in.
+
+// --- Shared RAG memory (v0.67e item 3): search current chat's docs + optionally
+// prior chats' docs. Migration (upgradePersistedDocsForRag) intentionally omitted
+// (item 6: old docs are re-embedded, not migrated). ---
+function docMemoryKey(doc) {
+  return doc?.id || [doc?.name || 'doc', doc?.size || 0, doc?.addedAt || 0].join('|')
+}
+
+function chatUsesPastEmbeddings(chat) {
+  // Default ON so new chats automatically use the shared document vector store.
+  // Individual chats can turn this off from the Embed panel.
+  return !chat || chat.usePastEmbeddings !== false
+}
+
+function setPastEmbeddingsForChat(on) {
+  const chat = curChat()
+  if (!chat) return
+  chat.usePastEmbeddings = !!on
+  chat.updatedAt = Date.now()
+  ragStickyChunks = []
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
+  persist()
+  renderDocPanel()
+  updateDocsBtn()
+  toast(on ? 'Past embeddings enabled for this chat' : 'Past embeddings disabled for this chat', on ? 'ok' : 'info')
+}
+
+function getRagMemoryDocs(chat) {
+  const out = []
+  const seen = new Set()
+  const addDoc = d => {
+    if (!d) return
+    const key = docMemoryKey(d)
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(d)
+  }
+
+  // Prefer the active chat's own files first. Past/shared embeddings are optional
+  // per chat and controlled from the Embed panel checkbox.
+  for (const d of (chat?.docs || [])) addDoc(d)
+  if (chatUsesPastEmbeddings(chat)) {
+    for (const ch of Object.values(D.chats || {})) {
+      if (chat && ch.id === chat.id) continue
+      for (const d of (ch.docs || [])) addDoc(d)
+    }
+  }
+  return out
+}
+
+function findDocInAnyChat(docId) {
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    const idx = ch.docs.findIndex(d => d.id === docId)
+    if (idx !== -1) return { chat: ch, idx, doc: ch.docs[idx] }
+  }
+  return null
+}
 function makeCreds(o){ o=o||{}; return {
   apiKey: o.apiKey||'', model: o.model||o.modelId||'',
   maxTokens: o.maxTokens||CFG.DEFAULT_MAX_TOKENS, systemPrompt: o.systemPrompt||'',
@@ -1868,16 +2968,34 @@ function togglePin(id, e) {
   toast(D.chats[id].pinned ? 'Pinned' : 'Unpinned', 'ok')
 }
 
-function deleteChat(id, e) {
-  e.stopPropagation()
+async function deleteChat(id, e) {
+  if (e) e.stopPropagation()
+  const chat = D.chats[id]
+  const hadDocs = !!(chat && Array.isArray(chat.docs) && chat.docs.length)
+  // v0.67e item 9: confirm before delete (reuses alpha confirmDialog), then
+  // prune orphaned embeddings via GC and toast when the chat had docs.
+  const ok = await confirmDialog({
+    title: 'Delete chat?',
+    message: 'Permanently delete \u201c' + (chat?.title || 'this chat') + '\u201d' + (hadDocs ? ' and prune its embeddings' : '') + '? This cannot be undone.',
+    okText: 'Delete', cancelText: 'Cancel'
+  })
+  if (!ok) return
   delete D.chats[id]
+  const afterDelete = () => {
+    if (hadDocs) {
+      gcEmbedCache().catch(err => console.warn('[deleteChat] gc', err.message))
+      toast('Deleted chat and pruned embeddings', 'ok')
+    }
+  }
   if (chatId === id) {
     const remaining = sortedChats().filter(c => c.messages.length || (c.docs && c.docs.length))
     if (remaining.length) { chatId = remaining[0].id; persist(); renderAll() }
     else { newChat() }   // blank, unlisted, ready to type
+    afterDelete()
     return
   }
   persist(); renderChatList()
+  afterDelete()
 }
 
 function startRename(id, e) {
@@ -1992,85 +3110,308 @@ function getExt(name) { return (name.split('.').pop()||'').toLowerCase() }
 // merged from 41-files-extract.js
 // ---------------------------------------------------------------------------
 
+// Structured extraction helpers. These keep parser output RAG-friendly while
+// remaining browser-only. PDF uses pdf.js coordinates; DOCX uses Mammoth HTML.
+const PDFJS_WORKER_SRC = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs'
+
+async function ensurePdfJsReady() {
+  // pdf.js v5 is an ES module (loaded in <head>); window.pdfjsLib is set once it
+  // resolves. Poll briefly so a very-early upload doesn't race the module load.
+  for (let i = 0; i < 100 && typeof pdfjsLib === 'undefined'; i++) {
+    await new Promise(r => setTimeout(r, 50))
+  }
+  if (typeof pdfjsLib === 'undefined') throw new Error('PDF needs pdf.js library (module not loaded)')
+  if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC
+  }
+}
+
+async function loadPdfDocumentFromBytes(bytes) {
+  await ensurePdfJsReady()
+  const first = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
+  try {
+    return await pdfjsLib.getDocument({ data: first, verbosity: 0 }).promise
+  } catch (e) {
+    // Corporate proxies/CDN blockers sometimes return HTML for pdf.worker.min.js,
+    // which shows up in the browser as a PDF "content type"/MIME error. Retry
+    // with workers disabled so extraction can still proceed entirely in-page.
+    if (/worker|module|mime|content.?type|script/i.test(String(e && e.message || e))) {
+      console.warn('[pdf] worker failed; retrying with disableWorker:', e.message || e)
+      const second = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
+      return await pdfjsLib.getDocument({ data: second, verbosity: 0, disableWorker: true }).promise
+    }
+    throw e
+  }
+}
+
+function pdfItemsToLines(items) {
+  const clean = (items || []).filter(it => it && it.str && it.str.trim()).map(it => ({
+    text: it.str.trim(),
+    x: it.transform ? it.transform[4] : 0,
+    y: it.transform ? it.transform[5] : 0,
+    h: Math.abs((it.transform && (it.transform[3] || it.transform[0])) || 0)
+  }))
+  clean.sort((a,b) => Math.abs(b.y - a.y) > 3 ? b.y - a.y : a.x - b.x)
+  const lines = []
+  for (const item of clean) {
+    let line = lines.find(l => Math.abs(l.y - item.y) <= 3)
+    if (!line) { line = { y: item.y, items: [] }; lines.push(line) }
+    line.items.push(item)
+  }
+  return lines.map(l => {
+    const sorted = l.items.sort((a,b)=>a.x-b.x)
+    return {
+      y: l.y,
+      text: sorted.map(i=>i.text).join(' ').replace(/\s+/g, ' ').trim(),
+      avgFontHeight: sorted.reduce((n,i)=>n+(i.h||0),0) / Math.max(1, sorted.length)
+    }
+  }).filter(l => l.text)
+}
+
+function pdfLinesToStructuredText(lines) {
+  if (!lines || !lines.length) return ''
+  const sizes = lines.map(l => l.avgFontHeight).filter(Boolean).sort((a,b)=>a-b)
+  const median = sizes[Math.floor(sizes.length / 2)] || 10
+  const out = []
+  for (const line of lines) {
+    const t = line.text.trim()
+    if (!t) continue
+    const looksHeading =
+      line.avgFontHeight > median * 1.25 ||
+      /^\d+(\.\d+)*\s+[A-Z]/.test(t) ||
+      (/^[A-Z0-9 /&()\-:]{8,}$/.test(t) && t.length < 120)
+    out.push((looksHeading ? '## ' : '') + t)
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n')
+}
+
+async function extractPdfStructured(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const pdf = await loadPdfDocumentFromBytes(bytes)
+  const totalPages = pdf.numPages
+  const pages = []
+  const emptyPageNums = []
+
+  for (let i = 1; i <= totalPages; i++) {
+    const page = await pdf.getPage(i)
+    const tc = await page.getTextContent({ normalizeWhitespace: true, disableCombineTextItems: false })
+    const lines = pdfItemsToLines(tc.items)
+    let pageText = pdfLinesToStructuredText(lines).trim()
+    if (!pageText) {
+      // Fallback: if coordinate grouping fails, preserve the raw pdf.js text runs.
+      pageText = (tc.items || []).map(it => it && it.str ? it.str : '').join(' ').replace(/\s+/g, ' ').trim()
+    }
+    if (!pageText) emptyPageNums.push(i)
+    pages.push({ pageNum: i, text: pageText, lines })
+  }
+
+  const text = pages.map(p => '=== Page ' + p.pageNum + ' ===\n' + (p.text || '')).join('\n\n').trim() || '[No text found in PDF]'
+  const emptyShare = totalPages ? emptyPageNums.length / totalPages : 0
+  const looksScanned = emptyPageNums.length >= CFG.SCAN_MIN_PAGES && emptyShare >= CFG.SCAN_MIN_SHARE
+  const scanWarning = looksScanned
+    ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text - this PDF may be partially or fully scanned. Embedded content will be incomplete.'
+    : null
+  return { text, scanWarning, pdfDoc: scanWarning ? pdf : null, emptyPageNums, pages, structure: { kind: 'pdf-structured', totalPages } }
+}
+function tableToMarkdown(table) {
+  const rows = [...table.querySelectorAll('tr')].map(tr => [...tr.children].map(td => td.textContent.replace(/\s+/g, ' ').trim()))
+  if (!rows.length) return ''
+  const width = Math.max(...rows.map(r => r.length))
+  const norm = rows.map(r => [...r, ...Array(width - r.length).fill('')])
+  const header = norm[0]
+  const sep = header.map(() => '---')
+  return [header, sep, ...norm.slice(1)].map(r => '| ' + r.join(' | ') + ' |').join('\n')
+}
+
+function htmlToRagText(html) {
+  const dom = new DOMParser().parseFromString(html || '', 'text/html')
+  const out = []
+  function emit(s) { s = String(s || '').replace(/\s+/g, ' ').trim(); if (s) out.push(s) }
+  function walk(node) {
+    for (const el of [...node.children]) {
+      const tag = el.tagName.toLowerCase()
+      if (tag === 'h1') out.push('\n# ' + el.textContent.trim() + '\n')
+      else if (tag === 'h2') out.push('\n## ' + el.textContent.trim() + '\n')
+      else if (tag === 'h3') out.push('\n### ' + el.textContent.trim() + '\n')
+      else if (tag === 'h4') out.push('\n#### ' + el.textContent.trim() + '\n')
+      else if (tag === 'p') emit(el.textContent)
+      else if (tag === 'li') emit('- ' + el.textContent)
+      else if (tag === 'table') out.push('\n[TABLE]\n' + tableToMarkdown(el) + '\n[/TABLE]\n')
+      else walk(el)
+    }
+  }
+  walk(dom.body)
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function decodeXmlEntities(s) {
+  return String(s || '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+}
+
+function xmlTextRuns(xml) {
+  const out = []
+  const re = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g
+  let m
+  while ((m = re.exec(xml || ''))) out.push(decodeXmlEntities(m[1]))
+  return out.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+async function extractDocxWithZip(ab) {
+  if (typeof JSZip === 'undefined') throw new Error('DOCX fallback needs JSZip library')
+  const zip = await JSZip.loadAsync(ab)
+  const parts = []
+  const docFile = zip.file('word/document.xml')
+  if (docFile) parts.push(await docFile.async('string'))
+  const headerFooter = Object.keys(zip.files).filter(n => /^word\/(header|footer)\d+\.xml$/.test(n)).sort()
+  for (const n of headerFooter) parts.push(await zip.file(n).async('string'))
+  const text = parts.map(xmlTextRuns).filter(Boolean).join('\n\n')
+  return text || '[No text found in DOCX]'
+}
+
+async function extractDocxStructured(file) {
+  const ab = await file.arrayBuffer()
+  const warnings = []
+
+  if (typeof mammoth !== 'undefined') {
+    try {
+      const result = await mammoth.convertToHtml({ arrayBuffer: ab.slice(0) }, {
+        styleMap: [
+          "p[style-name='Title'] => h1:fresh",
+          "p[style-name='Subtitle'] => h2:fresh",
+          "p[style-name='Heading 1'] => h1:fresh",
+          "p[style-name='Heading 2'] => h2:fresh",
+          "p[style-name='Heading 3'] => h3:fresh",
+          "p[style-name='Heading 4'] => h4:fresh"
+        ],
+        includeDefaultStyleMap: true
+      })
+      let text = inferHeadingNumbers(htmlToRagText(result.value || ''))
+      if (!text) {
+        const raw = await mammoth.extractRawText({ arrayBuffer: ab.slice(0) })
+        text = inferHeadingNumbers((raw.value || '').trim())
+      }
+      if (result.messages && result.messages.length) warnings.push('DOCX parsed with ' + result.messages.length + ' Mammoth warning(s).')
+      return { text: text || '[No text found in DOCX]', scanWarning: null, parseWarning: warnings.join(' '), structure: { kind: 'docx-html' } }
+    } catch (e) {
+      warnings.push('Mammoth failed (' + e.message + '); used DOCX XML fallback.')
+    }
+  } else {
+    warnings.push('Mammoth library unavailable; used DOCX XML fallback.')
+  }
+
+  const fallbackText = inferHeadingNumbers(await extractDocxWithZip(ab.slice(0)))
+  return { text: fallbackText, scanWarning: null, parseWarning: warnings.join(' '), structure: { kind: 'docx-xml-fallback' } }
+}
 // File-type extractor registry: extension -> async (file) => { text, scanWarning, ... }.
 // Adding a new file type is a single entry here; preview/embed stay generic.
+async function extractXlsxStructured(file) {
+  if (typeof XLSX === 'undefined') throw new Error('Spreadsheet parsing needs the XLSX library')
+  const ab = await file.arrayBuffer()
+  const wb = XLSX.read(ab, { type: 'array', cellDates: true, dense: false })
+  const blocks = []
+  for (const name of wb.SheetNames || []) {
+    const ws = wb.Sheets[name]
+    if (!ws) continue
+    const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false, FS: ',', RS: '\n' }).trim()
+    if (csv) blocks.push('=== Sheet: ' + name + ' ===\n' + csv)
+  }
+  return { text: blocks.join('\n\n').trim() || '[No data found in spreadsheet]', scanWarning: null, structure: { kind: 'xlsx-sheets', sheetCount: (wb.SheetNames || []).length } }
+}
+
+function pptxResolveTarget(baseName, target) {
+  if (!target) return null
+  if (target.startsWith('/')) return target.replace(/^\//, '')
+  const baseParts = baseName.split('/'); baseParts.pop()
+  for (const part of target.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') baseParts.pop()
+    else baseParts.push(part)
+  }
+  return baseParts.join('/')
+}
+
+async function extractPptxStructured(file) {
+  if (typeof JSZip === 'undefined') throw new Error('PPTX needs the JSZip library')
+  const zip = await JSZip.loadAsync(await file.arrayBuffer())
+  const runs = xml => {
+    const out = []
+    const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g
+    let m
+    while ((m = re.exec(xml || ''))) out.push(m[1])
+    return decodeXmlEntities(out.join(' ')).replace(/\s+/g, ' ').trim()
+  }
+  const num = n => { const m = n.match(/slide(\d+)\.xml$/); return m ? +m[1] : 0 }
+  const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b))
+  const blocks = []
+  let empty = 0
+  for (let i = 0; i < slides.length; i++) {
+    const slideName = slides[i]
+    const body = runs(await zip.file(slideName).async('string'))
+    let notes = ''
+    const relsName = 'ppt/slides/_rels/' + slideName.split('/').pop() + '.rels'
+    const relsFile = zip.file(relsName)
+    if (relsFile) {
+      const relsXml = await relsFile.async('string')
+      const rm = relsXml.match(/Type="[^"]*notesSlide"[^>]*Target="([^"]+)"/i) || relsXml.match(/Target="([^"]*notesSlide\d+\.xml)"/i)
+      const np = rm ? pptxResolveTarget(slideName, rm[1]) : null
+      if (np && zip.file(np)) notes = runs(await zip.file(np).async('string'))
+    }
+    if (!body && !notes) empty++
+    let block = '=== Slide ' + (i + 1) + ' ===\n' + (body || '[no slide text]')
+    if (notes) block += '\n[Notes] ' + notes
+    blocks.push(block)
+  }
+  const text = blocks.join('\n\n').trim() || '[No text found in PPTX]'
+  const total = slides.length
+  const imageOnly = total > 0 && empty >= (CFG.SCAN_MIN_PAGES || 2) && (empty / total) >= (CFG.SCAN_MIN_SHARE || 0.15)
+  const scanWarning = imageOnly
+    ? empty + ' of ' + total + ' slides had no extractable text - this deck may be image-only. Embedded content will be incomplete.'
+    : null
+  return { text, scanWarning, structure: { kind: 'pptx-slides', slideCount: total } }
+}
+
+async function extractLegacyPptText(file) {
+  const ab = await file.arrayBuffer()
+  const u8 = new Uint8Array(ab)
+  const ascii = new TextDecoder('latin1').decode(u8)
+  const utf16 = new TextDecoder('utf-16le').decode(u8)
+  const strings = []
+  const addMatches = (s) => {
+    const re = /[\p{L}\p{N}\p{P}\p{Zs}]{5,}/gu
+    let m
+    while ((m = re.exec(s || ''))) {
+      const t = m[0].replace(/\s+/g, ' ').trim()
+      if (t.length >= 5 && !/^\d+$/.test(t)) strings.push(t)
+    }
+  }
+  addMatches(ascii)
+  addMatches(utf16)
+  const seen = new Set()
+  const cleaned = strings.filter(t => {
+    const key = t.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, 2000)
+  const text = cleaned.join('\n')
+  if (!text) throw new Error('No readable text found in legacy .ppt. Save as .pptx or PDF and upload again.')
+  return { text, scanWarning: 'Legacy .ppt was parsed with best-effort binary text extraction. For reliable slide order/layout, save as .pptx or PDF.', structure: { kind: 'ppt-legacy-best-effort' } }
+}
+
 const EXTRACTORS = {
-  pdf: async (file) => {
-    const ab = await file.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: ab, verbosity: 0 }).promise
-    const totalPages   = pdf.numPages
-    const pages        = []
-    const emptyPageNums = []
-    for (let i = 1; i <= totalPages; i++) {
-      const page = await pdf.getPage(i)
-      const tc   = await page.getTextContent()
-      const pageText = tc.items.map(it => it.str).join(' ').trim()
-      if (!pageText) emptyPageNums.push(i)
-      pages.push({ pageNum: i, text: pageText })
-    }
-    const text = pages.map(p => p.text).join('\n').trim() || '[No text found in PDF]'
-    const emptyShare   = totalPages ? emptyPageNums.length / totalPages : 0
-    const looksScanned = emptyPageNums.length >= CFG.SCAN_MIN_PAGES && emptyShare >= CFG.SCAN_MIN_SHARE
-    const scanWarning = looksScanned
-      ? emptyPageNums.length + ' of ' + totalPages + ' pages had no extractable text \u2014 this PDF may be partially or fully scanned. Embedded content will be incomplete.'
-      : null
-    return { text, scanWarning, pdfDoc: scanWarning ? pdf : null, emptyPageNums, pages }
-  },
-  docx: async (file) => {
-    const ab = await file.arrayBuffer()
-    const result = await mammoth.extractRawText({ arrayBuffer: ab })
-    return { text: result.value.trim() || '[No text found in DOCX]', scanWarning: null }
-  },
-  xlsx: async (file) => {
-    const ab = await file.arrayBuffer()
-    const wb = XLSX.read(ab, { type: 'array' })
-    let out = ''
-    for (const name of wb.SheetNames) {
-      const ws  = wb.Sheets[name]
-      const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false })
-      if (csv.trim()) out += '=== Sheet: ' + name + ' ===\n' + csv + '\n\n'
-    }
-    return { text: out.trim() || '[No data found in spreadsheet]', scanWarning: null }
-  },
-  // PowerPoint (.pptx) is a zip of slide XML; unzip (JSZip) and pull the
-  // DrawingML <a:t> text runs per slide (also covers table cells). Speaker notes
-  // are resolved per slide via the slide's .rels so they attach to the right
-  // slide. Image-only decks yield no text (no OCR) and raise a scan warning.
-  pptx: async (file) => {
-    if (typeof JSZip === 'undefined') throw new Error('PPTX needs the JSZip library (offline / blocked?) — export the deck to PDF instead')
-    const zip = await JSZip.loadAsync(await file.arrayBuffer())
-    const ent = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-    const runs = xml => { const out = []; const re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g; let m; while ((m = re.exec(xml))) out.push(m[1]); return ent(out.join(' ')).replace(/\s+/g, ' ').trim() }
-    const num = n => { const m = n.match(/slide(\d+)\.xml$/); return m ? +m[1] : 0 }
-    const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b))
-    const blocks = []
-    let empty = 0
-    for (let i = 0; i < slides.length; i++) {
-      const body = runs(await zip.file(slides[i]).async('string'))
-      // notes: resolve via the slide's rels (../notesSlides/notesSlideN.xml)
-      let notes = ''
-      const relsName = 'ppt/slides/_rels/' + slides[i].split('/').pop() + '.rels'
-      const relsFile = zip.file(relsName)
-      if (relsFile) {
-        const rm = (await relsFile.async('string')).match(/Target="([^"]*notesSlide\d+\.xml)"/i)
-        if (rm) {
-          const np = ('ppt/slides/' + rm[1]).replace(/[^/]+\/\.\.\//g, '')
-          if (zip.file(np)) notes = runs(await zip.file(np).async('string'))
-        }
-      }
-      if (!body && !notes) empty++
-      let block = '=== Slide ' + (i + 1) + ' ===\n' + (body || '[no slide text]')
-      if (notes) block += '\n[Notes] ' + notes
-      blocks.push(block)
-    }
-    const text = blocks.join('\n\n').trim() || '[No text found in PPTX]'
-    const total = slides.length
-    const imageOnly = total > 0 && empty >= (CFG.SCAN_MIN_PAGES || 3) && (empty / total) >= (CFG.SCAN_MIN_SHARE || 0.5)
-    const scanWarning = imageOnly
-      ? empty + ' of ' + total + ' slides had no extractable text — this deck may be image-only. Embedded content will be incomplete.'
-      : null
-    return { text, scanWarning }
-  },
+  pdf:  async (file) => extractPdfStructured(file),
+  docx: async (file) => extractDocxStructured(file),
+  xlsx: async (file) => extractXlsxStructured(file),
+  xlsm: async (file) => extractXlsxStructured(file),
+  xls:  async (file) => extractXlsxStructured(file),
+  pptx: async (file) => extractPptxStructured(file),
+  pptm: async (file) => extractPptxStructured(file),
+  ppsx: async (file) => extractPptxStructured(file),
+  potx: async (file) => extractPptxStructured(file),
+  ppt:  async (file) => extractLegacyPptText(file),
   // Any other file: read it as UTF-8 text. If it sniffs as binary (NUL bytes,
   // or a high share of U+FFFD replacement chars from undecodable bytes), reject
   // it as unsupported. queueFilesForPreview() catches this, shows a per-file
@@ -2084,14 +3425,13 @@ const EXTRACTORS = {
       if (head.indexOf('\u0000') !== -1 || (head.length && bad / head.length > 0.1)) {
         reject(new Error('unsupported file type (not readable as text)'))
       } else {
-        resolve({ text: s, scanWarning: null })
+        resolve({ text: s, scanWarning: null, structure: { kind: 'plain-text' } })
       }
     }
     r.onerror = () => reject(new Error('read error'))
     r.readAsText(file)
   }),
 }
-EXTRACTORS.xls = EXTRACTORS.xlsx   // legacy spreadsheet alias
 
 async function extractText(file) {
   const ext = getExt(file.name)
@@ -2174,8 +3514,10 @@ async function queueFilesForPreview(files, target) {
   toast('Extracting text...', 'info')
   for (const f of valid) {
     try {
-      const { text, scanWarning, pdfDoc, emptyPageNums, pages } = await extractText(f)
-      previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, pdfDoc, emptyPageNums, pages })
+      const extracted = await extractText(f)
+      const { text, scanWarning, pdfDoc, emptyPageNums, pages, structure, parseWarning } = extracted
+      previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure })
+      if (parseWarning) toast(f.name + ': ' + parseWarning, 'info')
     } catch (err) {
       toast('Could not read ' + f.name + ': ' + err.message, 'err')
     }
@@ -2214,12 +3556,7 @@ async function queueFilesForPreview(files, target) {
     previewQueue  = []
     previewTarget = null
     await commitDocs(items)
-    // Reset the DOCS picker (id="doc-file-in"), not the attach input — otherwise
-    // its value stays set and re-selecting the SAME filename won't refire the
-    // change event, so the upload silently does nothing. (file-in is reset
-    // separately on the attach/preview path.)
-    const docIn = document.getElementById('doc-file-in')
-    if (docIn) docIn.value = ''
+    document.getElementById('file-in').value = ''
     return
   }
 
@@ -2266,7 +3603,8 @@ function updateFpHint() {
   let text = total > 1
     ? `File ${previewTabIdx + 1} of ${total} — review each tab before confirming`
     : 'Review and edit the text above if needed'
-  if (f?.scanWarning) text += ' · ⚠️ ' + f.scanWarning
+  if (f?.scanWarning) text += ' · Warning: ' + f.scanWarning
+  if (f?.parseWarning) text += ' · Note: ' + f.parseWarning
   hint.textContent = text
 }
 
@@ -2318,8 +3656,10 @@ async function commitDocs(files) {
     const doc = {
       id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       name: f.name, size: f.size, content: f.extractedText,
+      structure: f.structure || null, sections: [], docAliases: [],
       chunks: [], status: creds ? 'pending' : 'ready', addedAt: Date.now()
     }
+    doc.docAliases = buildDocAliases(doc)
     chat.docs.push(doc)
     renderDocPanel(); updateDocsBtn()
     if (creds) {
@@ -2356,7 +3696,7 @@ function renderChips() {
 // merged from 43-files-embed.js
 // ---------------------------------------------------------------------------
 
-// Budget warning message + confirm dialog. Returns true to proceed with the embed.
+// Budget warning message + confirm dialog (alpha Phase 2). True = proceed.
 async function confirmEmbedBudget(name, nChunks, est, caps) {
   const k = n => n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n)))
   let msg = name + ' is ~' + nChunks + ' chunks (~' + k(est) + ' tokens).'
@@ -2365,19 +3705,24 @@ async function confirmEmbedBudget(name, nChunks, est, caps) {
   msg += ' Embed anyway?'
   return confirmDialog({ title: 'Embed large file?', message: msg, okText: 'Embed anyway', cancelText: 'Cancel' })
 }
-
 async function embedDoc(doc) {
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON). In #demo this
   // takes the same real path; the server returns deterministic demo vectors.
-  // Only the 16-char SHA-1 hash is stored per chunk (embHash) — the actual
-  // vector lives in the server's binary cache (embed_cache.bin).
+  // Normally only the 16-char SHA-1 hash is stored per chunk (embHash);
+  // vectors live in the server cache and are retrieved later through
+  // /api/embed-lookup. Upload embeddings always use /api/embed-batch.
   try {
     if (!creds?.embedApiKey || !creds?.embedModelId) {
       throw new Error('Embedding API key / model not configured')
     }
     const embedModel = creds.embedModelId
-    const size = creds.chunkSize || 800
-    const raw  = chunkText(doc.content, size, Math.floor(size * 0.2))
+    // Item 8: clamp chunk size to the embed model's max input (e.g. Cohere v3 = 512
+    // tokens) so no single chunk exceeds it. Default 800 chars is already safe.
+    let size = creds.chunkSize || CFG.DEFAULT_CHUNK_SIZE || 800
+    const _embMax = (typeof getEmbedMaxTokens === 'function') ? getEmbedMaxTokens(embedModel) : null
+    if (_embMax) size = Math.min(size, Math.floor(_embMax * 4 * 0.9))
+    const records = makeRagChunks(doc, size)
+    const raw = records.map(r => r.text)
     if (!raw.length) {
       doc.chunks = []; doc.status = 'ready'
       toast(doc.name + ' ready (no chunks)', 'ok')
@@ -2386,80 +3731,86 @@ async function embedDoc(doc) {
 
     setHealth('warn', 'Embedding 0/' + raw.length)
 
-    // Re-use existing embHash for chunks that haven't changed
+    // Re-use existing embHash for chunks that haven't changed.
+    // Metadata is refreshed every embed so section/parent context can improve
+    // without forcing unchanged text to be re-embedded.
     const existing = Array.isArray(doc.chunks) ? doc.chunks : []
     const chunks   = new Array(raw.length).fill(null)
     const toEmbed  = [], toEmbedIdx = []
 
     for (let i = 0; i < raw.length; i++) {
+      const rec = records[i]
       if (existing[i]?.text === raw[i] && existing[i]?.embHash) {
-        chunks[i] = { text: raw[i], embHash: existing[i].embHash }
+        const embHash = existing[i].embHash
+        chunks[i] = {
+          ...rec,
+          embHash,
+          chunkId: existing[i].chunkId || makeChunkId(doc, rec, i, embHash),
+          ...(Array.isArray(existing[i].embedding) ? { embedding: existing[i].embedding } : {})
+        }
       } else {
         toEmbed.push(raw[i]); toEmbedIdx.push(i)
       }
     }
 
     if (toEmbed.length) {
-      // Token-budget gate: warn ONLY when this embed (plus recent embeds in the
-      // last 60s) won't fit in the tokens left this minute, or exceeds the hard
-      // cap, or an explicit Settings "warn above" override. No fixed soft cap —
-      // that tripped on normal documents. Refresh the snapshot first so the
-      // "won't fit" check uses the live remaining budget. Cancel aborts cleanly.
+      // Token-budget gate (alpha Phase 2): warn only when this embed + recent
+      // embeds won't fit in the tokens left this minute, exceed the hard cap, or
+      // a Settings "warn above" override. Refresh the snapshot first; Cancel aborts.
       const _est = estTokens(toEmbed)
       if (typeof refreshBudget === 'function') await refreshBudget()
       const _caps = resolveEmbedCaps()
       const _recent = recentEmbedTokens()
-      const _wontFit = _caps.remaining != null && (_est + _recent) > _caps.remaining
-      const _overWarn = _caps.warnOverride != null && _est > _caps.warnOverride
-      const _overHard = _est > _caps.hard
-      const _over = _wontFit || _overWarn || _overHard
+      const _over = (_caps.remaining != null && (_est + _recent) > _caps.remaining)
+        || (_caps.warnOverride != null && _est > _caps.warnOverride)
+        || (_est > _caps.hard)
       if (_over && typeof confirmDialog === 'function') {
         const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
         if (!proceed) {
-          // A canceled, never-embedded file shouldn't linger as "pending" — drop
-          // it from the chat entirely. (If it already had chunks from a previous
-          // embed, keep those and just stop.)
           if (doc.chunks && doc.chunks.length) {
-            doc.status = 'ready'
-            doc.embedProgress = null
+            doc.status = 'ready'; doc.embedProgress = null
             toast('Embedding cancelled', 'info')
           } else {
-            const _chat = curChat()
-            if (_chat && Array.isArray(_chat.docs)) {
-              const _i = _chat.docs.findIndex(d => d.id === doc.id)
-              if (_i >= 0) _chat.docs.splice(_i, 1)
+            for (const ch of Object.values(D.chats || {})) {
+              if (Array.isArray(ch.docs)) ch.docs = ch.docs.filter(d => d.id !== doc.id)
             }
-            toast('Embedding cancelled — ' + doc.name + ' removed', 'info')
+            toast('Embedding cancelled \u2014 ' + doc.name + ' removed', 'info')
           }
           setHealth('ok', connectedLabel())
-          await persist()
-          renderDocPanel(); updateDocsBtn()
+          await persist(); renderDocPanel(); updateDocsBtn()
           return
         }
       }
-      // Show a persistent per-doc progress bar (renderDocPanel) driven by the
-      // SSE progress/pacing events forwarded from embedBatch.
-      doc.status = 'embedding'
-      doc.error  = null
+      // Persistent per-doc progress bar driven by embedBatch's SSE progress/pacing.
+      doc.status = 'embedding'; doc.error = null
       doc.embedProgress = { state: 'embedding', done: 0, total: toEmbed.length, batchDone: 0, batchTotal: 0 }
       renderDocPanel()
-      const { hashes } = await embedBatch(toEmbed, prog => {
-        doc.embedProgress = prog
-        renderDocPanel()
+      const { hashes, embeddings, storeVectors } = await embedBatch(toEmbed, prog => {
+        doc.embedProgress = prog; renderDocPanel()
       })
       noteEmbed(_est)
       for (let k = 0; k < toEmbedIdx.length; k++) {
-        chunks[toEmbedIdx[k]] = { text: toEmbed[k], embHash: hashes[k] }
+        const idx = toEmbedIdx[k]
+        const rec = records[idx]
+        const embHash = hashes[k]
+        chunks[idx] = {
+          ...rec,
+          embHash,
+          chunkId: makeChunkId(doc, rec, idx, embHash),
+          ...(storeVectors && Array.isArray(embeddings?.[k]) ? { embedding: embeddings[k] } : {})
+        }
       }
     }
+
     doc.chunks = chunks.filter(Boolean)
+    ragKeywordIndexCache = { signature: '', index: null, records: [] }
     doc.status = 'ready'
     doc.embedProgress = null
     persist()
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     renderDocPanel()
-    if (typeof refreshBudget === 'function') refreshBudget()   // pull the post-embed snapshot for the next fit check
+    if (typeof refreshBudget === 'function') refreshBudget()
   } catch (e) {
     doc.status = 'error'
     doc.error  = e.message
@@ -2469,30 +3820,29 @@ async function embedDoc(doc) {
     renderDocPanel()
   }
 }
-// Retry embedding a single doc that previously failed. Chunks already embedded
-// keep their embHash and are skipped inside embedDoc, so a retry RESUMES from
-// where it stopped rather than re-embedding everything.
+// Retry embedding a doc that previously failed. Chunks already embedded keep
+// their embHash and are skipped inside embedDoc, so retry RESUMES.
 async function retryEmbed(id, event) {
   if (event) event.stopPropagation()
-  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
-  const doc = chat.docs.find(d => d.id === id)
-  if (!doc) return
-  await embedDoc(doc)
+  const found = findDocInAnyChat(id)
+  if (!found) return
+  await embedDoc(found.doc)
   await persist()
 }
-// Remove an embedded document: evict its vectors, drop it from chat.docs,
-// persist, and refresh the panel.
+// Remove an embedded document across all chats (shared RAG memory), then GC
+// orphaned vectors. Optimistic: card drops + panel refreshes immediately.
 async function removeDoc(id, event) {
   if (event) event.stopPropagation()
-  const chat = curChat(); if (!chat || !Array.isArray(chat.docs)) return
-  const idx = chat.docs.findIndex(d => d.id === id)
-  if (idx === -1) return
-  const doc = chat.docs.splice(idx, 1)[0]
-  // Optimistic UI: drop the card and refresh immediately so the ✕ feels instant,
-  // then persist the doc list and prune orphaned vectors in the background. The
-  // two server round-trips no longer block the card from disappearing.
+  const found = findDocInAnyChat(id)
+  if (!found) return
+  const doc = found.doc
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    ch.docs = ch.docs.filter(d => d.id !== id)
+  }
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
   renderDocPanel(); updateDocsBtn()
-  toast('Removed ' + doc.name, 'ok')
+  toast('Removed ' + doc.name + ' from RAG memory', 'ok')
   ;(async () => {
     try { await persist() } catch (e) { console.warn('[removeDoc] persist', e.message) }
     try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc] gc', e.message) }
@@ -2618,21 +3968,49 @@ function buildContent(text) {
 // { payload, ragSources }, or { skillErr } when the chat's skill won't load.
 async function buildPayload(chat, queryText) {
   let ragChunks=[], ragSources=[], fullDocText=''
-  const readyDocs   = (chat.docs||[]).filter(d=>d.status==='ready')
-  const docsForFull = readyDocs.filter(d=>d.content)
-  const totalChars  = docsForFull.reduce((n,d)=>n+d.content.length,0)
-  const fullLimit   = creds.docFullTextLimit || CFG.DOC_FULLTEXT_LIMIT
-  const useFullText = docsForFull.length>0 && totalChars<=fullLimit
-  if (useFullText) {
-    fullDocText = docsForFull.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
-    ragSources  = docsForFull.map(d=>d.name)
-  } else if (readyDocs.some(d=>d.chunks?.length)) {
-    try {
-      ragChunks = await retrieveChunks(queryText, chat.docs, creds.topK||10, ragStickyChunks)
-      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
-      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * CFG.STICKY_CHUNK_RATIO)))
+  const memoryDocs  = getRagMemoryDocs(chat)
+  const readyDocs   = memoryDocs.filter(d=>d.status==='ready')
+  const queryPlan   = analyzeRagQuery(queryText, readyDocs)
+  const scopedDocs  = narrowDocsForQuery(queryPlan, readyDocs)
+  const docsForUse  = scopedDocs.length ? scopedDocs : readyDocs
+
+  if (queryPlan.sectionRefs.length && docsForUse.some(d => d.content || d.sections?.length || d.chunks?.length)) {
+    ragChunks = exactSectionLookup(queryPlan.sectionRefs, docsForUse)
+    if (ragChunks.length) {
+      ragSources = uniqueSourceNames(ragChunks)
     }
-    catch(e) { console.warn('RAG:',e.message) }
+  }
+
+  if (!ragChunks.length) {
+    const docsForFull = docsForUse.filter(d=>d.content)
+    // Item 2a: dynamic full-text budget — scale to the model's context window
+    // (getModelContext), clamped [DOC_FULLTEXT_FLOOR, DOC_FULLTEXT_CEILING].
+    // Unknown/custom model -> conservative DOC_FULLTEXT_LIMIT fallback.
+    let fullLimit = CFG.DOC_FULLTEXT_LIMIT
+    const _win = (typeof getModelContext === 'function') ? getModelContext(creds.model) : null
+    if (_win) {
+      const _reserveTok = (creds.maxTokens || CFG.DEFAULT_MAX_TOKENS || 8192)
+      const _histTok = estTokens(chat.messages.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
+      const _availChars = Math.floor((_win - _reserveTok - _histTok - 2000) * 4)
+      fullLimit = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.min(CFG.DOC_FULLTEXT_CEILING || 250000, _availChars))
+    }
+    const fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
+    const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
+    const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
+    if (useFullText) {
+      fullDocText = fullCandidates.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
+      ragSources  = uniqueSourceNames(fullCandidates)
+    } else if (docsForUse.some(d=>d.chunks?.length)) {
+      try {
+        ragChunks = await retrieveRagChunks(queryText, docsForUse, clampTopK(creds.topK), ragStickyChunks)
+        // Item 4: evidence-scored source display; fall back to all retrieved docs
+        // if the evidence filter would hide every source.
+        ragSources = displayedSourceNames(queryText, ragChunks)
+        if (!ragSources.length) ragSources = uniqueSourceNames(ragChunks)
+        ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor(clampTopK(creds.topK) * CFG.STICKY_CHUNK_RATIO)))
+      }
+      catch(e) { console.warn('RAG:',e.message) }
+    }
   }
   const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
   if (skillErr) return { skillErr }
@@ -2640,13 +4018,17 @@ async function buildPayload(chat, queryText) {
   if (fullDocText) {
     sys = 'The following document(s) are provided IN FULL. Use them to answer the user.\n\n'+fullDocText+(sys?'\n\n'+sys:'')
   } else if (ragChunks.length) {
-    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
-    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
+    const ctx = ragChunks.map((c,i)=>{
+      const loc = [c.docName, c.pageStart ? ('p.' + c.pageStart) : '', c.sectionNo ? ('section ' + c.sectionNo) : (c.sectionTitle || '')].filter(Boolean).join(' — ')
+      return `[${i+1}] (${loc})\n${c.text}`
+    }).join('\n\n')
+    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so. Prefer cited excerpts over general knowledge, and mention when the provided excerpts are insufficient.\n\n'+ctx+(sys?'\n\n'+sys:'')
   }
   const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
   const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
   return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
 }
+
 
 async function send() {
   if (!creds) { openConnect(); return }
@@ -3647,6 +5029,8 @@ function appendTyping() {
 function renderDocPanel() {
   const el   = document.getElementById('dp-body')
   const chat = curChat()
+  const _pastCb = document.getElementById('dp-use-past-embeddings')
+  if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
   const docs = chat?.docs||[]
   el.innerHTML = ''
   if (!docs.length) {
