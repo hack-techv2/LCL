@@ -3,6 +3,51 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 1 Jul 2026 — v0.67e RAG integration (alpha)
+
+Integration of a contributor's v0.67e RAG rebuild onto alpha, merged module-by-module
+(kept all alpha features — compact rail, embed progress/Retry, budget gate, copy
+sanitiser). Version stays v0.67d.
+
+- **Hybrid retrieval** (`15-rag.js`, adopted from v0.67e): MiniSearch keyword recall +
+  vector recall, RRF fusion, heuristic reranking, neighbour/section expansion, optional
+  "retrieve more" round. New CDN dep MiniSearch 7.2.0. Alpha's `ragStickyChunks` kept.
+- **Query-aware full-text injection with dynamic scaling** (item 2): budget scales to the
+  model's context window (`getModelContext`, new per-model table in `05-models.js`),
+  clamped to a 250k-char ceiling / 40k floor, 10k fallback for unknown/custom models.
+  No user knob.
+- **Shared RAG memory** (item 3): "Search past embeddings" toggle searches prior chats'
+  docs (`getRagMemoryDocs`); cross-tier mixing is a documented user-responsibility risk.
+- **Evidence-scored sources** (item 4): `displayedSourceNames` on the hybrid path with a
+  fallback to all retrieved docs so genuine citations are never hidden.
+- **Top-K constrained 3–10** (item 5, default 5, `clampTopK`).
+- **Richer chunk/doc metadata** (item 6): sections, heading paths, page ranges, char
+  offsets, aliases, section-family expansion. No migration — docs embedded in the old
+  format are re-embedded (surface via the existing error path).
+- **Structured DOCX/XLSX/PPTX extraction** (item 7) carried into chunking; alpha's
+  `_default` binary-sniff + no-allowlist policy preserved.
+- **Embed pipeline** (item 8): robust `embedBatch`/`embedDoc` (JSON+SSE, validation,
+  request splitting, clearer errors, structured records, hash reuse) merged with alpha's
+  progress bar, `retryEmbed`, and budget gate. Chunk size clamped to the embed model's
+  max input (`getEmbedMaxTokens`, e.g. Cohere v3 = 512 tokens).
+- **Delete-chat pruning** (item 9): confirm dialog (reuses `confirmDialog`) + embed-cache
+  GC + "Deleted chat and pruned embeddings" toast.
+- **pdf.js 3.11.174 → 5.7.284 (ESM)** via jsDelivr — fixes CVE-2024-4367 (code injection).
+  Loader refactored to an ES module exposing `window.pdfjsLib`; worker points at the v5
+  `.mjs`. Verified loading on Edge 149.
+- **server.txt: full sensitive-payload redaction.** `logSensitive` now redacts on the
+  live console too (byte count + short sha256), not just the on-disk log — prompts/
+  responses (incl. RESTRICTED material) are never shown on the terminal or persisted.
+- **Bug fix:** declared `ragKeywordIndexCache` (`10-state.js`) — it was referenced by the
+  merged RAG code but its declaration wasn't ported, silently degrading hybrid retrieval
+  to vector-only (keyword recall threw and was swallowed).
+- **Cleanup:** removed dead functions (`chunkText`, `countSubstringHits`,
+  `evictDocFromCache`, `previewText`); relocated `clampTopK` to `05-models.js`.
+- **Tests:** added `test/fixtures/` (PDF/DOCX/PPTX/XLSX + `make_fixtures.py` generator)
+  and a real-file extraction checklist (U19–U24) in `test/UI_CHECKS.md`. Build 5/5 +
+  24/24 demo-api green; `#demo` UI verified. Model context/pricing catalogue added incl.
+  new embed model `gemini-embedding-2`.
+
 ## 1 Jul 2026
 
 - **Compact rail footer (UI refresh).** The sidebar footer is reorganised into a
