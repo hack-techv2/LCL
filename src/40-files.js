@@ -654,9 +654,37 @@ async function commitDocs(files) {
   if (skipped) toast(skipped + (skipped > 1 ? ' files' : ' file') + ' already embedded \u2014 skipped', 'info')
   renderDocPanel(); updateDocsBtn()
   if (creds) {
-    for (const doc of added) {
-      toast('Embedding ' + doc.name + '...', 'info')
-      await embedDoc(doc)
+    // Plan every file up front so a multi-file drop shows ONE budget dialog
+    // (per-file size + estimated time) instead of a separate prompt per file.
+    if (typeof refreshBudget === 'function') await refreshBudget()
+    const caps = resolveEmbedCaps()
+    const plans = added.map(doc => ({ doc, plan: planDocEmbed(doc) }))
+    const totalEst = plans.reduce((s, p) => s + p.plan.est, 0)
+    const recent = (typeof recentEmbedTokens === 'function') ? recentEmbedTokens() : 0
+    const over = (caps.remaining != null && (totalEst + recent) > caps.remaining)
+      || (caps.warnOverride != null && totalEst > caps.warnOverride)
+      || (totalEst > caps.hard)
+    let selectedIds = null
+    if (over && plans.some(p => p.plan.toEmbed.length) && typeof confirmEmbedBatch === 'function') {
+      selectedIds = await confirmEmbedBatch(plans, caps)
+      if (!selectedIds) {
+        for (const p of plans) {
+          for (const ch of Object.values(D.chats || {})) if (Array.isArray(ch.docs)) ch.docs = ch.docs.filter(d => d.id !== p.doc.id)
+        }
+        toast('Embedding cancelled', 'info')
+        renderDocPanel(); updateDocsBtn(); await persist(); return
+      }
+    }
+    const sel = new Set(selectedIds || plans.map(p => p.doc.id))
+    for (const p of plans) {
+      if (sel.has(p.doc.id)) continue
+      for (const ch of Object.values(D.chats || {})) if (Array.isArray(ch.docs)) ch.docs = ch.docs.filter(d => d.id !== p.doc.id)
+    }
+    renderDocPanel()
+    for (const p of plans) {
+      if (!sel.has(p.doc.id)) continue
+      toast('Embedding ' + p.doc.name + '...', 'info')
+      await embedDoc(p.doc, { plan: p.plan, skipGate: true })
     }
   } else {
     toast(added.length > 1 ? (added.length + ' files added (connect to embed for RAG)')
@@ -698,7 +726,31 @@ async function confirmEmbedBudget(name, nChunks, est, caps) {
   msg += ' Embed anyway?'
   return confirmDialog({ title: 'Embed large file?', message: msg, okText: 'Embed anyway', cancelText: 'Cancel' })
 }
-async function embedDoc(doc) {
+// Plan a doc's embedding WITHOUT running it: chunk, reuse unchanged chunks, and
+// return the work + token estimate. Shared by embedDoc and the batch dialog so a
+// multi-file drop can be summarised (size + time) before any embedding starts.
+function planDocEmbed(doc) {
+  const embedModel = creds.embedModelId
+  let size = creds.chunkSize || CFG.DEFAULT_CHUNK_SIZE || 800
+  const _embMax = (typeof getEmbedMaxTokens === 'function') ? getEmbedMaxTokens(embedModel) : null
+  if (_embMax) size = Math.min(size, Math.floor(_embMax * 4 * 0.9))
+  const records = makeRagChunks(doc, size)
+  const raw = records.map(r => r.text)
+  const existing = Array.isArray(doc.chunks) ? doc.chunks : []
+  const chunks = new Array(raw.length).fill(null)
+  const toEmbed = [], toEmbedIdx = []
+  for (let i = 0; i < raw.length; i++) {
+    const rec = records[i]
+    if (existing[i]?.text === raw[i] && existing[i]?.embHash) {
+      const embHash = existing[i].embHash
+      chunks[i] = { ...rec, embHash, chunkId: existing[i].chunkId || makeChunkId(doc, rec, i, embHash), ...(Array.isArray(existing[i].embedding) ? { embedding: existing[i].embedding } : {}) }
+    } else {
+      toEmbed.push(raw[i]); toEmbedIdx.push(i)
+    }
+  }
+  return { size, records, chunks, toEmbed, toEmbedIdx, est: estTokens(toEmbed) }
+}
+async function embedDoc(doc, opts) {
   // Embeds doc chunks via /api/embed-batch (SSE or cached JSON). In #demo this
   // takes the same real path; the server returns deterministic demo vectors.
   // Normally only the 16-char SHA-1 hash is stored per chunk (embHash);
@@ -708,56 +760,27 @@ async function embedDoc(doc) {
     if (!creds?.embedApiKey || !creds?.embedModelId) {
       throw new Error('Embedding API key / model not configured')
     }
-    const embedModel = creds.embedModelId
-    // Item 8: clamp chunk size to the embed model's max input (e.g. Cohere v3 = 512
-    // tokens) so no single chunk exceeds it. Default 800 chars is already safe.
-    let size = creds.chunkSize || CFG.DEFAULT_CHUNK_SIZE || 800
-    const _embMax = (typeof getEmbedMaxTokens === 'function') ? getEmbedMaxTokens(embedModel) : null
-    if (_embMax) size = Math.min(size, Math.floor(_embMax * 4 * 0.9))
-    const records = makeRagChunks(doc, size)
-    const raw = records.map(r => r.text)
-    if (!raw.length) {
+    const plan = (opts && opts.plan) || planDocEmbed(doc)
+    const { records, chunks, toEmbed, toEmbedIdx } = plan
+    if (!records.length) {
       doc.chunks = []; doc.status = 'ready'
       toast(doc.name + ' ready (no chunks)', 'ok')
       renderDocPanel(); return
     }
-
-    setHealth('warn', 'Embedding 0/' + raw.length)
-
-    // Re-use existing embHash for chunks that haven't changed.
-    // Metadata is refreshed every embed so section/parent context can improve
-    // without forcing unchanged text to be re-embedded.
-    const existing = Array.isArray(doc.chunks) ? doc.chunks : []
-    const chunks   = new Array(raw.length).fill(null)
-    const toEmbed  = [], toEmbedIdx = []
-
-    for (let i = 0; i < raw.length; i++) {
-      const rec = records[i]
-      if (existing[i]?.text === raw[i] && existing[i]?.embHash) {
-        const embHash = existing[i].embHash
-        chunks[i] = {
-          ...rec,
-          embHash,
-          chunkId: existing[i].chunkId || makeChunkId(doc, rec, i, embHash),
-          ...(Array.isArray(existing[i].embedding) ? { embedding: existing[i].embedding } : {})
-        }
-      } else {
-        toEmbed.push(raw[i]); toEmbedIdx.push(i)
-      }
-    }
+    setHealth('warn', 'Embedding 0/' + records.length)
 
     if (toEmbed.length) {
       // Token-budget gate (alpha Phase 2): warn only when this embed + recent
       // embeds won't fit in the tokens left this minute, exceed the hard cap, or
       // a Settings "warn above" override. Refresh the snapshot first; Cancel aborts.
-      const _est = estTokens(toEmbed)
+      const _est = plan.est
       if (typeof refreshBudget === 'function') await refreshBudget()
       const _caps = resolveEmbedCaps()
       const _recent = recentEmbedTokens()
       const _over = (_caps.remaining != null && (_est + _recent) > _caps.remaining)
         || (_caps.warnOverride != null && _est > _caps.warnOverride)
         || (_est > _caps.hard)
-      if (_over && typeof confirmDialog === 'function') {
+      if (!(opts && opts.skipGate) && _over && typeof confirmDialog === 'function') {
         const proceed = await confirmEmbedBudget(doc.name, toEmbed.length, _est, _caps)
         if (!proceed) {
           if (doc.chunks && doc.chunks.length) {
