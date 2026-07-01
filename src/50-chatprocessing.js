@@ -121,6 +121,7 @@ async function buildPayload(chat, queryText) {
   const queryPlan   = analyzeRagQuery(queryText, readyDocs)
   const scopedDocs  = narrowDocsForQuery(queryPlan, readyDocs)
   const docsForUse  = scopedDocs.length ? scopedDocs : readyDocs
+  const searchMode  = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
 
   if (queryPlan.sectionRefs.length && docsForUse.some(d => d.content || d.sections?.length || d.chunks?.length)) {
     ragChunks = exactSectionLookup(queryPlan.sectionRefs, docsForUse)
@@ -129,39 +130,48 @@ async function buildPayload(chat, queryText) {
     }
   }
 
+  // Chunk retrieval used by 'specific' mode and the 'auto'/'whole' fallback.
+  async function retrieveChunksInto() {
+    if (!docsForUse.some(d=>d.chunks?.length)) return
+    try {
+      ragChunks = await retrieveRagChunks(queryText, docsForUse, clampTopK(creds.topK), ragStickyChunks)
+      // Item 4: evidence-scored source display; fall back to all retrieved docs
+      // if the evidence filter would hide every source.
+      ragSources = displayedSourceNames(queryText, ragChunks)
+      if (!ragSources.length) ragSources = uniqueSourceNames(ragChunks)
+      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor(clampTopK(creds.topK) * CFG.STICKY_CHUNK_RATIO)))
+    } catch(e) { console.warn('RAG:',e.message) }
+  }
+
   if (!ragChunks.length) {
-    const docsForFull = docsForUse.filter(d=>d.content)
-    // Item 2a: dynamic full-text budget — scale to the model's context window
-    // (getModelContext), clamped [DOC_FULLTEXT_FLOOR, DOC_FULLTEXT_CEILING].
-    // Unknown/custom model -> conservative DOC_FULLTEXT_LIMIT fallback.
-    let fullLimit = CFG.DOC_FULLTEXT_LIMIT
-    const _win = (typeof getModelContext === 'function') ? getModelContext(creds.model) : null
-    if (_win) {
-      const _reserveTok = (creds.maxTokens || CFG.DEFAULT_MAX_TOKENS || 8192)
-      const _histTok = estTokens(chat.messages.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
-      const _availChars = Math.floor((_win - _reserveTok - _histTok - 2000) * 4)
-      fullLimit = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.min(CFG.DOC_FULLTEXT_CEILING || 250000, _availChars))
-    }
-    let fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
-    // Fallback: if the query doesn't lexically match any doc, still consider all
-    // ready docs — a general/paraphrased question shouldn't skip an embedded doc
-    // that fits the budget (the budget clamp below still guards huge injections).
-    if (!fullCandidates.length) fullCandidates = docsForFull
-    const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
-    const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
-    if (useFullText) {
-      fullDocText = fullCandidates.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
-      ragSources  = uniqueSourceNames(fullCandidates)
-    } else if (docsForUse.some(d=>d.chunks?.length)) {
-      try {
-        ragChunks = await retrieveRagChunks(queryText, docsForUse, clampTopK(creds.topK), ragStickyChunks)
-        // Item 4: evidence-scored source display; fall back to all retrieved docs
-        // if the evidence filter would hide every source.
-        ragSources = displayedSourceNames(queryText, ragChunks)
-        if (!ragSources.length) ragSources = uniqueSourceNames(ragChunks)
-        ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor(clampTopK(creds.topK) * CFG.STICKY_CHUNK_RATIO)))
+    if (searchMode === 'specific') {
+      // Always search for the most relevant passages — never inject full text.
+      await retrieveChunksInto()
+    } else {
+      const docsForFull = docsForUse.filter(d=>d.content)
+      // Full-text budget scaled to the model's context window. 'whole' mode uses the
+      // full window; 'auto' caps at the sane DOC_FULLTEXT_CEILING. Unknown model -> floor.
+      const _win = (typeof getModelContext === 'function') ? getModelContext(creds.model) : null
+      let availChars = CFG.DOC_FULLTEXT_LIMIT
+      if (_win) {
+        const _reserveTok = (creds.maxTokens || CFG.DEFAULT_MAX_TOKENS || 8192)
+        const _histTok = estTokens(chat.messages.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
+        availChars = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.floor((_win - _reserveTok - _histTok - 2000) * 4))
       }
-      catch(e) { console.warn('RAG:',e.message) }
+      const fullLimit = (searchMode === 'whole') ? availChars : Math.min(availChars, CFG.DOC_FULLTEXT_CEILING || 250000)
+      let fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
+      // Fallback: if the query matches no doc lexically, still consider all ready docs
+      // so a general/paraphrased question isn't left ungrounded (budget clamp guards size).
+      if (!fullCandidates.length) fullCandidates = docsForFull
+      const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
+      const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
+      if (useFullText) {
+        fullDocText = fullCandidates.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
+        ragSources  = uniqueSourceNames(fullCandidates)
+      } else {
+        // Too large to send whole (even in 'whole' mode, past the model window) -> chunks.
+        await retrieveChunksInto()
+      }
     }
   }
   const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
