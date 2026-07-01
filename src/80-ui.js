@@ -648,6 +648,74 @@ function confirmDialog(opts) {
   })
 }
 
+// Consolidated batch embed confirmation (alpha). One dialog for a multi-file
+// drop: per-file size + estimated time, all selected by default, live total.
+// Resolves to an array of selected doc ids, or null if cancelled.
+function confirmEmbedBatch(plans, caps) {
+  return new Promise(resolve => {
+    let done = false
+    const k = n => n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n)))
+    const items = plans.map(p => ({ id: p.doc.id, name: p.doc.name, size: p.doc.size || 0, tokens: p.plan.est, chunks: p.plan.toEmbed.length, sel: true }))
+    const onKey = e => { if (e.key === 'Escape') finish(null); else if (e.key === 'Enter' && !okBtn.disabled) okBtn.click() }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+
+    const totalLbl = mkEl('span', { class: 'eb-total' })
+    const okBtn = mkEl('button', { class: 'btn-p', onclick: () => { const ids = items.filter(i => i.sel).map(i => i.id); finish(ids.length ? ids : null) } })
+    const cancelBtn = mkEl('button', { class: 'cd-cancel', onclick: () => finish(null) }, 'Cancel')
+
+    function refresh() {
+      const selItems = items.filter(i => i.sel)
+      const selTokens = selItems.reduce((s, i) => s + i.tokens, 0)
+      const secs = selItems.reduce((s, i) => s + embedSecs(i.tokens, caps), 0) + embedWaitSecs(selTokens, caps)
+      totalLbl.textContent = selItems.length + ' of ' + items.length + ' selected' + (selItems.length ? ' \u00b7 ' + fmtEmbedDur(secs) + ' total' : '')
+      okBtn.textContent = selItems.length === items.length ? ('Embed all (' + items.length + ')') : ('Embed selected (' + selItems.length + ')')
+      okBtn.disabled = selItems.length === 0
+    }
+
+    const rows = items.map(it => {
+      const chk = mkEl('span', { class: 'eb-check' }, '\u2713')
+      const row = mkEl('div', { class: 'eb-row', role: 'checkbox', 'aria-checked': 'true' }, [
+        chk,
+        mkEl('div', { class: 'eb-inf' }, [
+          mkEl('div', { class: 'eb-name' }, it.name),
+          mkEl('div', { class: 'eb-sz' }, fmtSz(it.size))
+        ]),
+        mkEl('div', { class: 'eb-right' }, [
+          mkEl('div', { class: 'eb-time' }, fmtEmbedDur(embedSecs(it.tokens, caps))),
+          mkEl('div', { class: 'eb-cnt' }, it.chunks + ' chunks')
+        ])
+      ])
+      row.addEventListener('click', () => {
+        it.sel = !it.sel
+        row.classList.toggle('eb-off', !it.sel)
+        row.setAttribute('aria-checked', it.sel ? 'true' : 'false')
+        chk.textContent = it.sel ? '\u2713' : ''
+        refresh()
+      })
+      return row
+    })
+
+    let msg
+    if (caps && caps.remaining != null) {
+      msg = 'About ' + k(caps.remaining) + ' tokens are left this minute, so this batch will queue and embed in the background. You can keep chatting while it runs.'
+    } else {
+      msg = 'This batch will embed in the background. You can keep chatting while it runs.'
+    }
+
+    const box = mkEl('div', { class: 'cd-box eb-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, items.length === 1 ? 'Embed this file?' : ('Embed ' + items.length + ' files?')),
+      mkEl('div', { class: 'cd-msg' }, msg),
+      mkEl('div', { class: 'eb-list' }, rows),
+      mkEl('div', { class: 'eb-foot' }, [totalLbl, mkEl('div', { class: 'eb-acts' }, [cancelBtn, okBtn])])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(null) } }, [box])
+    refresh()
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { okBtn.focus() } catch {} }, 0)
+  })
+}
+
 function saveSP() {
   const prevEmbedKey = creds.embedApiKey || ''
   creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
