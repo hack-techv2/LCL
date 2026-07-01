@@ -241,6 +241,23 @@ async function send() {
   }
   const { payload, ragSources } = built
 
+  // Pre-flight token guard: a whole-doc turn can exceed the per-minute token cap
+  // (and/or the model context window). Such a request 429s even with a full budget
+  // and would otherwise auto-retry forever, so block it here with an actionable note.
+  const _estTok = Math.ceil(JSON.stringify(payload).length / 4)
+  const _ctx = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
+  const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
+  const _ceil = Math.min(_ctx || Infinity, _rateCap)
+  if (_estTok > _ceil) {
+    const note = 'This request is ~' + Math.round(_estTok / 1000) + 'k tokens, over the ~' + Math.round(_ceil / 1000) + 'k limit — it can\u2019t be sent. Switch Search mode to Auto or Specific, or ask about fewer documents at once.'
+    chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
+    appendMsg('ai', note, null, null, null, true)
+    if (typeof lclCrumb === 'function') lclCrumb('chat_blocked_oversize', { est: _estTok, ceil: _ceil, docs: (chat.docs && chat.docs.length) || 0 })
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
+    return
+  }
+
   await runStream(chat, payload, ragSources)
 
   } catch (e) {
@@ -299,6 +316,17 @@ async function runStream(chat, payload, ragSources) {
       const errData = r.errData
       if (typeof lclCrumb === 'function') lclCrumb('chat_error', { status: r.status, kind: r.kind, reset: r.resetMs ? 'parsed' : 'none' })
       try { typingEl.remove() } catch {}
+
+      // A 429 that reports a FULL remaining budget means the request itself is
+      // bigger than the token cap — waiting can't help, so don't auto-retry (this
+      // was the infinite "retry in 60s" loop on oversized whole-doc turns).
+      if (r.kind === 'ratelimit' && r.unwinnable) {
+        const note = 'Error 429: this request is larger than the model\u2019s token limit, so waiting won\u2019t help. Reduce the documents in context (switch Search mode to Auto or Specific, or ask about fewer files) and try again.'
+        chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
+        appendMsg('ai', note, null, ragSources, null, true)
+        setHealth('err', 'Request too large')
+        return
+      }
 
       // 429 with a usable reset time → countdown + auto-retry when it expires.
       if (r.kind === 'ratelimit' && r.resetMs) {
