@@ -39,8 +39,14 @@
                    radial-gradient(at 100% 100%, #181c2880 0%, transparent 55%);
   --hairline:     rgba(255,255,255,.04);
   --hairline-2:   rgba(255,255,255,.06);
+  --ac-tx:  var(--ac);
+  --pin-tx: #f0a500;
+  --pin-bar:#f0a500;
 }
 [data-theme="light"] {
+  --ac-tx:  #a8410a;   /* accent as TEXT on light surfaces (buttons keep --ac) */
+  --pin-tx: #8a5a00;   /* amber as TEXT on light surfaces */
+  --pin-bar:#b5760a;   /* amber progress-bar fill on light */
   --bg:     #eceef3;
   --bg2:    #ffffff;
   --bg3:    #e3e7f0;
@@ -335,8 +341,8 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .doc-name{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .doc-sz{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:2px}
 .doc-st{font-size:10px;font-family:var(--mono);margin-top:3px;display:inline-block;padding:2px 7px;border-radius:8px}
-.doc-st.ready{background:rgba(232,97,10,.12);color:var(--ac)}
-.doc-st.pending{background:rgba(255,200,0,.1);color:#f0a500}
+.doc-st.ready{background:rgba(232,97,10,.12);color:var(--ac-tx)}
+.doc-st.pending{background:rgba(255,200,0,.1);color:var(--pin-tx)}
 .doc-st.error{background:var(--redbg);color:var(--red)}
 .doc-del{font-size:12px;color:var(--tx3);cursor:pointer;padding:2px 4px;border-radius:3px;transition:all .12s;background:none;border:none;flex-shrink:0}
 .doc-del:hover{color:var(--red)}
@@ -344,12 +350,12 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .doc-prog{margin-top:7px}
 .doc-prog-track{height:6px;border-radius:4px;background:var(--bg4);overflow:hidden}
 .doc-prog-fill{height:100%;background:var(--ac);border-radius:4px;transition:width .25s ease}
-.doc-prog-fill.pace{background:#f0a500;opacity:.75}
+.doc-prog-fill.pace{background:var(--pin-bar);opacity:.75}
 .doc-prog-fill.indet{width:32%;animation:docIndet 1.1s ease-in-out infinite}
 @keyframes docIndet{0%{margin-left:-32%}100%{margin-left:100%}}
 .doc-prog-meta{display:flex;justify-content:space-between;gap:8px;margin-top:4px;font-size:10px;font-family:var(--mono)}
-.doc-prog-lbl{color:var(--ac);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.doc-prog-lbl.pace{color:#f0a500}
+.doc-prog-lbl{color:var(--ac-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-prog-lbl.pace{color:var(--pin-tx)}
 .doc-prog-cnt{color:var(--tx3);flex-shrink:0}
 .doc-retry{font-size:10px;font-family:var(--mono);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:2px 8px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .12s}
 .doc-retry:hover{border-color:var(--ac);color:var(--ac)}
@@ -395,6 +401,26 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .cd-acts{display:flex;justify-content:flex-end;gap:8px}
 .cd-cancel{font-size:13px;font-family:var(--sans);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:7px 14px;border-radius:8px;cursor:pointer;transition:all .12s}
 .cd-cancel:hover{background:var(--bg4);color:var(--tx)}
+.btn-p:disabled{opacity:.5;cursor:default}
+.eb-box{width:430px}
+.eb-list{border:1px solid var(--bdr);border-radius:10px;overflow:hidden;margin:2px 0 14px}
+.eb-row{display:flex;align-items:center;gap:10px;padding:9px 11px;cursor:pointer;border-bottom:1px solid var(--hairline-2);transition:background .1s}
+.eb-row:last-child{border-bottom:none}
+.eb-row:hover{background:var(--bg3)}
+.eb-row.eb-off{opacity:.55}
+.eb-row.eb-off .eb-name{text-decoration:line-through}
+.eb-check{width:18px;height:18px;flex-shrink:0;border-radius:5px;border:1px solid var(--ac);background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
+.eb-row.eb-off .eb-check{background:none;border-color:var(--bdr2)}
+.eb-inf{flex:1;min-width:0}
+.eb-name{font-size:12px;font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eb-sz{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:1px}
+.eb-right{text-align:right;flex-shrink:0}
+.eb-time{font-size:12px;font-weight:500;color:var(--tx)}
+.eb-cnt{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:1px}
+.eb-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.eb-total{font-size:12px;color:var(--tx2)}
+.eb-acts{display:flex;gap:8px;flex-shrink:0}
+.eb-acts .btn-p{width:auto;margin-top:0}
 .cd-ok{font-size:13px;padding:7px 16px;border-radius:8px;cursor:pointer}
 .dp-upload{margin:10px;padding:10px;background:transparent;border:1px dashed var(--bdr2);border-radius:var(--r);color:var(--tx3);font-family:var(--sans);font-size:12px;cursor:pointer;width:calc(100% - 20px);transition:all .15s;text-align:center}
 .dp-upload:hover{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
@@ -697,6 +723,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 /* Queued (not-yet-embedded) doc cards render greyed so a multi-file drop shows
    every file pending at once. The one currently embedding stays full-opacity. */
 .doc-card.doc-pending{opacity:.55}
+[data-theme="light"] .doc-card.doc-pending{opacity:.82}
 
 /* Long doc filenames scroll on hover (reuses the chat-title lcl-marq keyframes). */
 .doc-name-inner{display:inline-block;white-space:nowrap}
