@@ -554,17 +554,21 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
       return done(Object.assign(new Error('TLS certificate not trusted: ' + ae), { code: ae }))
     }
     let body = ''
+    let chunkCount = 0
 
     log.debug('[api] response status  =', upstreamRes.statusCode)
     dlog('[api] response headers =', upstreamRes.headers)
 
     upstreamRes.on('data', chunk => {
       body += chunk
-      log.debug('[api] chunk bytes =', Buffer.byteLength(chunk))
+      chunkCount++
+      // Per-chunk byte lines are extremely noisy (dozens per embed batch) and
+      // used to drown the log. Off by default; set LCL_LOG_CHUNKS=1 to restore.
+      if (process.env.LCL_LOG_CHUNKS) log.debug('[api] chunk bytes =', Buffer.byteLength(chunk))
     })
 
     upstreamRes.on('end', () => {
-      dlog('[api] response body length =', body.length)
+      dlog('[api] response body   | ' + chunkCount + ' chunks | ' + body.length + ' bytes')
       logSensitive('[api] response body =', body)
       const rlTag = '[api ' + (/embed/i.test(pathName) ? 'embed' : 'chat') + ']'
       const rlHdrKeys = Object.keys(upstreamRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
@@ -720,6 +724,7 @@ function handleSaveConfig(req, res) {
 // ---------------------------------------------------------------------------
 function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   const bodyStr = JSON.stringify(payload)
+  const streamStart = Date.now()   // for time-to-first-byte + total duration
   const opts = {
     hostname: API_HOST, port: 443, path: pathName, method: 'POST',
     agent: upstreamAgent,
@@ -751,6 +756,11 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       return
     }
     log.debug('[stream] response status  =', upRes.statusCode)
+    // Full response headers (parity with the buffered path). Chat streams
+    // previously logged only the x-ratelimit presence check, so the GovTech
+    // correlation id was invisible for the app's main workload.
+    dlog('[stream] response headers =', upRes.headers)
+    log.debug('[stream] call-id  =', (upRes.headers && upRes.headers['x-models-call-id']) || '(none)')
     // Diagnostic: which (if any) x-ratelimit-* headers the STREAMING response
     // carried. The token meter only refreshes when these are present; if the
     // gateway omits them on text/event-stream this line proves it.
@@ -790,8 +800,53 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       'Cache-Control': 'no-cache',
       'Connection':    'keep-alive'
     })
-    upRes.on('data', chunk => res.write(chunk))
-    upRes.on('end', () => { log.debug('[stream] upstream end'); try { res.end() } catch {} })
+    // Response-side metrics for the stream. We must not buffer the whole body
+    // (could be RESTRICTED + large), so we track only counters plus a small
+    // rolling tail used to parse the terminal usage / finish_reason event.
+    let sseBytes = 0, sseEvents = 0, firstByteMs = null
+    let sseTail = ''
+    const TAIL_MAX = 8192
+    upRes.on('data', chunk => {
+      if (firstByteMs === null) {
+        firstByteMs = Date.now() - streamStart
+        log.debug('[stream] first byte  =', firstByteMs + 'ms')
+      }
+      sseBytes += Buffer.byteLength(chunk)
+      const s = chunk.toString('utf8')
+      let idx = -1
+      while ((idx = s.indexOf('data:', idx + 1)) !== -1) sseEvents++
+      sseTail = (sseTail + s).slice(-TAIL_MAX)
+      res.write(chunk)
+    })
+    upRes.on('end', () => {
+      const totalMs = Date.now() - streamStart
+      // Parse the last meaningful SSE data payload for usage + finish_reason.
+      // Counts only — never the message text — so nothing sensitive is logged.
+      let usage = null, finish = null
+      try {
+        const lines = sseTail.split(/\r?\n/).filter(l => l.startsWith('data:'))
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const payload = lines[i].slice(5).trim()
+          if (!payload || payload === '[DONE]') continue
+          try {
+            const obj = JSON.parse(payload)
+            if (!usage && obj && obj.usage) usage = obj.usage
+            if (!finish && obj && obj.choices && obj.choices[0] && obj.choices[0].finish_reason)
+              finish = obj.choices[0].finish_reason
+            if (usage && finish) break
+          } catch {}
+        }
+      } catch {}
+      log.debug('[stream] upstream end   | ' + sseEvents + ' events | ' + sseBytes +
+                ' bytes | ttfb ' + (firstByteMs == null ? '?' : firstByteMs) + 'ms | total ' +
+                totalMs + 'ms | finish ' + (finish || '?'))
+      if (usage) {
+        const g = (k) => (usage[k] == null ? '?' : usage[k])
+        log.debug('[stream] usage         | prompt ' + g('prompt_tokens') +
+                  ' | completion ' + g('completion_tokens') + ' | total ' + g('total_tokens'))
+      }
+      try { res.end() } catch {}
+    })
     upRes.on('error', err => {
       log.warn('[stream] upstream stream error =', err.message)
       try { res.end() } catch {}
