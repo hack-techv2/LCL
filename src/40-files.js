@@ -486,6 +486,7 @@ async function queueFilesForPreview(files, target) {
   }
   const valid = Array.from(files)
   if (!valid.length) return
+  if (typeof lclCrumb === 'function') lclCrumb('attach_files', { count: valid.length, target: target, bytes: valid.reduce((n, f) => n + (f.size || 0), 0) })
 
   previewTarget = target
   previewQueue  = []
@@ -840,4 +841,3 @@ async function removeDoc(id, event) {
     try { await gcEmbedCache() } catch (e) { console.warn('[removeDoc] gc', e.message) }
   })()
 }
-
