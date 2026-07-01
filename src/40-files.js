@@ -632,6 +632,10 @@ function commitAttachments(files) {
 async function commitDocs(files) {
   const chat = curChat(); if (!chat) return
   if (!Array.isArray(chat.docs)) chat.docs = []
+  // Add ALL dropped files up front (pending), then embed them sequentially — so a
+  // multi-file drop shows every file queued at once (pending cards greyed) instead
+  // of appearing one at a time as each finishes embedding.
+  const added = []
   for (const f of files) {
     const doc = {
       id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
@@ -641,13 +645,17 @@ async function commitDocs(files) {
     }
     doc.docAliases = buildDocAliases(doc)
     chat.docs.push(doc)
-    renderDocPanel(); updateDocsBtn()
-    if (creds) {
-      toast('Embedding ' + f.name + '...', 'info')
+    added.push(doc)
+  }
+  renderDocPanel(); updateDocsBtn()
+  if (creds) {
+    for (const doc of added) {
+      toast('Embedding ' + doc.name + '...', 'info')
       await embedDoc(doc)
-    } else {
-      toast(f.name + ' added (connect to embed for RAG)', 'info')
     }
+  } else {
+    toast(added.length > 1 ? (added.length + ' files added (connect to embed for RAG)')
+                           : ((added[0] ? added[0].name : 'File') + ' added (connect to embed for RAG)'), 'info')
   }
   await persist(); renderDocPanel(); updateDocsBtn()
 }
