@@ -395,6 +395,8 @@ function renderDocPanel() {
   const chat = curChat()
   const _pastCb = document.getElementById('dp-use-past-embeddings')
   if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
+  const _mode = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
+  document.querySelectorAll('#dp-search-mode .dp-seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === _mode))
   const docs = chat?.docs||[]
   el.innerHTML = ''
   if (!docs.length) {
