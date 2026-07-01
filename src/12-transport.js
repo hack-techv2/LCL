@@ -78,14 +78,18 @@ async function postClassified(path, body, opts) {
   let errData = {}
   try { errData = JSON.parse(await resp.text()) } catch {}
   const message = (errData && errData.error && (errData.error.message || errData.error)) || ('HTTP ' + resp.status)
-  let kind = 'terminal', resetMs = null
+  let kind = 'terminal', resetMs = null, unwinnable = false
   if (resp.status === 429) {
     kind = 'ratelimit'
-    const m = String((errData.error && (errData.error.message || errData.error)) || '')
-      .match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
+    const msg = String((errData.error && (errData.error.message || errData.error)) || '')
+    const m = msg.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
     if (m) { const t = Date.parse(m[1].replace(' ', 'T') + 'Z'); if (!isNaN(t) && t > Date.now()) resetMs = t }
+    // Full budget remaining yet still 429 -> the request itself exceeds the cap;
+    // waiting can't help, so the caller must NOT auto-retry (avoids infinite loop).
+    const lim = msg.match(/Current limit:\s*(\d+)/i), rem = msg.match(/Remaining:\s*(\d+)/i)
+    if (lim && rem && Number(rem[1]) >= Number(lim[1])) unwinnable = true
   } else if (resp.status >= 500 && resp.status < 600) {
     kind = 'transient'
   }
-  return { ok: false, status: resp.status, errData, message, kind, resetMs }
+  return { ok: false, status: resp.status, errData, message, kind, resetMs, unwinnable }
 }
