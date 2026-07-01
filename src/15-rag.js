@@ -1169,3 +1169,20 @@ function recentEmbedTokens() {
   embedTally = (embedTally || []).filter(e => now - e.ts < 60000)
   return embedTally.reduce((sum, e) => sum + (e.tokens || 0), 0)
 }
+// Rough embed-time estimates (alpha). The shared gateway is token-rate limited,
+// so time ~ tokens / per-minute cap; a batch beyond what's left this minute waits
+// for the budget to refill. All figures are clearly-marked estimates.
+function embedSecs(tokens, caps) {
+  const perMin = (caps && caps.limit) || 200000
+  return Math.max(3, Math.round((tokens / perMin) * 60))
+}
+function embedWaitSecs(totalTokens, caps) {
+  const perMin = (caps && caps.limit) || 200000
+  const rem = (caps && caps.remaining != null) ? caps.remaining : perMin
+  return Math.max(0, Math.round(((totalTokens - rem) / perMin) * 60))
+}
+function fmtEmbedDur(secs) {
+  secs = Math.max(1, Math.round(secs))
+  if (secs < 60) { let s = secs <= 20 ? Math.max(5, Math.ceil(secs / 5) * 5) : Math.round(secs / 10) * 10; return s >= 60 ? '~1 min' : '~' + s + ' sec' }
+  return '~' + Math.round(secs / 60) + ' min'
+}
