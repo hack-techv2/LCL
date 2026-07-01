@@ -993,6 +993,14 @@ function demoLastUserText(payload) {
 const _demo429 = new Map()
 let _demoChatN = 0   // streamed-message counter for the auto rate-limit demo
 function demoResetStamp(secs) { return new Date(Date.now() + (secs || 5) * 1000).toISOString().replace('T', ' ').replace(/\..*/, '') + ' UTC' }
+function demoOverLimitError(remaining) {
+  const stamp = demoResetStamp(60)
+  return {
+    status: 429,
+    headers: { 'retry-after': '60', rate_limit_type: 'tokens', reset_at: stamp, 'x-models-call-id': 'demo-' + Math.random().toString(16).slice(2, 10) },
+    body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY. Limit type: tokens. Current limit: 200000, Remaining: ' + remaining + '. Limit resets at: ' + stamp, type: 'None', param: 'None', code: '429' } }
+  }
+}
 function demoErrorFor(text) {
   if (/\[\[401\]\]/.test(text)) return { status: 401, body: { error: { message: 'Invalid API key (demo 401)', type: 'auth' } } }
   if (/\[\[500\]\]/.test(text)) return { status: 500, body: { error: { message: 'Internal server error (demo 500)' } } }
@@ -1019,7 +1027,7 @@ function demoVector(text, dim) {
 function demoChatStream(res, payload) {
   const text = demoLastUserText(payload)
   const err = demoErrorFor(text)
-  if (err) { res.writeHead(err.status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(err.body)); return }
+  if (err) { res.writeHead(err.status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, err.headers || {})); res.end(JSON.stringify(err.body)); return }
   // Auto rate-limit: every 5th streamed message returns a retryable 429 with a
   // near-future reset time, so the countdown + auto-retry UI runs naturally. The
   // client re-sends after the reset (that attempt isn't the 5th, so it streams).
@@ -1066,9 +1074,19 @@ function demoChatJson(payload) {
 // Serve a /api/chat demo request (stream or buffered, honouring markers).
 function demoServeChat(res, body) {
   const finalPayload = { ...(body.payload || {}), model: body.modelId || 'demo' }
-  demoBurn(estTokens(demoLastUserText(finalPayload)) + 300)
+  const _txt = demoLastUserText(finalPayload)
+  // Over-cap requests are rejected WITHOUT burning budget — the real gateway keeps
+  // Remaining at the full limit on such a 429 (see debug_logs). Marker OR genuine
+  // payload size triggers it, reproducing the 6-doc whole-doc summary that hangs.
+  if (/\[\[toobig\]\]/.test(_txt) || Math.ceil(JSON.stringify(finalPayload).length / 4) > 200000) {
+    const e = demoOverLimitError(200000)
+    res.writeHead(e.status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, e.headers))
+    res.end(JSON.stringify(e.body))
+    return
+  }
+  demoBurn(estTokens(_txt) + 300)
   if (finalPayload.stream === true) return demoChatStream(res, finalPayload)
-  const err = demoErrorFor(demoLastUserText(finalPayload))
+  const err = demoErrorFor(_txt)
   if (err) return json(res, err.body, err.status)
   return json(res, demoChatJson(finalPayload))
 }
