@@ -3,6 +3,26 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Fix oversized whole-doc 429 hang (alpha)
+
+Root-caused via the new diagnostics: a whole-doc “summarise each” over 6 files built a ~497k-token
+turn — 2.5× the 200k/min token cap — which 429s even with a full budget and then auto-retried
+forever. Version stays v0.67d.
+
+- **Chat pre-flight token guard** (`src/50-chatprocessing.js`): estimates the outgoing payload and
+  blocks a turn that exceeds the model context window or the per-minute token cap, with an actionable
+  message (switch Search mode / fewer docs) instead of firing a doomed request. Emits
+  `[crumb] chat_blocked_oversize`.
+- **Unwinnable-429 is terminal** (`src/12-transport.js`, `src/50-chatprocessing.js`): a 429 whose body
+  reports Remaining ≥ limit (full budget yet rejected) means the request itself is over-cap — waiting
+  can’t help. The client now shows a clear terminal error instead of the infinite “retry in 60s” loop.
+  A partial-budget 429 (Remaining < limit) still auto-retries as before.
+- **Demo simulation + tests** (`server.txt`, `test/demo-api.test.js`): the demo gateway now reproduces
+  the real envelope — an over-cap chat (marker `[[toobig]]` or a genuinely >200k-token payload) returns
+  a 429 with `retry-after`/`reset_at`/`rate_limit_type` headers and a full-budget body, WITHOUT burning
+  the demo budget (matching the live gateway). New harness cases T25 (`[[toobig]]`) and T26 (oversize
+  payload). Full suite 26/26.
+
 ## 2 Jul 2026 — Rate-limit diagnostics (alpha)
 
 Better visibility into 429s / large whole-doc turns before behaviour fixes. Version stays v0.67d.
