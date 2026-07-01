@@ -405,23 +405,20 @@ function maskSecret(v) {
   return v.slice(0, 4) + '...' + v.slice(-4)
 }
 
-function previewText(v, max = 4000) {
-  if (!v) return ''
-  return v.length > max ? v.slice(0, max) + ' ...[truncated]' : v
-}
-
-// Sensitive-content logger for request/response payloads. The full preview goes
-// to the CONSOLE only (in-memory, for live debugging via _origConsoleLog so the
-// file tee is bypassed); the alpha file sink (debug_logs.txt) receives only a
-// byte count + short sha256, never the content — so prompts/responses (incl. any
-// RESTRICTED material) are not persisted to disk. On stable the sink is inactive
-// and this behaves exactly like the old dlog(previewText(...)).
+// Sensitive-content logger for request/response payloads. Both the live console
+// AND the alpha file sink (debug_logs.txt) receive ONLY a byte count + short
+// sha256 — never the content — so prompts/responses (incl. any RESTRICTED
+// material) are neither shown on the terminal nor persisted to disk.
 function logSensitive(label, raw) {
   if (LOG_LEVEL < LOG_LEVELS.debug) return
   const s = String(raw == null ? '' : raw)
-  _origConsoleLog(label, previewText(s))
   const digest = crypto.createHash('sha256').update(s).digest('hex').slice(0, 12)
-  dbgWrite('log', [label + ' [redacted ' + Buffer.byteLength(s) + ' bytes, sha256:' + digest + ']'])
+  // Redact EVERYWHERE — the live console AND the file sink get only a byte count +
+  // short sha256, never the content, so prompts/responses (incl. RESTRICTED
+  // material) are not exposed on the terminal or persisted to disk.
+  const redacted = label + ' [redacted ' + Buffer.byteLength(s) + ' bytes, sha256:' + digest + ']'
+  _origConsoleLog(redacted)
+  dbgWrite('log', [redacted])
 }
 
 // ---------------------------------------------------------------------------
