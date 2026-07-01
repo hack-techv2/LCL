@@ -3,6 +3,20 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Rate-limit diagnostics (alpha)
+
+Better visibility into 429s / large whole-doc turns before behaviour fixes. Version stays v0.67d.
+
+- **Non-200 error bodies logged in clear** (`server.txt`): HTTP != 200 responses are API error
+  envelopes, not user content, so stream + buffered paths now log the body plainly (truncated via
+  new `previewErr`) instead of the redacted byte-count. Surfaces a 429's limit type + any reset /
+  Retry-After hint. 200-body redaction is unchanged.
+- **Payload token estimate** (`server.txt`): each OUTBOUND/STREAMING log now prints `~N tokens (est)`
+  alongside the byte count, so oversized whole-doc turns are obvious at a glance.
+- **Client 429 breadcrumb** (`src/50-chatprocessing.js`): every non-200 chat response emits
+  `[crumb] chat_error status=… kind=… reset=parsed|none`, showing whether a reset was parseable
+  (and thus whether auto-retry fired or the request stalled on the static error box).
+
 ## 2 Jul 2026 — Light-mode contrast + batch embed dialog (alpha)
 
 RAG/embeddings panel polish. Version stays v0.67d.
