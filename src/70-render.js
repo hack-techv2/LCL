@@ -405,7 +405,7 @@ function renderDocPanel() {
     const ext    = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
     const status = d.status || 'pending'
     const infKids = [
-      mkEl('div', { class: 'doc-name' }, d.name),
+      mkEl('div', { class: 'doc-name' }, [ mkEl('span', { class: 'doc-name-inner' }, d.name) ]),
       mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
     ]
     if (status === 'embedding') {
@@ -441,12 +441,35 @@ function renderDocPanel() {
       }
       infKids.push(mkEl('div', { class: 'doc-st-row' }, stKids))
     }
-    el.append(mkEl('div', { class: 'doc-card' }, [
+    el.append(mkEl('div', { class: 'doc-card doc-' + status }, [
       mkEl('div', { class: 'doc-ext' }, ext),
       mkEl('div', { class: 'doc-inf' }, infKids),
       mkEl('button', { class: 'doc-del', title: 'Remove', onclick: (e) => removeDoc(d.id, e) }, 'x'),
     ]))
   }
+  setupDocNameScroll()
+}
+
+// Scroll an overflowing doc filename on hover (same ping-pong as chat titles).
+function setupDocNameScroll() {
+  document.querySelectorAll('#dp-body .doc-card').forEach(card => {
+    const box = card.querySelector('.doc-name')
+    const inner = card.querySelector('.doc-name-inner')
+    if (!box || !inner) return
+    card.onmouseenter = () => {
+      if (!box.clientWidth) return
+      const over = inner.scrollWidth - box.clientWidth
+      if (over > 4) {
+        inner.style.setProperty('--mq', '-' + over + 'px')
+        inner.style.setProperty('--mqd', Math.max(3, over / 22) + 's')
+        inner.classList.add('mq')
+      }
+    }
+    card.onmouseleave = () => {
+      inner.classList.remove('mq')
+      inner.style.removeProperty('--mq')
+    }
+  })
 }
 
 function updateDocsBtn() {
