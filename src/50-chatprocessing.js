@@ -142,7 +142,11 @@ async function buildPayload(chat, queryText) {
       const _availChars = Math.floor((_win - _reserveTok - _histTok - 2000) * 4)
       fullLimit = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.min(CFG.DOC_FULLTEXT_CEILING || 250000, _availChars))
     }
-    const fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
+    let fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
+    // Fallback: if the query doesn't lexically match any doc, still consider all
+    // ready docs — a general/paraphrased question shouldn't skip an embedded doc
+    // that fits the budget (the budget clamp below still guards huge injections).
+    if (!fullCandidates.length) fullCandidates = docsForFull
     const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
     const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
     if (useFullText) {
