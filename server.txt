@@ -256,6 +256,26 @@ function loadEmbedCache() {
   }
 }
 
+// Atomic write with OneDrive/antivirus resilience. Write a .tmp then rename over
+// the target; OneDrive-synced (and AV-scanned) folders transiently lock the file
+// mid-rename (EPERM/EBUSY/EACCES), so retry a few times, then fall back to a
+// direct write so a synced-folder lock never silently loses the save.
+function atomicWrite(dest, data) {
+  const tmp = dest + '.tmp'
+  fs.writeFileSync(tmp, data)
+  let lastErr
+  for (let i = 0; i < 5; i++) {
+    try { fs.renameSync(tmp, dest); return }
+    catch (e) {
+      lastErr = e
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY' && e.code !== 'EACCES') break
+      try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 80) } catch {}
+    }
+  }
+  try { fs.writeFileSync(dest, data); try { fs.unlinkSync(tmp) } catch {} ; return }
+  catch (e2) { try { fs.unlinkSync(tmp) } catch {} ; throw lastErr || e2 }
+}
+
 function saveEmbedCache() {
   try {
     const entries = Object.entries(embedCache)
@@ -263,7 +283,7 @@ function saveEmbedCache() {
       const buf = Buffer.allocUnsafe(8)
       buf.writeUInt32BE(MAGIC, 0)
       buf.writeUInt32LE(0, 4)
-      const et = EMBED_CACHE_FILE + '.tmp'; fs.writeFileSync(et, buf); fs.renameSync(et, EMBED_CACHE_FILE)
+      atomicWrite(EMBED_CACHE_FILE, buf)
       return
     }
     let totalSize = 8
@@ -283,7 +303,7 @@ function saveEmbedCache() {
         buf.writeUInt16LE(encodeFloat16(vec[j]), offset); offset += 2
       }
     }
-    const et = EMBED_CACHE_FILE + '.tmp'; fs.writeFileSync(et, buf); fs.renameSync(et, EMBED_CACHE_FILE)
+    atomicWrite(EMBED_CACHE_FILE, buf)
   } catch (e) {
     elog('cache save error: ' + e.message)
   }
@@ -348,9 +368,7 @@ function loadData() {
 
 function saveData(data) {
   try {
-    const tmp = DATA_FILE + '.tmp'
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
-    fs.renameSync(tmp, DATA_FILE)
+    atomicWrite(DATA_FILE, JSON.stringify(data, null, 2))
   } catch (e) {
     log.error('[saveData] error:', e.message)
   }
@@ -2064,6 +2082,23 @@ function handleUpdateSimulate(req, res) {
 
 // Route table: 'METHOD path' -> handler. Dynamic /skills/:id and the static
 // fallback are handled below. Adding an endpoint is one entry here.
+// Client-side debug logging: the browser POSTs its console errors/warnings +
+// uncaught errors here; they route through the leveled logger so they tee into
+// debug_logs.txt on the alpha channel (and print to the server console). Size-
+// capped; the client is trusted only for a short message string.
+function handleClientLog(req, res) {
+  readBody(req, (err, body) => {
+    if (!err && body) {
+      try {
+        const level = body.level === 'error' ? 'error' : body.level === 'warn' ? 'warn' : 'info'
+        const msg = String(body.msg == null ? '' : body.msg).slice(0, 2000)
+        log[level]('[client] ' + msg)
+      } catch {}
+    }
+    json(res, { ok: true })
+  })
+}
+
 const ROUTES = {
   'POST /api/chat':           handleChat,
   'POST /api/embed':          handleEmbed,
@@ -2082,6 +2117,7 @@ const ROUTES = {
   'POST /api/update/simulate': handleUpdateSimulate,
   'GET /api/health':          (req, res) => json(res, { ok: true, version: APP_VERSION }),
   'GET /api/ratelimit':       handleRateLimit,
+  'POST /api/clientlog':      handleClientLog,
   'GET /skills':              handleSkillsList,
   'POST /skills/reload':      handleSkillsList,
 }
