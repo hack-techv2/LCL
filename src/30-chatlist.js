@@ -9,6 +9,7 @@ function sortedChats() {
 }
 
 function newChat() {
+  if (typeof lclCrumb === 'function') lclCrumb('new_chat')
   stopStreaming(true)
   // A chat is "blank" only with no messages AND no embedded docs. Reuse an
   // existing blank instead of piling up empties, and prune any extra blanks.
@@ -31,6 +32,7 @@ function newChat() {
 }
 
 function switchChat(id) {
+  if (typeof lclCrumb === 'function') lclCrumb('switch_chat')
   stopStreaming(true)
   chatId = id
   ragStickyChunks = []
@@ -58,6 +60,7 @@ async function deleteChat(id, e) {
     okText: 'Delete', cancelText: 'Cancel'
   })
   if (!ok) return
+  if (typeof lclCrumb === 'function') lclCrumb('delete_chat', { hadDocs: hadDocs })
   delete D.chats[id]
   const afterDelete = () => {
     if (hadDocs) {
@@ -94,4 +97,3 @@ function finishRename(id, inp) {
 }
 
 function curChat() { return chatId ? D.chats[chatId] : null }
-
