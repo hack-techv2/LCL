@@ -79,3 +79,27 @@ async function fetchWithRetry(url, opts, cfg) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
+
+// Client-side debug logging: mirror browser console errors/warnings + uncaught
+// errors to the server (/api/clientlog), which tees them into debug_logs.txt on
+// the alpha channel so tester bug reports capture the browser side too. Fire-and-
+// forget; guarded so it can never throw or recurse.
+;(function () {
+  const _cerr = console.error.bind(console)
+  const _cwarn = console.warn.bind(console)
+  function ship(level, args) {
+    try {
+      const msg = (args || []).map(a => {
+        try { return typeof a === 'string' ? a : (a && a.message) || JSON.stringify(a) }
+        catch { return String(a) }
+      }).join(' ').slice(0, 2000)
+      fetch('/api/clientlog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: level, msg: msg }) }).catch(function () {})
+    } catch (e) {}
+  }
+  console.error = function () { const a = [].slice.call(arguments); _cerr.apply(console, a); ship('error', a) }
+  console.warn  = function () { const a = [].slice.call(arguments); _cwarn.apply(console, a); ship('warn', a) }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('error', function (e) { ship('error', [(e && e.message) || 'window error', e && e.filename, e && (e.lineno + ':' + e.colno)]) })
+    window.addEventListener('unhandledrejection', function (e) { ship('error', ['unhandledrejection', (e && e.reason && e.reason.message) || String(e && e.reason)]) })
+  }
+})();
