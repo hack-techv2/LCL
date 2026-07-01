@@ -47,6 +47,17 @@ sanitiser). Version stays v0.67d.
   and a real-file extraction checklist (U19–U24) in `test/UI_CHECKS.md`. Build 5/5 +
   24/24 demo-api green; `#demo` UI verified. Model context/pricing catalogue added incl.
   new embed model `gemini-embedding-2`.
+- **Follow-up fixes (from alpha real-file testing):**
+  - Embed-failed toast no longer double-prefixes "Embed failed:" (`embedBatch` throws
+    the raw message; `embedDoc` adds the prefix once).
+  - Client embed batching caps each POST at ~600k chars (~150k tokens) so large docs
+    stay under the server's 180k-token hard cap and pace across the rate-limit window
+    instead of failing with a 413 "token cap" error.
+  - Atomic save (`saveData`/`saveEmbedCache`) is now OneDrive/AV-resilient: retries the
+    rename on EPERM/EBUSY/EACCES, then falls back to a direct write — fixes silently
+    lost saves in OneDrive-synced folders.
+  - Client-side debug logging: browser console errors/warnings + uncaught errors POST
+    to `/api/clientlog` and tee into `debug_logs.txt` on the alpha channel.
 
 ## 1 Jul 2026
 
