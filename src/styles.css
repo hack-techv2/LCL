@@ -213,6 +213,10 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .health.warn .dot{background:var(--pin);animation:pulse 1s ease-in-out infinite}
 .health.err{border-color:rgba(231,76,60,.4);color:var(--red)}
 .health.err .dot{background:var(--red)}
+[data-theme="light"] .health.warn{color:#8a5a00}
+[data-theme="light"] .health.ok{color:#0b6e4f}
+[data-theme="light"] .health.err{color:#b3261e}
+[data-theme="light"] .embed-dot{background:#9a6300}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 
 /* Search modal */
