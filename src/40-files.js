@@ -636,7 +636,10 @@ async function commitDocs(files) {
   // multi-file drop shows every file queued at once (pending cards greyed) instead
   // of appearing one at a time as each finishes embedding.
   const added = []
+  let skipped = 0
   for (const f of files) {
+    // Don't re-embed a file already embedded in this chat (match name + size).
+    if (chat.docs.some(d => d.name === f.name && d.size === f.size)) { skipped++; continue }
     const doc = {
       id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       name: f.name, size: f.size, content: f.extractedText,
@@ -647,6 +650,7 @@ async function commitDocs(files) {
     chat.docs.push(doc)
     added.push(doc)
   }
+  if (skipped) toast(skipped + (skipped > 1 ? ' files' : ' file') + ' already embedded \u2014 skipped', 'info')
   renderDocPanel(); updateDocsBtn()
   if (creds) {
     for (const doc of added) {
