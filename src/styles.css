@@ -46,7 +46,7 @@
 [data-theme="light"] {
   --ac-tx:  #a8410a;   /* accent as TEXT on light surfaces (buttons keep --ac) */
   --pin-tx: #8a5a00;   /* amber as TEXT on light surfaces */
-  --pin-bar:#b5760a;   /* amber progress-bar fill on light */
+  --pin-bar:#9a6300;   /* amber progress-bar fill on light */
   --bg:     #eceef3;
   --bg2:    #ffffff;
   --bg3:    #e3e7f0;
@@ -723,7 +723,13 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 /* Queued (not-yet-embedded) doc cards render greyed so a multi-file drop shows
    every file pending at once. The one currently embedding stays full-opacity. */
 .doc-card.doc-pending{opacity:.55}
-[data-theme="light"] .doc-card.doc-pending{opacity:.82}
+[data-theme="light"] .doc-card.doc-pending{opacity:1}
+[data-theme="light"] .doc-card{border-color:#b6bfce}
+[data-theme="light"] .doc-ext{background:#cdd4e2;color:#1c2540}
+[data-theme="light"] .doc-sz,[data-theme="light"] .doc-prog-cnt{color:#33405d}
+[data-theme="light"] .doc-prog-track{background:#c3cad8}
+[data-theme="light"] .doc-st.pending{background:#f4e0b6;color:#6f4a00}
+[data-theme="light"] .doc-prog-lbl.pace{color:#7a4f00;font-weight:500}
 
 /* Long doc filenames scroll on hover (reuses the chat-title lcl-marq keyframes). */
 .doc-name-inner{display:inline-block;white-space:nowrap}
