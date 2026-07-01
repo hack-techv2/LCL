@@ -49,8 +49,8 @@
           <div class="sl-ticks"><span>200</span><span>2000</span></div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="1" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
-          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
+          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sl"><input type="range" min="3" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
           <div class="sl-ticks"><span>1</span><span>10</span></div>
         </div>
         <div class="sf">
@@ -265,6 +265,12 @@
         <input type="file" id="doc-file-in" style="display:none" multiple
           onchange="uploadDocs(this.files)">
       </label>
+      <div class="dp-options">
+        <label class="dp-check" title="Allow this chat to search files embedded in previous chats. Turn this off to only use files uploaded in this chat.">
+          <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
+          <span>Search past embeddings<small>Use files embedded in previous chats as shared RAG memory for this chat.</small></span>
+        </label>
+      </div>
       <div class="dp-body" id="dp-body"></div>
     </div>
   </div>
