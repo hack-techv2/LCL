@@ -46,16 +46,34 @@ function togglePin(id, e) {
   toast(D.chats[id].pinned ? 'Pinned' : 'Unpinned', 'ok')
 }
 
-function deleteChat(id, e) {
-  e.stopPropagation()
+async function deleteChat(id, e) {
+  if (e) e.stopPropagation()
+  const chat = D.chats[id]
+  const hadDocs = !!(chat && Array.isArray(chat.docs) && chat.docs.length)
+  // v0.67e item 9: confirm before delete (reuses alpha confirmDialog), then
+  // prune orphaned embeddings via GC and toast when the chat had docs.
+  const ok = await confirmDialog({
+    title: 'Delete chat?',
+    message: 'Permanently delete \u201c' + (chat?.title || 'this chat') + '\u201d' + (hadDocs ? ' and prune its embeddings' : '') + '? This cannot be undone.',
+    okText: 'Delete', cancelText: 'Cancel'
+  })
+  if (!ok) return
   delete D.chats[id]
+  const afterDelete = () => {
+    if (hadDocs) {
+      gcEmbedCache().catch(err => console.warn('[deleteChat] gc', err.message))
+      toast('Deleted chat and pruned embeddings', 'ok')
+    }
+  }
   if (chatId === id) {
     const remaining = sortedChats().filter(c => c.messages.length || (c.docs && c.docs.length))
     if (remaining.length) { chatId = remaining[0].id; persist(); renderAll() }
     else { newChat() }   // blank, unlisted, ready to type
+    afterDelete()
     return
   }
   persist(); renderChatList()
+  afterDelete()
 }
 
 function startRename(id, e) {
