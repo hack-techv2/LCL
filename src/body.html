@@ -256,7 +256,17 @@
         </button>
       </div>
       <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable <span class="rag-term" title="RAG (retrieval-augmented generation) — the AI answers using your uploaded files, two ways: a document that fits is sent in FULL so it sees everything (best for summaries / whole-doc questions); a document too large to fit is SEARCHED and only the most relevant passages are pulled in (best for specific questions). Either way, replies stay grounded in your documents, not just the AI's general knowledge.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
+        Upload files here to enable <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
+      </div>
+      <div id="rag-info" class="rag-info hidden">
+        <div class="rag-info-hd"><span>RAG — retrieval-augmented generation</span><button type="button" class="rag-info-x" onclick="toggleRagInfo(event)" title="Close">&times;</button></div>
+        <p>The AI answers using your uploaded files, not just its general knowledge. How much of a file it draws on is set by <b>Search mode</b>:</p>
+        <ul>
+          <li><b>Auto</b> — sends the whole document when it fits, otherwise searches the most relevant passages.</li>
+          <li><b>Specific</b> — always searches the most relevant passages; precise and lower cost.</li>
+          <li><b>Whole doc</b> — always sends the full document, up to the model's context window; best for summaries.</li>
+        </ul>
+        <p><b>Also search other chats' embedded files</b> widens the search to files you embedded in your other chats.</p>
       </div>
       <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
         + Upload file
