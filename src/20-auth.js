@@ -31,6 +31,26 @@ function setPastEmbeddingsForChat(on) {
   toast(on ? 'Past embeddings enabled for this chat' : 'Past embeddings disabled for this chat', on ? 'ok' : 'info')
 }
 
+// Per-chat RAG search mode: 'auto' (whole doc if it fits, else search), 'specific'
+// (always search relevant passages), 'whole' (always send the full document).
+function chatSearchMode(chat) {
+  const m = chat && chat.searchMode
+  return (m === 'specific' || m === 'whole') ? m : 'auto'
+}
+function setSearchMode(mode) {
+  const chat = curChat()
+  if (!chat) return
+  chat.searchMode = (mode === 'specific' || mode === 'whole') ? mode : 'auto'
+  chat.updatedAt = Date.now()
+  ragStickyChunks = []
+  persist()
+  renderDocPanel()
+  const label = chat.searchMode === 'specific' ? 'Specific (search passages)'
+              : chat.searchMode === 'whole' ? 'Whole document'
+              : 'Auto'
+  toast('Search mode: ' + label, 'info')
+}
+
 function getRagMemoryDocs(chat) {
   const out = []
   const seen = new Set()
