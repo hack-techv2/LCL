@@ -338,7 +338,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 @keyframes td{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
 
 /* Doc panel */
-#doc-panel{width:272px;border-left:1px solid var(--bdr);background:var(--bg2);display:flex;flex-direction:column;flex-shrink:0}
+#doc-panel{width:272px;border-left:1px solid var(--bdr);background:var(--bg2);display:flex;flex-direction:column;flex-shrink:0;position:relative}
 #doc-panel.hidden{display:none}
 .dp-hd{padding:13px 15px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between}
 .dp-title{font-size:13px;font-weight:500}
@@ -725,7 +725,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 /* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
 .rag-term{border-bottom:1px dotted currentColor;cursor:pointer}
 #rag-info.hidden{display:none}
-.rag-info{margin:0 10px 8px;padding:10px 12px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);font-size:11px;line-height:1.5;color:var(--tx2)}
+.rag-info{position:absolute;right:calc(100% + 8px);top:52px;width:250px;z-index:60;margin:0;padding:11px 13px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:11px;line-height:1.5;color:var(--tx2)}
+.rag-info::after{content:'';position:absolute;right:-6px;top:16px;width:10px;height:10px;background:var(--bg3);border-right:1px solid var(--bdr);border-top:1px solid var(--bdr);transform:rotate(45deg)}
 .rag-info-hd{display:flex;justify-content:space-between;align-items:center;font-weight:500;color:var(--tx);margin-bottom:6px}
 .rag-info-x{background:none;border:none;color:var(--tx3);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
 .rag-info p{margin:6px 0}
