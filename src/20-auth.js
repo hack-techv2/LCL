@@ -4,6 +4,64 @@
 // Factory for the in-memory creds object so its shape + defaults live in ONE
 // place (was hand-built in init/connect/demo). Accepts `model` or `modelId`;
 // callers that compute classification pass it in.
+
+// --- Shared RAG memory (v0.67e item 3): search current chat's docs + optionally
+// prior chats' docs. Migration (upgradePersistedDocsForRag) intentionally omitted
+// (item 6: old docs are re-embedded, not migrated). ---
+function docMemoryKey(doc) {
+  return doc?.id || [doc?.name || 'doc', doc?.size || 0, doc?.addedAt || 0].join('|')
+}
+
+function chatUsesPastEmbeddings(chat) {
+  // Default ON so new chats automatically use the shared document vector store.
+  // Individual chats can turn this off from the Embed panel.
+  return !chat || chat.usePastEmbeddings !== false
+}
+
+function setPastEmbeddingsForChat(on) {
+  const chat = curChat()
+  if (!chat) return
+  chat.usePastEmbeddings = !!on
+  chat.updatedAt = Date.now()
+  ragStickyChunks = []
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
+  persist()
+  renderDocPanel()
+  updateDocsBtn()
+  toast(on ? 'Past embeddings enabled for this chat' : 'Past embeddings disabled for this chat', on ? 'ok' : 'info')
+}
+
+function getRagMemoryDocs(chat) {
+  const out = []
+  const seen = new Set()
+  const addDoc = d => {
+    if (!d) return
+    const key = docMemoryKey(d)
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(d)
+  }
+
+  // Prefer the active chat's own files first. Past/shared embeddings are optional
+  // per chat and controlled from the Embed panel checkbox.
+  for (const d of (chat?.docs || [])) addDoc(d)
+  if (chatUsesPastEmbeddings(chat)) {
+    for (const ch of Object.values(D.chats || {})) {
+      if (chat && ch.id === chat.id) continue
+      for (const d of (ch.docs || [])) addDoc(d)
+    }
+  }
+  return out
+}
+
+function findDocInAnyChat(docId) {
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    const idx = ch.docs.findIndex(d => d.id === docId)
+    if (idx !== -1) return { chat: ch, idx, doc: ch.docs[idx] }
+  }
+  return null
+}
 function makeCreds(o){ o=o||{}; return {
   apiKey: o.apiKey||'', model: o.model||o.modelId||'',
   maxTokens: o.maxTokens||CFG.DEFAULT_MAX_TOKENS, systemPrompt: o.systemPrompt||'',
