@@ -28,7 +28,7 @@ require(TMP)   // server.txt starts listening on 127.0.0.1:PORT as a side effect
 function req(opts, body) {
   return new Promise(res => {
     const r = http.request(Object.assign({ host: '127.0.0.1', port: PORT }, opts), resp => {
-      let d = ''; resp.on('data', c => d += c); resp.on('end', () => res({ status: resp.statusCode, body: d }))
+      let d = ''; resp.on('data', c => d += c); resp.on('end', () => res({ status: resp.statusCode, headers: resp.headers, body: d }))
     })
     r.on('error', e => res({ status: 0, body: 'ERR ' + e.message }))
     if (body) r.write(body)
@@ -115,6 +115,17 @@ const CASES = [
   { id: 'T15 marker [[500]]', tags: ['errors'], fn: async () => {
     const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[500]] boom', true))
     check('T15 marker [[500]]', r.status === 500 && /demo 500/.test(r.body))
+  } },
+  { id: 'T25 [[toobig]] unwinnable 429', tags: ['errors'], fn: async () => {
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[toobig]] summarise everything', true))
+    const okBody = r.status === 429 && /Limit type: tokens/.test(r.body) && /Remaining: 200000/.test(r.body) && /Current limit: 200000/.test(r.body)
+    const okHdr = r.headers && r.headers['retry-after'] === '60' && !!r.headers['reset_at'] && r.headers['rate_limit_type'] === 'tokens'
+    check('T25 [[toobig]] unwinnable 429', okBody && okHdr, 'status=' + r.status + ' hdr=' + okHdr)
+  } },
+  { id: 'T26 oversize payload 429', tags: ['errors'], fn: async () => {
+    const big = 'x '.repeat(500000)   // ~1MB -> ~250k tokens, over the 200k cap
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat(big, true))
+    check('T26 oversize payload 429', r.status === 429 && /Remaining: 200000/.test(r.body), 'status=' + r.status)
   } },
   { id: 'T16 embed dim consistency', tags: ['embed', 'rag'], fn: async () => {
     const s = json((await req({ method: 'POST', path: '/api/embed', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', input: 'x' }))).body).data[0].embedding.length
