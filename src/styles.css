@@ -687,3 +687,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-arrow{color:var(--tx3);font-size:14px}
 .upd-new{color:var(--ok)}
 .upd-exp{font-size:11px;font-weight:600;color:#fff;background:var(--ac);padding:2px 8px;border-radius:5px}
+
+/* Shared RAG memory toggle (v0.67e item 3) */
+.dp-options{margin:0 10px 8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);display:flex;flex-direction:column;gap:6px}
+.dp-check{display:flex;align-items:flex-start;gap:8px;color:var(--tx2);font-size:12px;line-height:1.4;cursor:pointer}
+.dp-check input{margin-top:2px;accent-color:var(--ac)}
+.dp-check small{display:block;color:var(--tx3);font-size:10px;line-height:1.35;margin-top:2px}
