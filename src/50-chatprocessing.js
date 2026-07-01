@@ -249,6 +249,14 @@ async function send() {
   const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const _ceil = Math.min(_ctx || Infinity, _rateCap)
   if (_estTok > _ceil) {
+    const _ready = ((typeof getRagMemoryDocs === 'function' ? getRagMemoryDocs(chat) : (chat.docs || [])) || []).filter(function (dd) { return dd && dd.status === 'ready' && dd.content })
+    if (_ready.length && typeof offerDocSplit === 'function') {
+      if (typeof lclCrumb === 'function') lclCrumb('split_offered', { docs: _ready.length, est: _estTok })
+      offerDocSplit(chat, _ready, text)
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
     const note = 'This request is ~' + Math.round(_estTok / 1000) + 'k tokens, over the ~' + Math.round(_ceil / 1000) + 'k limit — it can\u2019t be sent. Switch Search mode to Auto or Specific, or ask about fewer documents at once.'
     chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
     appendMsg('ai', note, null, null, null, true)
@@ -725,6 +733,122 @@ const STATUS_ICON = {
 
 // tone: 'err' (red) | 'warn' (amber). title: header text. bodyHtml: inner body.
 // opts: { icon:'err'|'clock' (defaults by tone), cancel: a JS expression string that adds a Cancel button }
+// ===========================================================================
+// Whole-doc split + map-reduce (alpha). When a whole-doc turn is over the token
+// cap, offer to fan it out into one request per document, run sequentially so
+// each stays under the limit. A single document that is itself over-cap is
+// summarised in parts (map) and the part-summaries combined (reduce).
+// ===========================================================================
+function perRequestTokenCap() {
+  const ctx = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
+  const rate = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
+  const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
+  return Math.max(20000, Math.min(ctx || Infinity, rate) - reserve - 4000)
+}
+
+function offerDocSplit(chat, docs, instruction) {
+  const n = docs.length
+  const bubble = appendMsg('ai', '', null, null)
+  const bodyEl = bubble.querySelector('.msg-body')
+  const acts = bubble.querySelector('.msg-acts'); if (acts) acts.style.display = 'none'
+  bodyEl.innerHTML = statusBox('warn', 'Too many documents for one request',
+    'All ' + n + ' documents at once is over the token limit, so it cannot be sent in one go. I can split it into <b>' + n + ' separate requests</b> (one per document) and run them one after another. This may take a few minutes.', {})
+  bodyEl.appendChild(mkEl('div', { style: 'margin-top:10px;display:flex;gap:8px' }, [
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} ; if (typeof lclCrumb === 'function') lclCrumb('split_accepted', { docs: n }); runSplitSummaries(chat, docs, instruction) } }, 'Split into ' + n + ' requests'),
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Cancel')
+  ]))
+}
+
+async function streamChatOnce(payload, onToken, signal) {
+  payload.stream = true
+  const r = await postClassified('/api/chat', { apiKey: creds.apiKey, modelId: creds.model, payload }, signal ? { signal: signal } : {})
+  if (!r.ok) return { ok: false, status: r.status, kind: r.kind, unwinnable: r.unwinnable, resetMs: r.resetMs, message: r.message }
+  let acc = ''
+  await streamSse(r.resp, function (data) {
+    if (data === '[DONE]') return
+    let j; try { j = JSON.parse(data) } catch (e) { return }
+    const dc = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content
+    if (dc) { acc += dc; if (onToken) onToken(acc) }
+  }, { aborted: function () { return signal && signal.aborted } })
+  return { ok: true, text: acc }
+}
+
+// Summarise one blob (a whole doc, or one part during map-reduce), streaming into
+// bodyEl. Waits out a partial-budget 429; returns text, or null on abort/terminal.
+async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal) {
+  const payload = { messages: [
+    { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' + (sysPrompt ? '\n\n' + sysPrompt : '') },
+    { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
+  ] }
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
+    if (r.ok) return r.text
+    if (signal && signal.aborted) return null
+    if (r.kind === 'ratelimit' && !r.unwinnable && r.resetMs) {
+      const waitMs = Math.max(1000, r.resetMs - Date.now() + 1500)
+      if (bodyEl) bodyEl.innerHTML = fmt('_Rate-limited - resuming in ' + Math.ceil(waitMs / 1000) + 's..._')
+      await new Promise(function (res) { setTimeout(res, waitMs) })
+      continue
+    }
+    return null
+  }
+  return null
+}
+
+async function summariseDoc(sysPrompt, doc, instruction, bodyEl, signal) {
+  const cap = perRequestTokenCap()
+  if (estTokens(doc.content) <= cap) {
+    return await summariseInto(sysPrompt, doc.name, doc.content, instruction, bodyEl, signal)
+  }
+  const partChars = Math.max(4000, (cap - 2000) * 4)
+  const parts = []
+  for (let i = 0; i < doc.content.length; i += partChars) parts.push(doc.content.slice(i, i + partChars))
+  const partSummaries = []
+  for (let pi = 0; pi < parts.length; pi++) {
+    if (signal && signal.aborted) return null
+    if (bodyEl) bodyEl.innerHTML = fmt('_' + doc.name + ' is large - summarising part ' + (pi + 1) + ' of ' + parts.length + '..._')
+    const s = await summariseInto(sysPrompt, doc.name + ' (part ' + (pi + 1) + '/' + parts.length + ')', parts[pi], 'Summarise this part of a document.', null, signal)
+    if (s == null) return null
+    partSummaries.push('Part ' + (pi + 1) + ':\n' + s)
+  }
+  if (bodyEl) bodyEl.innerHTML = fmt('_Combining ' + parts.length + ' part-summaries..._')
+  return await summariseInto(sysPrompt, doc.name + ' (combined from ' + parts.length + ' parts)', partSummaries.join('\n\n'),
+    'Combine these part-summaries into one cohesive summary of the whole document.', bodyEl, signal)
+}
+
+async function runSplitSummaries(chat, docs, instruction) {
+  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
+  inflightCtl = new AbortController()
+  const signal = inflightCtl.signal
+  const rs = await resolveSystemPrompt(chat)
+  const sys = rs && rs.sys
+  try {
+    for (let i = 0; i < docs.length; i++) {
+      if (signal.aborted) break
+      const doc = docs[i]
+      setHealth('warn', 'Summarising ' + (i + 1) + '/' + docs.length)
+      const header = '**' + doc.name + '** - summary (' + (i + 1) + ' of ' + docs.length + ')\n\n'
+      const bubble = appendMsg('ai', '', null, [doc.name])
+      const bodyEl = bubble.querySelector('.msg-body')
+      if (bodyEl) bodyEl.innerHTML = fmt(header + '_Summarising..._')
+      let summary = null
+      try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
+      const finalText = header + (summary != null ? summary : '_Could not summarise this document (over the limit or an error). Try Specific search for it._')
+      if (bodyEl) bodyEl.innerHTML = fmt(finalText)
+      bubble.dataset.raw = finalText
+      chat.messages.push({ role: 'assistant', content: finalText, ts: Date.now(), sources: [doc.name] })
+      try { await persist() } catch (e) {}
+      if (!signal.aborted && i < docs.length - 1) await new Promise(function (res) { setTimeout(res, 1200) })
+    }
+    setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+  } catch (e) {
+    setHealth('err', 'Summary failed')
+  } finally {
+    busy = false; if (typeof updateSendBtn === 'function') updateSendBtn()
+    inflightCtl = null
+  }
+}
+
 function statusBox(tone, title, bodyHtml, opts) {
   opts = opts || {}
   const c = tone === 'warn'
