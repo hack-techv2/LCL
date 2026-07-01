@@ -58,6 +58,16 @@ sanitiser). Version stays v0.67d.
     lost saves in OneDrive-synced folders.
   - Client-side debug logging: browser console errors/warnings + uncaught errors POST
     to `/api/clientlog` and tee into `debug_logs.txt` on the alpha channel.
+  - Retrieval never returns empty context when docs are embedded: `buildPayload` falls
+    back to all ready docs (budget-clamped) when the query matches none lexically, and
+    `retrieveRagChunks` falls back to top-scoring candidates when nothing clears the
+    relevance bar — fixes a general/paraphrased first question getting no doc grounding.
+  - `/api/embed-lookup` calls now batch at <=1000 hashes (was one POST) so vector
+    hydration works on large/shared corpora (>1500 chunks) instead of 400-ing.
+  - "Search past embeddings" now defaults OFF; multi-file drop shows all files queued
+    (greyed) at once; duplicate files (same name+size) are skipped; long filenames
+    scroll on hover; "RAG" in the embed panel has a plain-English hover tooltip; the
+    drop overlay reads "embed" vs "attach" by context.
 
 ## 1 Jul 2026
 
