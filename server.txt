@@ -438,6 +438,13 @@ function logSensitive(label, raw) {
   _origConsoleLog(redacted)
   dbgWrite('log', [redacted])
 }
+// Error/diagnostic bodies (HTTP != 200) are API error envelopes, not user
+// content, so we log them in CLEAR (truncated) to aid debugging — e.g. a 429's
+// limit type + any reset / Retry-After hint. Never used for 200 bodies.
+function previewErr(raw) {
+  const s = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim()
+  return s.length > 1500 ? s.slice(0, 1500) + '…(' + Buffer.byteLength(s) + ' bytes)' : s
+}
 
 // ---------------------------------------------------------------------------
 // Rate-limit header parser
@@ -531,6 +538,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   log.debug('[api] path       =', opts.path)
   log.debug('[api] auth       =', maskSecret(apiKey))
   logSensitive('[api] payload    =', bodyStr)
+  log.debug('[api] payload    ~' + Math.ceil(Buffer.byteLength(bodyStr) / 4) + ' tokens (est)')
   log.debug('======================================')
   log.debug('')
 
@@ -570,6 +578,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     upstreamRes.on('end', () => {
       dlog('[api] response body   | ' + chunkCount + ' chunks | ' + body.length + ' bytes')
       logSensitive('[api] response body =', body)
+      if (upstreamRes.statusCode !== 200) log.warn('[api] error body (' + upstreamRes.statusCode + ') = ' + previewErr(body))
       const rlTag = '[api ' + (/embed/i.test(pathName) ? 'embed' : 'chat') + ']'
       const rlHdrKeys = Object.keys(upstreamRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
       log.debug(rlTag + ' x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
@@ -744,6 +753,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   log.debug('[stream] path     =', pathName)
   log.debug('[stream] auth     =', maskSecret(apiKey))
   logSensitive('[stream] payload  =', bodyStr)
+  log.debug('[stream] payload  ~' + Math.ceil(Buffer.byteLength(bodyStr) / 4) + ' tokens (est)')
   log.debug('========================================')
 
   const upReq = https.request(opts, upRes => {
@@ -781,7 +791,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       let body = ''
       upRes.on('data', c => body += c)
       upRes.on('end', () => {
-        logSensitive('[stream] non-200 body =', body)
+        log.warn('[stream] non-200 body (' + upRes.statusCode + ') = ' + previewErr(body))
         if (!res.headersSent) {
           res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' })
         }
