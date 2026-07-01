@@ -701,3 +701,6 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 /* Long doc filenames scroll on hover (reuses the chat-title lcl-marq keyframes). */
 .doc-name-inner{display:inline-block;white-space:nowrap}
 .doc-name-inner.mq{animation:lcl-marq var(--mqd,5s) linear infinite}
+
+/* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
+.rag-term{border-bottom:1px dotted currentColor;cursor:help}
