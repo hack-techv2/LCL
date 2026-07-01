@@ -203,6 +203,7 @@ async function send() {
   if (pendingRetry) { pendingRetry.cancel(); pendingRetry = null }
 
   const chat = curChat(); if (!chat) return
+  if (typeof lclCrumb === 'function') lclCrumb('send', { model: creds && creds.model, chars: text.length, docs: (chat.docs && chat.docs.length) || 0 })
 
   // Claim the busy lock NOW — before any await — so a second send can't slip in
   // during retrieveChunks()/resolveSystemPrompt() and orphan the inflight stream.
@@ -489,6 +490,7 @@ async function autoTitleChat(chat) {
 }
 
 function stopStreaming(silent = false) {
+  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop')
   if (inflightCtl) {
     try { inflightCtl.abort() } catch {}
     if (!silent) toast('Stopped', 'info')
@@ -642,6 +644,7 @@ function updateSendBtn() {
 async function regenerateLast() {
   if (busy) return
   const chat = curChat(); if (!chat||!chat.messages.length) return
+  if (typeof lclCrumb === 'function') lclCrumb('regenerate', { model: creds && creds.model })
   // Drop the trailing assistant message(s) until we hit a user message.
   while (chat.messages.length && chat.messages[chat.messages.length-1].role === 'assistant') {
     chat.messages.pop()
