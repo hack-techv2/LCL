@@ -57,5 +57,6 @@ async function loadSettings() {
 }
 async function saveSettings(settings) {
   if (storeIsDemo()) return
+  if (typeof lclCrumb === 'function') lclCrumb('save_settings', { keys: settings ? Object.keys(settings).length : 0 })
   try { await httpPost('/api/config', settings) } catch {}
 }
