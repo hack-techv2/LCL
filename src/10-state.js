@@ -103,3 +103,30 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
     window.addEventListener('unhandledrejection', function (e) { ship('error', ['unhandledrejection', (e && e.reason && e.reason.message) || String(e && e.reason)]) })
   }
 })();
+
+// Action breadcrumbs: mirror key UI actions (not their content) to the server
+// so alpha bug reports show "user did X, then error Y". Metadata only — event
+// name + safe key/values (model, byte sizes, ids), never message text. Local
+// only (tees into debug_logs.txt); no remote telemetry. Fire-and-forget.
+function lclCrumb(event, meta) {
+  try {
+    let s = String(event || 'action')
+    if (meta && typeof meta === 'object') {
+      const parts = []
+      for (const k in meta) {
+        if (!Object.prototype.hasOwnProperty.call(meta, k)) continue
+        let v = meta[k]
+        if (v == null) continue
+        v = String(v).replace(/\s+/g, ' ').slice(0, 80)
+        parts.push(k + '=' + v)
+      }
+      if (parts.length) s += ' ' + parts.join(' ')
+    }
+    fetch('/api/clientlog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: 'info', msg: '[crumb] ' + s.slice(0, 500) })
+    }).catch(function () {})
+  } catch (e) {}
+}
+if (typeof window !== 'undefined') window.lclCrumb = lclCrumb;
