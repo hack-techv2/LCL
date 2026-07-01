@@ -393,6 +393,8 @@ function appendTyping() {
 function renderDocPanel() {
   const el   = document.getElementById('dp-body')
   const chat = curChat()
+  const _pastCb = document.getElementById('dp-use-past-embeddings')
+  if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
   const docs = chat?.docs||[]
   el.innerHTML = ''
   if (!docs.length) {
