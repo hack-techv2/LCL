@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Stronger light-mode contrast (alpha)
+
+First contrast pass was too soft in practice. Version stays v0.67d.
+
+- Queued embedding cards no longer dim the whole card via `opacity` in light mode (washed out filename + metadata); the `pending` chip alone signals the queued state.
+- Doc-panel metadata (size, chunk count, progress count) darkened to `#33405d` (~8:1).
+- `pending` is now a solid amber chip (`#f4e0b6` / `#6f4a00`, ~6:1); pace label `#7a4f00` bold; progress fill `#9a6300` (≥3:1 vs track); slightly darker card border, icon tile, and track.
+
 ## 2 Jul 2026 — Fix oversized whole-doc 429 hang (alpha)
 
 Root-caused via the new diagnostics: a whole-doc “summarise each” over 6 files built a ~497k-token
