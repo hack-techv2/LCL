@@ -357,7 +357,10 @@ async function embedBatch(texts, onProgress) {
   if (!inputs.length) return { embeddings: [], hashes: [], storeVectors: false }
 
   const MAX_POST_TEXTS = 1500
-  const MAX_POST_CHARS = 8 * 1024 * 1024
+  // Keep each POST under the server's hard token cap (~180k = 90% of a 200k/min
+  // limit). 600k chars ~= 150k tokens, so a large doc splits into acceptable POSTs
+  // that pace across the rate-limit window instead of tripping a 413 token cap.
+  const MAX_POST_CHARS = 600000
 
   function shortBody(t) {
     return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 700)
@@ -442,14 +445,14 @@ async function embedBatch(texts, onProgress) {
 
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error('Embed failed: ' + embedErrorFromJson(data, res.status))
+      if (!res.ok) throw new Error(embedErrorFromJson(data, res.status))
       const embeddings = extractEmbeddingsFromAnyJson(data)
       return normaliseBatchResult({ embeddings, hashes: data.hashes || [] }, batchInputs)
     }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      throw new Error('Embed failed (' + res.status + ', ' + (contentType || 'no content-type') + '): ' + shortBody(body))
+      throw new Error('HTTP ' + res.status + ' (' + (contentType || 'no content-type') + '): ' + shortBody(body))
     }
 
     if (!contentType.includes('text/event-stream')) {
@@ -457,7 +460,7 @@ async function embedBatch(texts, onProgress) {
       const hint = contentType.includes('text/html')
         ? ' The running server returned HTML instead of /api/embed-batch. Restart Node.js with the matching server.txt, then retry.'
         : ''
-      throw new Error('Embed failed: expected JSON/SSE from /api/embed-batch but got ' + (contentType || 'no content-type') + '. ' + shortBody(body) + hint)
+      throw new Error('expected JSON/SSE from /api/embed-batch but got ' + (contentType || 'no content-type') + '. ' + shortBody(body) + hint)
     }
 
     const streamed = await new Promise(async (resolve, reject) => {
