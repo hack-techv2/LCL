@@ -1333,6 +1333,31 @@ async function fetchWithRetry(url, opts, cfg) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
+
+// Client-side debug logging: mirror browser console errors/warnings + uncaught
+// errors to the server (/api/clientlog), which tees them into debug_logs.txt on
+// the alpha channel so tester bug reports capture the browser side too. Fire-and-
+// forget; guarded so it can never throw or recurse.
+;(function () {
+  const _cerr = console.error.bind(console)
+  const _cwarn = console.warn.bind(console)
+  function ship(level, args) {
+    try {
+      const msg = (args || []).map(a => {
+        try { return typeof a === 'string' ? a : (a && a.message) || JSON.stringify(a) }
+        catch { return String(a) }
+      }).join(' ').slice(0, 2000)
+      fetch('/api/clientlog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: level, msg: msg }) }).catch(function () {})
+    } catch (e) {}
+  }
+  console.error = function () { const a = [].slice.call(arguments); _cerr.apply(console, a); ship('error', a) }
+  console.warn  = function () { const a = [].slice.call(arguments); _cwarn.apply(console, a); ship('warn', a) }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('error', function (e) { ship('error', [(e && e.message) || 'window error', e && e.filename, e && (e.lineno + ':' + e.colno)]) })
+    window.addEventListener('unhandledrejection', function (e) { ship('error', ['unhandledrejection', (e && e.reason && e.reason.message) || String(e && e.reason)]) })
+  }
+})();
+
 // SECTION: 12-transport.js
 // =============================================================================
 // Transport — the single client<->local-proxy HTTP/SSE seam (R11)
@@ -1786,7 +1811,10 @@ async function embedBatch(texts, onProgress) {
   if (!inputs.length) return { embeddings: [], hashes: [], storeVectors: false }
 
   const MAX_POST_TEXTS = 1500
-  const MAX_POST_CHARS = 8 * 1024 * 1024
+  // Keep each POST under the server's hard token cap (~180k = 90% of a 200k/min
+  // limit). 600k chars ~= 150k tokens, so a large doc splits into acceptable POSTs
+  // that pace across the rate-limit window instead of tripping a 413 token cap.
+  const MAX_POST_CHARS = 600000
 
   function shortBody(t) {
     return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 700)
@@ -1871,14 +1899,14 @@ async function embedBatch(texts, onProgress) {
 
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error('Embed failed: ' + embedErrorFromJson(data, res.status))
+      if (!res.ok) throw new Error(embedErrorFromJson(data, res.status))
       const embeddings = extractEmbeddingsFromAnyJson(data)
       return normaliseBatchResult({ embeddings, hashes: data.hashes || [] }, batchInputs)
     }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      throw new Error('Embed failed (' + res.status + ', ' + (contentType || 'no content-type') + '): ' + shortBody(body))
+      throw new Error('HTTP ' + res.status + ' (' + (contentType || 'no content-type') + '): ' + shortBody(body))
     }
 
     if (!contentType.includes('text/event-stream')) {
@@ -1886,7 +1914,7 @@ async function embedBatch(texts, onProgress) {
       const hint = contentType.includes('text/html')
         ? ' The running server returned HTML instead of /api/embed-batch. Restart Node.js with the matching server.txt, then retry.'
         : ''
-      throw new Error('Embed failed: expected JSON/SSE from /api/embed-batch but got ' + (contentType || 'no content-type') + '. ' + shortBody(body) + hint)
+      throw new Error('expected JSON/SSE from /api/embed-batch but got ' + (contentType || 'no content-type') + '. ' + shortBody(body) + hint)
     }
 
     const streamed = await new Promise(async (resolve, reject) => {
