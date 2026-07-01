@@ -3,6 +3,13 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Light-mode contrast + batch embed dialog (alpha)
+
+RAG/embeddings panel polish. Version stays v0.67d.
+
+- **Light-mode contrast fixes** (`src/styles.css`): the amber/orange accents were reused from dark mode and failed WCAG AA on the near-white embeddings cards. Added light-scoped text-safe vars (`--ac-tx` #a8410a, `--pin-tx` #8a5a00, `--pin-bar` #b5760a) for the `.doc-st`/`.doc-prog-lbl` text and paced progress fill (pending pill and rate-limit label rise from ~1.7:1 to ~4.8:1). Queued-card dimming eased from `opacity:.55` to `.82` in light mode so the greyed cards stay legible. Dark mode unchanged.
+- **Consolidated batch embed dialog** (`src/40-files.js`, `src/80-ui.js`, `src/15-rag.js`): dropping several files now shows ONE confirmation instead of a separate budget warning per file. New `confirmEmbedBatch` modal lists each file with size + estimated time (checkboxes, all selected by default; button reads “Embed all (N)” / “Embed selected (N)”, live total). `planDocEmbed` factors the chunk/estimate step out of `embedDoc` so the batch can be summarised up front; `commitDocs` gates once against the cumulative budget (more accurate than the old per-file check) and embeds selected files with each file’s own prompt suppressed. Time estimates (`embedSecs`/`embedWaitSecs`/`fmtEmbedDur`) derive from the shared per-minute token limit. Single-file retry path keeps the original `confirmEmbedBudget`.
+
 ## 2 Jul 2026 — Diagnostic logging upgrade (alpha)
 
 Richer debug_logs.txt so alpha bug reports capture the chat path and the browser side, without ever persisting message content. Version stays v0.67d.
