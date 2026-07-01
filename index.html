@@ -722,6 +722,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .doc-name-inner{display:inline-block;white-space:nowrap}
 .doc-name-inner.mq{animation:lcl-marq var(--mqd,5s) linear infinite}
 
+/* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
+.rag-term{border-bottom:1px dotted currentColor;cursor:help}
+
 </style>
 </head>
 <body>
@@ -982,7 +985,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         </button>
       </div>
       <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable RAG. Text is extracted and embedded locally — the AI will search them when you chat.
+        Upload files here to enable <span class="rag-term" title="RAG — retrieval-augmented generation: the AI searches your uploaded files and pulls in the most relevant passages to answer, so replies are grounded in your documents, not just its general knowledge.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
       </div>
       <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
         + Upload file
@@ -2707,9 +2710,9 @@ function docMemoryKey(doc) {
 }
 
 function chatUsesPastEmbeddings(chat) {
-  // Default ON so new chats automatically use the shared document vector store.
-  // Individual chats can turn this off from the Embed panel.
-  return !chat || chat.usePastEmbeddings !== false
+  // Default OFF — a chat searches only its own uploaded files unless the user
+  // explicitly enables shared past-chat embeddings from the Embed panel.
+  return !!(chat && chat.usePastEmbeddings === true)
 }
 
 function setPastEmbeddingsForChat(on) {
@@ -3700,7 +3703,10 @@ async function commitDocs(files) {
   // multi-file drop shows every file queued at once (pending cards greyed) instead
   // of appearing one at a time as each finishes embedding.
   const added = []
+  let skipped = 0
   for (const f of files) {
+    // Don't re-embed a file already embedded in this chat (match name + size).
+    if (chat.docs.some(d => d.name === f.name && d.size === f.size)) { skipped++; continue }
     const doc = {
       id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       name: f.name, size: f.size, content: f.extractedText,
@@ -3711,6 +3717,7 @@ async function commitDocs(files) {
     chat.docs.push(doc)
     added.push(doc)
   }
+  if (skipped) toast(skipped + (skipped > 1 ? ' files' : ' file') + ' already embedded \u2014 skipped', 'info')
   renderDocPanel(); updateDocsBtn()
   if (creds) {
     for (const doc of added) {
@@ -5941,6 +5948,10 @@ function initDragDrop() {
 
   document.addEventListener('dragover', e => {
     e.preventDefault()
+    // Reflect where the drop will go: docs (embed) when the panel is open or Shift
+    // is held, else the message (attach) — same routing as the drop handler below.
+    const msg = overlay.querySelector('.drop-msg')
+    if (msg) msg.textContent = ((typeof dpOpen !== 'undefined' && dpOpen) || e.shiftKey) ? 'Drop files to embed' : 'Drop files to attach'
     overlay.classList.add('active')
   })
 
