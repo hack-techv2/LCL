@@ -13,9 +13,9 @@ function docMemoryKey(doc) {
 }
 
 function chatUsesPastEmbeddings(chat) {
-  // Default ON so new chats automatically use the shared document vector store.
-  // Individual chats can turn this off from the Embed panel.
-  return !chat || chat.usePastEmbeddings !== false
+  // Default OFF — a chat searches only its own uploaded files unless the user
+  // explicitly enables shared past-chat embeddings from the Embed panel.
+  return !!(chat && chat.usePastEmbeddings === true)
 }
 
 function setPastEmbeddingsForChat(on) {
