@@ -737,3 +737,28 @@ function initSidebar() {
   document.body.classList.toggle('sb-collapsed', collapsed)
   updateSidebarToggle(collapsed)
 }
+
+// Click 'RAG' in the embed panel to open a small info box (how RAG works + the
+// Search mode options). Toggles; closes on outside click, Escape, or re-click.
+function toggleRagInfo(e) {
+  if (e) {
+    e.stopPropagation()
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return
+    if (e.type === 'keydown') e.preventDefault()
+  }
+  const box = document.getElementById('rag-info')
+  if (!box) return
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return }
+  box.classList.remove('hidden')
+  const onDoc = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return
+    if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('.rag-term')))) return
+    box.classList.add('hidden')
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onDoc, true)
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onDoc, true)
+  }, 0)
+}
