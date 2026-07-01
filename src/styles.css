@@ -693,3 +693,11 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .dp-check{display:flex;align-items:flex-start;gap:8px;color:var(--tx2);font-size:12px;line-height:1.4;cursor:pointer}
 .dp-check input{margin-top:2px;accent-color:var(--ac)}
 .dp-check small{display:block;color:var(--tx3);font-size:10px;line-height:1.35;margin-top:2px}
+
+/* Queued (not-yet-embedded) doc cards render greyed so a multi-file drop shows
+   every file pending at once. The one currently embedding stays full-opacity. */
+.doc-card.doc-pending{opacity:.55}
+
+/* Long doc filenames scroll on hover (reuses the chat-title lcl-marq keyframes). */
+.doc-name-inner{display:inline-block;white-space:nowrap}
+.doc-name-inner.mq{animation:lcl-marq var(--mqd,5s) linear infinite}
