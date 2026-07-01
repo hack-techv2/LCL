@@ -723,7 +723,14 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .doc-name-inner.mq{animation:lcl-marq var(--mqd,5s) linear infinite}
 
 /* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
-.rag-term{border-bottom:1px dotted currentColor;cursor:help}
+.rag-term{border-bottom:1px dotted currentColor;cursor:pointer}
+.rag-info{margin:0 10px 8px;padding:10px 12px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);font-size:11px;line-height:1.5;color:var(--tx2)}
+.rag-info-hd{display:flex;justify-content:space-between;align-items:center;font-weight:500;color:var(--tx);margin-bottom:6px}
+.rag-info-x{background:none;border:none;color:var(--tx3);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
+.rag-info p{margin:6px 0}
+.rag-info ul{margin:6px 0;padding-left:16px}
+.rag-info li{margin:3px 0}
+.rag-info b{color:var(--tx);font-weight:500}
 
 /* Embed 'Search mode' segmented control (Auto / Specific / Whole doc). */
 .dp-search-label{font-size:11px;font-weight:500;color:var(--tx2);margin-bottom:2px}
@@ -993,7 +1000,17 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         </button>
       </div>
       <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable <span class="rag-term" title="RAG (retrieval-augmented generation) — the AI answers using your uploaded files, two ways: a document that fits is sent in FULL so it sees everything (best for summaries / whole-doc questions); a document too large to fit is SEARCHED and only the most relevant passages are pulled in (best for specific questions). Either way, replies stay grounded in your documents, not just the AI's general knowledge.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
+        Upload files here to enable <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
+      </div>
+      <div id="rag-info" class="rag-info hidden">
+        <div class="rag-info-hd"><span>RAG — retrieval-augmented generation</span><button type="button" class="rag-info-x" onclick="toggleRagInfo(event)" title="Close">&times;</button></div>
+        <p>The AI answers using your uploaded files, not just its general knowledge. How much of a file it draws on is set by <b>Search mode</b>:</p>
+        <ul>
+          <li><b>Auto</b> — sends the whole document when it fits, otherwise searches the most relevant passages.</li>
+          <li><b>Specific</b> — always searches the most relevant passages; precise and lower cost.</li>
+          <li><b>Whole doc</b> — always sends the full document, up to the model's context window; best for summaries.</li>
+        </ul>
+        <p><b>Also search other chats' embedded files</b> widens the search to files you embedded in your other chats.</p>
       </div>
       <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
         + Upload file
@@ -5991,6 +6008,31 @@ function initSidebar() {
   const collapsed = localStorage.getItem('lcl_sb_collapsed') === '1'
   document.body.classList.toggle('sb-collapsed', collapsed)
   updateSidebarToggle(collapsed)
+}
+
+// Click 'RAG' in the embed panel to open a small info box (how RAG works + the
+// Search mode options). Toggles; closes on outside click, Escape, or re-click.
+function toggleRagInfo(e) {
+  if (e) {
+    e.stopPropagation()
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return
+    if (e.type === 'keydown') e.preventDefault()
+  }
+  const box = document.getElementById('rag-info')
+  if (!box) return
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return }
+  box.classList.remove('hidden')
+  const onDoc = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return
+    if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('.rag-term')))) return
+    box.classList.add('hidden')
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onDoc, true)
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onDoc, true)
+  }, 0)
 }
 
 // SECTION: 90-extras.js
