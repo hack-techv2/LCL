@@ -266,9 +266,15 @@
           onchange="uploadDocs(this.files)">
       </label>
       <div class="dp-options">
-        <label class="dp-check" title="Allow this chat to search files embedded in previous chats. Turn this off to only use files uploaded in this chat.">
+        <div class="dp-search-label">Search mode</div>
+        <div class="dp-seg" id="dp-search-mode">
+          <button type="button" class="dp-seg-btn" data-mode="auto" onclick="setSearchMode('auto')" title="Sends the whole document when it fits the model, otherwise searches for the most relevant passages.">Auto</button>
+          <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
+          <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
+        </div>
+        <label class="dp-check dp-scope">
           <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
-          <span>Search past embeddings<small>Use files embedded in previous chats as shared RAG memory for this chat.</small></span>
+          <span>Also search other chats' embedded files</span>
         </label>
       </div>
       <div class="dp-body" id="dp-body"></div>
