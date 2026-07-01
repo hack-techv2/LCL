@@ -6,6 +6,10 @@ function initDragDrop() {
 
   document.addEventListener('dragover', e => {
     e.preventDefault()
+    // Reflect where the drop will go: docs (embed) when the panel is open or Shift
+    // is held, else the message (attach) — same routing as the drop handler below.
+    const msg = overlay.querySelector('.drop-msg')
+    if (msg) msg.textContent = ((typeof dpOpen !== 'undefined' && dpOpen) || e.shiftKey) ? 'Drop files to embed' : 'Drop files to attach'
     overlay.classList.add('active')
   })
 
