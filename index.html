@@ -1402,6 +1402,33 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   }
 })();
 
+// Action breadcrumbs: mirror key UI actions (not their content) to the server
+// so alpha bug reports show "user did X, then error Y". Metadata only — event
+// name + safe key/values (model, byte sizes, ids), never message text. Local
+// only (tees into debug_logs.txt); no remote telemetry. Fire-and-forget.
+function lclCrumb(event, meta) {
+  try {
+    let s = String(event || 'action')
+    if (meta && typeof meta === 'object') {
+      const parts = []
+      for (const k in meta) {
+        if (!Object.prototype.hasOwnProperty.call(meta, k)) continue
+        let v = meta[k]
+        if (v == null) continue
+        v = String(v).replace(/\s+/g, ' ').slice(0, 80)
+        parts.push(k + '=' + v)
+      }
+      if (parts.length) s += ' ' + parts.join(' ')
+    }
+    fetch('/api/clientlog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: 'info', msg: '[crumb] ' + s.slice(0, 500) })
+    }).catch(function () {})
+  } catch (e) {}
+}
+if (typeof window !== 'undefined') window.lclCrumb = lclCrumb;
+
 // SECTION: 12-transport.js
 // =============================================================================
 // Transport — the single client<->local-proxy HTTP/SSE seam (R11)
@@ -2728,6 +2755,7 @@ async function loadSettings() {
 }
 async function saveSettings(settings) {
   if (storeIsDemo()) return
+  if (typeof lclCrumb === 'function') lclCrumb('save_settings', { keys: settings ? Object.keys(settings).length : 0 })
   try { await httpPost('/api/config', settings) } catch {}
 }
 
@@ -3035,6 +3063,7 @@ function sortedChats() {
 }
 
 function newChat() {
+  if (typeof lclCrumb === 'function') lclCrumb('new_chat')
   stopStreaming(true)
   // A chat is "blank" only with no messages AND no embedded docs. Reuse an
   // existing blank instead of piling up empties, and prune any extra blanks.
@@ -3057,6 +3086,7 @@ function newChat() {
 }
 
 function switchChat(id) {
+  if (typeof lclCrumb === 'function') lclCrumb('switch_chat')
   stopStreaming(true)
   chatId = id
   ragStickyChunks = []
@@ -3084,6 +3114,7 @@ async function deleteChat(id, e) {
     okText: 'Delete', cancelText: 'Cancel'
   })
   if (!ok) return
+  if (typeof lclCrumb === 'function') lclCrumb('delete_chat', { hadDocs: hadDocs })
   delete D.chats[id]
   const afterDelete = () => {
     if (hadDocs) {
@@ -3610,6 +3641,7 @@ async function queueFilesForPreview(files, target) {
   }
   const valid = Array.from(files)
   if (!valid.length) return
+  if (typeof lclCrumb === 'function') lclCrumb('attach_files', { count: valid.length, target: target, bytes: valid.reduce((n, f) => n + (f.size || 0), 0) })
 
   previewTarget = target
   previewQueue  = []
@@ -4171,6 +4203,7 @@ async function send() {
   if (pendingRetry) { pendingRetry.cancel(); pendingRetry = null }
 
   const chat = curChat(); if (!chat) return
+  if (typeof lclCrumb === 'function') lclCrumb('send', { model: creds && creds.model, chars: text.length, docs: (chat.docs && chat.docs.length) || 0 })
 
   // Claim the busy lock NOW — before any await — so a second send can't slip in
   // during retrieveChunks()/resolveSystemPrompt() and orphan the inflight stream.
@@ -4457,6 +4490,7 @@ async function autoTitleChat(chat) {
 }
 
 function stopStreaming(silent = false) {
+  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop')
   if (inflightCtl) {
     try { inflightCtl.abort() } catch {}
     if (!silent) toast('Stopped', 'info')
@@ -4610,6 +4644,7 @@ function updateSendBtn() {
 async function regenerateLast() {
   if (busy) return
   const chat = curChat(); if (!chat||!chat.messages.length) return
+  if (typeof lclCrumb === 'function') lclCrumb('regenerate', { model: creds && creds.model })
   // Drop the trailing assistant message(s) until we hit a user message.
   while (chat.messages.length && chat.messages[chat.messages.length-1].role === 'assistant') {
     chat.messages.pop()
