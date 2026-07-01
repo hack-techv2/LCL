@@ -725,6 +725,14 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 /* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
 .rag-term{border-bottom:1px dotted currentColor;cursor:help}
 
+/* Embed 'Search mode' segmented control (Auto / Specific / Whole doc). */
+.dp-search-label{font-size:11px;font-weight:500;color:var(--tx2);margin-bottom:2px}
+.dp-seg{display:flex;border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
+.dp-seg-btn{flex:1;padding:6px 4px;font-size:11px;background:transparent;color:var(--tx2);border:none;border-left:1px solid var(--bdr);cursor:pointer}
+.dp-seg-btn:first-child{border-left:none}
+.dp-seg-btn.on{background:var(--ac);color:#fff;font-weight:500}
+.dp-scope{margin-top:2px}
+
 </style>
 </head>
 <body>
@@ -985,7 +993,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         </button>
       </div>
       <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable <span class="rag-term" title="RAG — retrieval-augmented generation: the AI searches your uploaded files and pulls in the most relevant passages to answer, so replies are grounded in your documents, not just its general knowledge.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
+        Upload files here to enable <span class="rag-term" title="RAG (retrieval-augmented generation) — the AI answers using your uploaded files, two ways: a document that fits is sent in FULL so it sees everything (best for summaries / whole-doc questions); a document too large to fit is SEARCHED and only the most relevant passages are pulled in (best for specific questions). Either way, replies stay grounded in your documents, not just the AI's general knowledge.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
       </div>
       <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
         + Upload file
@@ -995,9 +1003,15 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           onchange="uploadDocs(this.files)">
       </label>
       <div class="dp-options">
-        <label class="dp-check" title="Allow this chat to search files embedded in previous chats. Turn this off to only use files uploaded in this chat.">
+        <div class="dp-search-label">Search mode</div>
+        <div class="dp-seg" id="dp-search-mode">
+          <button type="button" class="dp-seg-btn" data-mode="auto" onclick="setSearchMode('auto')" title="Sends the whole document when it fits the model, otherwise searches for the most relevant passages.">Auto</button>
+          <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
+          <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
+        </div>
+        <label class="dp-check dp-scope">
           <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
-          <span>Search past embeddings<small>Use files embedded in previous chats as shared RAG memory for this chat.</small></span>
+          <span>Also search other chats' embedded files</span>
         </label>
       </div>
       <div class="dp-body" id="dp-body"></div>
@@ -2732,6 +2746,26 @@ function setPastEmbeddingsForChat(on) {
   toast(on ? 'Past embeddings enabled for this chat' : 'Past embeddings disabled for this chat', on ? 'ok' : 'info')
 }
 
+// Per-chat RAG search mode: 'auto' (whole doc if it fits, else search), 'specific'
+// (always search relevant passages), 'whole' (always send the full document).
+function chatSearchMode(chat) {
+  const m = chat && chat.searchMode
+  return (m === 'specific' || m === 'whole') ? m : 'auto'
+}
+function setSearchMode(mode) {
+  const chat = curChat()
+  if (!chat) return
+  chat.searchMode = (mode === 'specific' || mode === 'whole') ? mode : 'auto'
+  chat.updatedAt = Date.now()
+  ragStickyChunks = []
+  persist()
+  renderDocPanel()
+  const label = chat.searchMode === 'specific' ? 'Specific (search passages)'
+              : chat.searchMode === 'whole' ? 'Whole document'
+              : 'Auto'
+  toast('Search mode: ' + label, 'info')
+}
+
 function getRagMemoryDocs(chat) {
   const out = []
   const seen = new Set()
@@ -4036,6 +4070,7 @@ async function buildPayload(chat, queryText) {
   const queryPlan   = analyzeRagQuery(queryText, readyDocs)
   const scopedDocs  = narrowDocsForQuery(queryPlan, readyDocs)
   const docsForUse  = scopedDocs.length ? scopedDocs : readyDocs
+  const searchMode  = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
 
   if (queryPlan.sectionRefs.length && docsForUse.some(d => d.content || d.sections?.length || d.chunks?.length)) {
     ragChunks = exactSectionLookup(queryPlan.sectionRefs, docsForUse)
@@ -4044,39 +4079,48 @@ async function buildPayload(chat, queryText) {
     }
   }
 
+  // Chunk retrieval used by 'specific' mode and the 'auto'/'whole' fallback.
+  async function retrieveChunksInto() {
+    if (!docsForUse.some(d=>d.chunks?.length)) return
+    try {
+      ragChunks = await retrieveRagChunks(queryText, docsForUse, clampTopK(creds.topK), ragStickyChunks)
+      // Item 4: evidence-scored source display; fall back to all retrieved docs
+      // if the evidence filter would hide every source.
+      ragSources = displayedSourceNames(queryText, ragChunks)
+      if (!ragSources.length) ragSources = uniqueSourceNames(ragChunks)
+      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor(clampTopK(creds.topK) * CFG.STICKY_CHUNK_RATIO)))
+    } catch(e) { console.warn('RAG:',e.message) }
+  }
+
   if (!ragChunks.length) {
-    const docsForFull = docsForUse.filter(d=>d.content)
-    // Item 2a: dynamic full-text budget — scale to the model's context window
-    // (getModelContext), clamped [DOC_FULLTEXT_FLOOR, DOC_FULLTEXT_CEILING].
-    // Unknown/custom model -> conservative DOC_FULLTEXT_LIMIT fallback.
-    let fullLimit = CFG.DOC_FULLTEXT_LIMIT
-    const _win = (typeof getModelContext === 'function') ? getModelContext(creds.model) : null
-    if (_win) {
-      const _reserveTok = (creds.maxTokens || CFG.DEFAULT_MAX_TOKENS || 8192)
-      const _histTok = estTokens(chat.messages.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
-      const _availChars = Math.floor((_win - _reserveTok - _histTok - 2000) * 4)
-      fullLimit = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.min(CFG.DOC_FULLTEXT_CEILING || 250000, _availChars))
-    }
-    let fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
-    // Fallback: if the query doesn't lexically match any doc, still consider all
-    // ready docs — a general/paraphrased question shouldn't skip an embedded doc
-    // that fits the budget (the budget clamp below still guards huge injections).
-    if (!fullCandidates.length) fullCandidates = docsForFull
-    const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
-    const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
-    if (useFullText) {
-      fullDocText = fullCandidates.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
-      ragSources  = uniqueSourceNames(fullCandidates)
-    } else if (docsForUse.some(d=>d.chunks?.length)) {
-      try {
-        ragChunks = await retrieveRagChunks(queryText, docsForUse, clampTopK(creds.topK), ragStickyChunks)
-        // Item 4: evidence-scored source display; fall back to all retrieved docs
-        // if the evidence filter would hide every source.
-        ragSources = displayedSourceNames(queryText, ragChunks)
-        if (!ragSources.length) ragSources = uniqueSourceNames(ragChunks)
-        ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor(clampTopK(creds.topK) * CFG.STICKY_CHUNK_RATIO)))
+    if (searchMode === 'specific') {
+      // Always search for the most relevant passages — never inject full text.
+      await retrieveChunksInto()
+    } else {
+      const docsForFull = docsForUse.filter(d=>d.content)
+      // Full-text budget scaled to the model's context window. 'whole' mode uses the
+      // full window; 'auto' caps at the sane DOC_FULLTEXT_CEILING. Unknown model -> floor.
+      const _win = (typeof getModelContext === 'function') ? getModelContext(creds.model) : null
+      let availChars = CFG.DOC_FULLTEXT_LIMIT
+      if (_win) {
+        const _reserveTok = (creds.maxTokens || CFG.DEFAULT_MAX_TOKENS || 8192)
+        const _histTok = estTokens(chat.messages.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
+        availChars = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.floor((_win - _reserveTok - _histTok - 2000) * 4))
       }
-      catch(e) { console.warn('RAG:',e.message) }
+      const fullLimit = (searchMode === 'whole') ? availChars : Math.min(availChars, CFG.DOC_FULLTEXT_CEILING || 250000)
+      let fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
+      // Fallback: if the query matches no doc lexically, still consider all ready docs
+      // so a general/paraphrased question isn't left ungrounded (budget clamp guards size).
+      if (!fullCandidates.length) fullCandidates = docsForFull
+      const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
+      const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
+      if (useFullText) {
+        fullDocText = fullCandidates.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
+        ragSources  = uniqueSourceNames(fullCandidates)
+      } else {
+        // Too large to send whole (even in 'whole' mode, past the model window) -> chunks.
+        await retrieveChunksInto()
+      }
     }
   }
   const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
@@ -5098,6 +5142,8 @@ function renderDocPanel() {
   const chat = curChat()
   const _pastCb = document.getElementById('dp-use-past-embeddings')
   if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
+  const _mode = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
+  document.querySelectorAll('#dp-search-mode .dp-seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === _mode))
   const docs = chat?.docs||[]
   el.innerHTML = ''
   if (!docs.length) {
