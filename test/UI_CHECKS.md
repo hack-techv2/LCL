@@ -76,3 +76,46 @@ so we have a trail.
 - 22 Jun 2026 (alpha build): **U1–U10 all verified live** — incl. U7 (Stop mid
   `[[slow]]` → "(stopped)") and U10 (Reset demo re-seeds; "+ Many chats" adds 18,
   date-grouped). U6 countdown captured via the `[[429]]` marker.
+
+---
+
+## Real-file RAG extraction (v0.67e batch, added 1 Jul 2026)
+
+Fixtures live in `test/fixtures/` (regenerate with `python make_fixtures.py`):
+`test-report.pdf` (numbered sections + a Data Retention section), `test-policy.docx`
+(Heading 1 sections), `test-slides.pptx` (3 slides + speaker notes), `test-data.xlsx`
+(2 sheets). All content synthetic.
+
+**IMPORTANT — must be run in a REAL session, not `#demo`.** `#demo`'s `uploadDocs`
+does not add real uploaded files (confirmed 1 Jul 2026), and the native file dialog
+isn't automatable, so these are a manual checklist. Use a real embedding key.
+
+- **U19 PDF (pdf.js v5)** — upload `test-report.pdf`: extracts, chunks > 0, embeds to
+  `ready`. Query "data retention" → answer cites `test-report.pdf`. Confirms the
+  pdf.js **5.7.284 ESM** loader (`window.pdfjsLib`, `.mjs` worker) works end-to-end.
+- **U20 DOCX** — upload `test-policy.docx`: `extractDocxStructured` yields section
+  headings; query "remote work policy" cites it.
+- **U21 PPTX** — upload `test-slides.pptx`: `extractPptxStructured` yields slide text
+  + speaker notes; query "project timeline" cites it. (Contributor hadn't tested PPTX.)
+- **U22 XLSX** — upload `test-data.xlsx`: `extractXlsxStructured` yields both sheets
+  as tables; query "Q4 revenue by region" cites it. (Contributor hadn't tested XLSX.)
+- **U23 shared memory** — with docs embedded in chat A, start chat B, keep "Search past
+  embeddings" ON → chat B retrieves from A's docs; toggle OFF → only B's own docs.
+- **U24 delete prune** — delete a chat that had docs → confirm dialog → "Deleted chat
+  and pruned embeddings" toast; embed cache GC'd.
+
+### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
+- Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
+  after fixing `ragKeywordIndexCache` (see below).
+- Embed panel: progress bar + Retry + "Search past embeddings" toggle render; Top-K min=3.
+- Delete-chat confirm dialog + prune toast verified live.
+- pdf.js v5 module loads (`window.pdfjsLib` defined, worker = jsDelivr `.mjs`), no errors.
+
+### Bug found + fixed during this testing (1 Jul 2026)
+- **`ragKeywordIndexCache is not defined`** — the merged 15-rag/40-files reference this
+  state var but its declaration was only in v0.67e's `10-state.js`, which wasn't ported.
+  Symptom: keyword-recall threw and was swallowed by `buildPayload`'s catch, silently
+  degrading hybrid retrieval to vector-only. Fix: declared
+  `let ragKeywordIndexCache = { signature:'', index:null, records:[] }` in `10-state.js`.
+  Not caught by build.js (its scan checks undefined *functions*, not *variables*), nor by
+  the seeded-doc query (which took the full-text path) — only the keyword path hit it.
