@@ -97,3 +97,9 @@ no-op — the 2 Jul "excel attach failed" report); C15 mid-reply stream death �
 partial discarded, `stream_died_midreply` crumb, standard transient auto-retry
 (was silently accepted as a complete answer); C16 `#toast` sits ≥100px up,
 above the composer. Harness has a per-case 20s watchdog + synchronous output.
+
+### T33 / C17 / C18 (3 Jul — Continue for token-capped replies)
+
+T33: `[[truncate]]` demo marker → stream ends `finish_reason:"length"` + usage.
+C17: `streamChatOnce` surfaces `finish` ('length' vs 'stop'). C18: `attachMsgFlags`
+renders the Continue box from persisted flags, with the continuation-count variant.
