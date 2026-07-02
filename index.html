@@ -4886,14 +4886,19 @@ async function streamChatOnce(payload, onToken, signal) {
   payload.stream = true
   const r = await postClassified('/api/chat', { apiKey: creds.apiKey, modelId: creds.model, payload }, signal ? { signal: signal } : {})
   if (!r.ok) return { ok: false, status: r.status, kind: r.kind, limit429: r.limit429, remaining429: r.remaining429, resetMs: r.resetMs, message: r.message }
-  let acc = ''
+  let acc = '', usage = null, streamErr = null
   await streamSse(r.resp, function (data) {
     if (data === '[DONE]') return
     let j; try { j = JSON.parse(data) } catch (e) { return }
+    // Proxy injects {"error": "..."} when the upstream dies MID-stream. Without
+    // this check a truncated summary was silently accepted as complete.
+    if (j && j.error && !j.choices) { streamErr = String(j.error.message || j.error); return }
+    if (j && j.usage) usage = j.usage   // terminal chunk: REAL token count for this request
     const dc = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content
     if (dc) { acc += dc; if (onToken) onToken(acc) }
   }, { aborted: function () { return signal && signal.aborted } })
-  return { ok: true, text: acc }
+  if (streamErr && !(signal && signal.aborted)) return { ok: false, status: 0, kind: 'transient', message: streamErr }
+  return { ok: true, text: acc, usage: usage }
 }
 
 // Summarise one blob (a whole doc, or one part during map-reduce), streaming into
@@ -4956,7 +4961,17 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     if (Date.now() - _rlPace.windowStart >= _RL_WINDOW_MS) { _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0 }
     _rlPace.spentEst += reqTok
     const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
-    if (r.ok) return { text: r.text }
+    if (r.ok) {
+      // The stream's terminal usage chunk gives the TRUE est->real ratio for this
+      // request. EMA it into infl (both directions), so an HTML-doc ratchet-up
+      // (~2.6x) relaxes again on prose docs (~1.5x) without needing a 429 to teach.
+      const u = r.usage && (r.usage.total_tokens || r.usage.prompt_tokens)
+      if (u && reqTok > 500) {
+        const ratio = u / reqTok
+        if (Number.isFinite(ratio) && ratio > 0.5) _rlPace.infl = Math.max(1.2, Math.min(3.0, 0.5 * _rlPace.infl + 0.5 * ratio))
+      }
+      return { text: r.text }
+    }
     if (signal && signal.aborted) return { text: null }
     if (r.kind === 'ratelimit') {
       if (r.limit429) _rlPace.limit = r.limit429
