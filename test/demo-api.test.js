@@ -171,6 +171,59 @@ const CASES = [
     const bj = json(b.body)
     check('T22 [[embedfail]] then retry', /"type":"error"/.test(a.body) && b.status === 200 && (bj.embeddings || []).length === 1, 'firstErr=' + /"type":"error"/.test(a.body) + ' retry=' + b.status)
   } },
+  // --- 2 Jul 2026 batch: rate-limit pacing / truncation-guard contracts --------
+  { id: 'T27 [[embed429]] server window-wait', tags: ['embed', 'retry'], fn: async () => {
+    // ONE request: the server hits the window, emits pacing ticks, retries, done.
+    // (Contract behind handleEmbedBatch's 429 loop - vs T22 where the CLIENT retries.)
+    const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: ['[[embed429]] window survivor'] }))
+    const pace = /"type":"pacing"/.test(r.body), errFrame = /"type":"error"/.test(r.body)
+    const doneLine = (r.body.split('\n').find(l => /"type":"done"/.test(l)) || '').replace(/^data:\s*/, '')
+    const dj = json(doneLine)
+    check('T27 [[embed429]] server window-wait', r.status === 200 && pace && !errFrame && (dj.embeddings || []).length === 1, 'pacing=' + pace + ' err=' + errFrame)
+  } },
+  { id: 'T28 [[429]] full gateway body', tags: ['errors', 'retry'], fn: async () => {
+    // Body must carry the real gateway fields the client parses (limit/remaining/reset).
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[429]] realistic body probe', true))
+    const lim = (r.body.match(/Current limit:\s*(\d+)/) || [])[1]
+    const rem = (r.body.match(/Remaining:\s*(\d+)/) || [])[1]
+    const stamp = (r.body.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC/) || [])[1]
+    const typeOk = /Limit type: tokens/.test(r.body)
+    check('T28 [[429]] full gateway body', r.status === 429 && lim === '200000' && rem === '0' && !!stamp && typeOk, 'lim=' + lim + ' rem=' + rem + ' stamp=' + stamp)
+  } },
+  { id: 'T29 [[429partial]] drained-window body', tags: ['errors', 'retry'], fn: async () => {
+    // Remaining: 58944 verbatim from the 21:45:46 log - the fixture behind the
+    // too-big misclassification fix (must parse as PARTIAL, i.e. wait-don't-split).
+    const p = chat('[[429partial]] wait not split', true)
+    const a = await req({ method: 'POST', path: '/api/chat', headers: H }, p)
+    const rem = (a.body.match(/Remaining:\s*(\d+)/) || [])[1]
+    const b = await req({ method: 'POST', path: '/api/chat', headers: H }, p)
+    check('T29 [[429partial]] drained-window body', a.status === 429 && rem === '58944' && b.status === 200, 'rem=' + rem + ' then ' + b.status)
+  } },
+  { id: 'T30 [[streamdie]] mid-stream error frame', tags: ['chat', 'errors'], fn: async () => {
+    // Stream starts (200 + deltas) then dies: error frame present, NO finish/[DONE].
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[streamdie]] truncate me', true))
+    const hasDelta = /"delta":\{"content"/.test(r.body)
+    const hasErr = /"error":"upstream stream error/.test(r.body)
+    const finished = /\[DONE\]/.test(r.body) || /"finish_reason":"stop"/.test(r.body)
+    check('T30 [[streamdie]] mid-stream error frame', r.status === 200 && hasDelta && hasErr && !finished, 'delta=' + hasDelta + ' err=' + hasErr + ' finished=' + finished)
+  } },
+  { id: 'T31 stream terminal usage chunk', tags: ['chat'], fn: async () => {
+    // Real gateway sends usage in a terminal chunk; the client learns est->real
+    // inflation from it. [[usage]] marker text skips the every-5 auto-429 counter.
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[usage]] measure me', true))
+    const uLine = (r.body.split('\n').find(l => /"usage"/.test(l)) || '').replace(/^data:\s*/, '')
+    const u = json(uLine).usage || {}
+    const ok = typeof u.prompt_tokens === 'number' && typeof u.total_tokens === 'number' && u.total_tokens > u.prompt_tokens
+    check('T31 stream terminal usage chunk', r.status === 200 && ok, 'usage=' + JSON.stringify(u))
+  } },
+  { id: 'T32 [[toobig]] Remaining is near-full', tags: ['errors'], fn: async () => {
+    // The new client rule: too-big -> split ONLY when Remaining >= 95% of limit.
+    const big = 'x'.repeat(900000)
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[toobig]] ' + big, true))
+    const lim = Number((r.body.match(/Current limit:\s*(\d+)/) || [])[1])
+    const rem = Number((r.body.match(/Remaining:\s*(\d+)/) || [])[1])
+    check('T32 [[toobig]] Remaining is near-full', r.status === 429 && lim > 0 && rem >= lim * 0.95, 'rem=' + rem + '/' + lim)
+  } },
   { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
     const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
     const r1 = json((await g()).body)
