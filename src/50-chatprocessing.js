@@ -984,6 +984,7 @@ async function runSplitSummaries(chat, docs, instruction) {
   try {
     for (let i = 0; i < docs.length; i++) {
       if (signal.aborted) break
+      if (chat && chat.id && !D.chats[chat.id]) break   // chat deleted mid-run - don't append into another chat
       const doc = docs[i]
       setHealth('warn', 'Summarising ' + (i + 1) + '/' + docs.length)
       const header = '**' + doc.name + '** - summary (' + (i + 1) + ' of ' + docs.length + ')\n\n'
