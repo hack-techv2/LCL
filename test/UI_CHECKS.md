@@ -119,3 +119,24 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   `let ragKeywordIndexCache = { signature:'', index:null, records:[] }` in `10-state.js`.
   Not caught by build.js (its scan checks undefined *functions*, not *variables*), nor by
   the seeded-doc query (which took the full-text path) — only the keyword path hit it.
+
+## 2 Jul 2026 — pacing batch (mostly automated)
+
+Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
+`demo-api.test.js` T27–T32; only visual polish needs an eyeball pass in `#demo`:
+
+- [ ] "Waiting for the rate-limit window" box: title/copy readable, countdown ticks,
+      switches to "resuming…" at 0:00 (429 via `[[429]]` / `[[429partial]]`).
+- [ ] During a multi-part summary the finished part-summaries remain readable above
+      the live area while the next part streams (logic automated in C10; this checks
+      the actual rendering).
+- [ ] `[[streamdie]]` mid-summary shows "upstream hiccup, retrying…" then recovers.
+- [ ] Toasts: an `err` toast visibly lingers (~6s) vs a short `ok` (~4s).
+- [ ] Docx with Mammoth warnings: NO toast; warnings in browser console +
+      `docx_warnings` crumb in the server log.
+
+- [ ] Send while a reply is streaming → "Still replying…" toast, message stays in composer.
+- [ ] Toast appears ABOVE the composer (not covering it); health pill reads
+      "Replying — Stop to interrupt" once tokens flow.
+- [ ] `[[streamdie]]` in plain chat → partial reply is discarded and the auto-retry
+      box appears (no truncated text left looking complete).
