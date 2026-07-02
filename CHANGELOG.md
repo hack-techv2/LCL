@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 3 Jul 2026 — Bubble spacing polish (alpha)
+
+Per CL, applied consistently: the truncation/Continue box gets a 14px bottom margin, and the RAG source-chip row (`.rag-row`) gets 10px above / 14px below / 6px chip gaps — both were sitting flush against the Copy/Regenerate action row, worst with many long chips (11-file EES case). Verified live in #demo. Version stays v0.67d.
+
 ## 3 Jul 2026 — Continue button for token-capped replies (alpha)
 
 From CL's 23:52 log: a reply hit `finish length` (max_tokens cap), the truncation warning was a cramped italic line that vanished on re-render, and Regenerate just re-truncated (137s wasted). Version stays v0.67d.
