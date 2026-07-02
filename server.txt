@@ -113,6 +113,19 @@ function dbgRotateIfNeeded() {
   try { fs.renameSync(DEBUG_LOG_FILE, DEBUG_LOG_BACKUP) } catch {}
   _dbgBytes = 0
 }
+// Local-timezone log timestamp (ISO 8601 with the machine's UTC offset), e.g.
+// 2026-07-02T08:29:36.477+08:00 — so console + debug_logs.txt read in the user's
+// wall clock, not UTC. The gateway's own stamps (reset_at) stay as sent.
+function _logStamp(d) {
+  d = d || new Date()
+  const p = (n, w) => String(n).padStart(w || 2, '0')
+  const off = -d.getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const oh = p(Math.floor(Math.abs(off) / 60)), om = p(Math.abs(off) % 60)
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+         p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' +
+         p(d.getMilliseconds(), 3) + sign + oh + ':' + om
+}
 function dbgWrite(level, args, ts) {
   if (!fileLogActive()) return
   try {
@@ -122,7 +135,7 @@ function dbgWrite(level, args, ts) {
       try { _dbgBytes = fs.existsSync(DEBUG_LOG_FILE) ? fs.statSync(DEBUG_LOG_FILE).size : 0 } catch { _dbgBytes = 0 }
     }
     const body = args.map(a => (typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity }))).join(' ')
-    const line = (ts || new Date().toISOString()) + ' [' + level + '] ' + _stripAnsi(body) + '\n'
+    const line = (ts || _logStamp()) + ' [' + level + '] ' + _stripAnsi(body) + '\n'
     _dbgStream.write(line)
     _dbgBytes += Buffer.byteLength(line)
   } catch {}
@@ -133,9 +146,9 @@ const _origConsoleWarn  = console.warn.bind(console)
 const _origConsoleError = console.error.bind(console)
 // Console lines carry the SAME '<iso> [level]' prefix as the file sink (one shared
 // timestamp per call) so the terminal and debug_logs.txt read identically.
-console.log   = (...a) => { const ts = new Date().toISOString(); _origConsoleLog(ts + ' [log]', ...a);     dbgWrite('log',  a, ts) }
-console.warn  = (...a) => { const ts = new Date().toISOString(); _origConsoleWarn(ts + ' [warn]', ...a);   dbgWrite('warn', a, ts) }
-console.error = (...a) => { const ts = new Date().toISOString(); _origConsoleError(ts + ' [error]', ...a); dbgWrite('error', a, ts) }
+console.log   = (...a) => { const ts = _logStamp(); _origConsoleLog(ts + ' [log]', ...a);     dbgWrite('log',  a, ts) }
+console.warn  = (...a) => { const ts = _logStamp(); _origConsoleWarn(ts + ' [warn]', ...a);   dbgWrite('warn', a, ts) }
+console.error = (...a) => { const ts = _logStamp(); _origConsoleError(ts + ' [error]', ...a); dbgWrite('error', a, ts) }
 
 // ---------------------------------------------------------------------------
 // Update channel TLS. A TLS-intercepting proxy (Zscaler) re-signs the GitHub
