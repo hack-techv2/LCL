@@ -3,6 +3,16 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Rate-limit pacing: embed 429 survival, proactive part waits, embed-vs-summary gate (alpha)
+
+Closes the shared-budget pacing item from the 19:41/20:11 log analysis. All 22 429s in that log were `Limit type: tokens` — the 20 req/min cap never fired — so no request-count gate was added (KIV until a `Limit type: requests` 429 is actually observed). Version stays v0.67d.
+
+- **Embeds now survive 429s** (`server.txt` `handleEmbedBatch`): a batch that 429s waits out the window (using the 429 body's `Limit resets at` stamp, clamped 5–90s, max 4 waits) and retries, streaming `pacing` ticks so the doc card shows the countdown — instead of failing the whole doc after three 150ms retries (the 19:41 `embed_fail` on START). 429s are excluded from `callGccJson`'s fast transient retries for this path (`no429Retry`), saving 3 wasted requests per hit.
+- **Proactive reset-wait between map-reduce parts** (`50-chatprocessing.js` `_rlPace`): the client tracks its own est-token spend per 62s window (est ×1.55 ≈ real) plus the reliable body fields of any 429 it does hit. A part that cannot fit in what's left of the window now waits for the reset BEFORE firing — the 20:11 run burned a guaranteed 429 + 61s wait on every part→part transition; those requests are no longer sent. New `rl_wait where=pace` crumb.
+- **Summaries wait for active embeds** (`embedsActive`/`waitForEmbedsIdle`): a split-summary run pauses while any doc is `embedding`/`pending` (embeddings are the RAG prerequisite and share the budget), with a per-doc "Waiting for document embedding to finish…" note. New `summary_wait_embed` crumb. Stops the mutual starvation from the 19:41 log.
+- **Rate-limit waits during summaries read as progress, not errors**: the countdown box during a multi-part run is now titled "Waiting for the rate-limit window" with "Summarising <doc> (part N/M) … resumes automatically" — the plain-chat 429 box is unchanged.
+- **KIV: Retry-after-failed-embed REPL hang.** Code inspection found no async gap in `retryEmbed`→`embedDoc`; prime suspect is Windows console QuickEdit (a click in the console starts a selection, console writes block, Node's TTY writes stall the event loop until Enter/Esc). Next repro: check the console title bar for "Select" while hung; if confirmed, disable QuickEdit in the console properties.
+
 ## 2 Jul 2026 — Fix map-reduce runaway split (use 429 body Remaining) (alpha)
 
 The adaptive split was cascading: a part that 429'd with `Remaining: 0` (budget just exhausted by the previous part) was misread as 'too big' and split down to 7k tokens before giving up — because it used the STALE client token meter (streams never refresh it) instead of the gateway's real figure. Now the too-big-vs-transient decision uses the **429 body's real-time Remaining** vs the request size: room available yet rejected → too big (split); Remaining ~0 → exhausted → wait for the window and retry. Retry cap raised 3→4. Version stays v0.67d.
