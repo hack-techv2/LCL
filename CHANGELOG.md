@@ -3,6 +3,13 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Rate-limit retry fixes (alpha)
+
+Two fixes to rate-limit handling during summaries. Version stays v0.67d.
+
+- **Always retry a recoverable 429** (`src/50-chatprocessing.js`): both the main chat path and the split-summary path used to give up when a 429 carried no parseable reset time. They now auto-retry any non-unwinnable 429 with the parsed reset when present, else a default 60s backoff. Fixes a doc failing to summarise straight away when ongoing embeddings were briefly using the shared token budget.
+- **Consistent rate-limit UI**: the split flow now shows the standard 'Error 429: Rate limit reached' countdown box (via `countdownWait`) instead of a custom '_Rate-limited - resuming_' line, and shows it during map-reduce parts too. Only a genuinely over-cap request (unwinnable) still stops without retry.
+
 ## 2 Jul 2026 — Whole-doc split + map-reduce summaries (alpha)
 
 Turns the over-limit whole-doc summary from a dead-end into a completed job. Version stays v0.67d.
