@@ -3502,10 +3502,11 @@ async function extractDocxStructured(file) {
         const raw = await mammoth.extractRawText({ arrayBuffer: ab.slice(0) })
         text = inferHeadingNumbers((raw.value || '').trim())
       }
+      // Mammoth WARNINGS are log-only (console in full + first 3 to the server log)
+      // - they are cosmetic (unrecognised styles, skipped text boxes/TOC fields) and
+      // don't merit a toast. parseWarning (which toasts) is reserved for real
+      // failures: the catch branch below and the library-unavailable fallback.
       if (result.messages && result.messages.length) {
-        warnings.push('DOCX parsed with ' + result.messages.length + ' Mammoth warning(s).')
-        // Surface WHAT the warnings were (previously discarded): browser console in
-        // full + first 3 into the server log, so docx extraction issues are debuggable.
         try { console.warn('[docx] Mammoth warnings for ' + file.name + ':', result.messages.map(m => (m.type || 'warn') + ': ' + m.message)) } catch {}
         if (typeof lclCrumb === 'function') lclCrumb('docx_warnings', { doc: file.name, n: result.messages.length, first: result.messages.slice(0, 3).map(m => String(m.message || '').slice(0, 90)) })
       }
