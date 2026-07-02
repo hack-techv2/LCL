@@ -3,6 +3,13 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Pacing v2 review: truncation guard + usage-based inflation learning (alpha)
+
+Self-review of pacing v2 found two gaps; both closed. Version stays v0.67d.
+
+- **Mid-stream death no longer silently truncates**: if the upstream dies after streaming starts, the proxy's `{"error":…}` SSE frame (now also emitted on the raw socket-error path, not just inactivity timeout) is detected by `streamChatOnce` and returned as a transient failure → retried, instead of accepting a partial part-summary as complete and feeding it to the combine.
+- **`infl` learns from real usage, both directions**: the ratchet problem — 429s only ever teach the ratio UP, so an HTML doc (~2.6x) would permanently slow later prose docs (~1.5x). The stream's terminal `usage` chunk is the true token count for every successful request; it now EMAs into `infl` (clamped 1.2–3.0), so pacing converges per doc type without needing a 429.
+
 ## 2 Jul 2026 — Pacing v2 from the 21:42 log: adaptive inflation, too-big fix, transient retry, persistent part-summaries (alpha)
 
 The 21:42–21:54 capture showed pacing v1 working but inconsistent. Four fixes, all log-driven. Version stays v0.67d.
