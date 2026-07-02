@@ -231,6 +231,9 @@ function renderMessages() {
   chat.messages.forEach(m => {
     const t = typeof m.content === 'string' ? m.content : m.content?.find?.(b => b.type === 'text')?.text || '[attachment]'
     const div = buildMsgEl(m.role === 'user' ? 'user' : 'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
+    // Persisted truncation/filter notes (incl. the Continue button) - previously
+    // these existed only on the live bubble and vanished on re-render/reload.
+    if (m.role !== 'user' && typeof attachMsgFlags === 'function') attachMsgFlags(div, m)
     inner.appendChild(div)
   })
   el.innerHTML = ''
