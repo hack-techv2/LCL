@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Mammoth warnings: log-only, no toast (alpha)
+
+Per CL: Mammoth conversion warnings are cosmetic (unrecognised styles, skipped text boxes/TOC fields) — they no longer toast or annotate the preview; they go to the browser console (full) and the server log via the `docx_warnings` crumb (first 3). Toasts remain for real extraction failures. Version stays v0.67d.
+
 ## 2 Jul 2026 — Log Mammoth DOCX warning details (alpha)
 
 The docx extractor only reported a COUNT ("parsed with N Mammoth warning(s)") and discarded the messages. Now the full list goes to the browser console and the first 3 to the server log via a `docx_warnings` crumb (doc, count, messages) — typically unrecognised styles or skipped elements (text boxes, TOC fields, footnotes). Version stays v0.67d.
