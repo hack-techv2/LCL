@@ -1915,7 +1915,7 @@ async function hashText(s) {
 // embedBatch — send texts to /api/embed-batch; returns vectors in input order.
 // Full cache hit → plain JSON; partial / full miss → SSE with progress toasts.
 // ---------------------------------------------------------------------------
-async function embedBatch(texts, onProgress) {
+async function embedBatch(texts, onProgress, shouldAbort) {
   const embedModel = creds?.embedModelId
   if (!embedModel) throw new Error('No embedding model configured')
   if (!creds?.embedApiKey) throw new Error('No embedding API key configured')
@@ -2074,6 +2074,7 @@ async function embedBatch(texts, onProgress) {
   const allEmbeddings = []
   const allHashes = []
   for (let i = 0; i < groups.length; i++) {
+    if (shouldAbort && shouldAbort()) { const _e = new Error('embedding cancelled'); _e.cancelled = true; throw _e }
     const part = await embedBatchRequest(groups[i], i + 1, groups.length)
     allEmbeddings.push(...part.embeddings)
     allHashes.push(...part.hashes)
@@ -4020,9 +4021,10 @@ async function embedDoc(doc, opts) {
       doc.status = 'embedding'; doc.error = null
       doc.embedProgress = { state: 'embedding', done: 0, total: toEmbed.length, batchDone: 0, batchTotal: 0 }
       renderDocPanel()
+      if (typeof lclCrumb === 'function') lclCrumb('embed_start', { doc: doc.name, chunks: toEmbed.length })
       const { hashes, embeddings, storeVectors } = await embedBatch(toEmbed, prog => {
         doc.embedProgress = prog; renderDocPanel()
-      })
+      }, function () { return doc._cancelled })
       noteEmbed(_est)
       for (let k = 0; k < toEmbedIdx.length; k++) {
         const idx = toEmbedIdx[k]
@@ -4044,12 +4046,20 @@ async function embedDoc(doc, opts) {
     persist()
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
+    if (typeof lclCrumb === 'function') lclCrumb('embed_done', { doc: doc.name, chunks: doc.chunks.length })
     renderDocPanel()
     if (typeof refreshBudget === 'function') refreshBudget()
   } catch (e) {
+    if (e && e.cancelled) {   // removed mid-embed — stop quietly, no error card
+      doc.embedProgress = null
+      if (typeof lclCrumb === 'function') lclCrumb('embed_cancelled', { doc: doc.name })
+      setHealth('ok', connectedLabel())
+      return
+    }
     doc.status = 'error'
     doc.error  = e.message
     doc.embedProgress = null
+    if (typeof lclCrumb === 'function') lclCrumb('embed_fail', { doc: doc.name, err: String(e && e.message || '').slice(0, 60) })
     toast('Embed failed: ' + e.message, 'err')
     setHealth('ok', connectedLabel())
     renderDocPanel()
@@ -4061,6 +4071,8 @@ async function retryEmbed(id, event) {
   if (event) event.stopPropagation()
   const found = findDocInAnyChat(id)
   if (!found) return
+  found.doc._cancelled = false
+  if (typeof lclCrumb === 'function') lclCrumb('retry_embed', { doc: found.doc.name })
   await embedDoc(found.doc)
   await persist()
 }
@@ -4071,6 +4083,8 @@ async function removeDoc(id, event) {
   const found = findDocInAnyChat(id)
   if (!found) return
   const doc = found.doc
+  doc._cancelled = true   // stop any in-flight embedding for this doc (checked between batches)
+  if (typeof lclCrumb === 'function') lclCrumb('remove_doc', { doc: doc.name, wasEmbedding: doc.status === 'embedding' || doc.status === 'pending' })
   for (const ch of Object.values(D.chats || {})) {
     if (!Array.isArray(ch.docs)) continue
     ch.docs = ch.docs.filter(d => d.id !== id)
@@ -4616,7 +4630,7 @@ async function autoTitleChat(chat) {
 }
 
 function stopStreaming(silent = false) {
-  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop')
+  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop', { inflight: !!inflightCtl, pendingRetry: !!pendingRetry, busy: busy })
   if (inflightCtl) {
     try { inflightCtl.abort() } catch {}
     if (!silent) toast('Stopped', 'info')
@@ -4668,6 +4682,7 @@ function scheduleRetry(opts) {
 // not get pushed into chat.messages, so retry can transparently replace it
 // with the real assistant response.
 function handleRateLimitWait(chat, payload, ragSources, resetMs, rawErrMsg) {
+  if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'chat', secs: Math.max(0, Math.round((resetMs - Date.now()) / 1000)) })
   const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
   const localTime = new Date(resetMs).toLocaleString(undefined, {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
@@ -4867,6 +4882,15 @@ async function streamChatOnce(payload, onToken, signal) {
 // Standard rate-limit countdown used during split summaries: renders the same
 // 'Error 429: Rate limit reached' box as the main chat path and resolves after
 // waitMs (or immediately on abort).
+// Sleep that resolves early when the signal aborts (so Stop is responsive during
+// the pacing gap between docs).
+function abortableSleep(ms, signal) {
+  return new Promise(function (resolve) {
+    if (signal && signal.aborted) return resolve()
+    const t = setTimeout(function () { clearInterval(iv); resolve() }, ms)
+    const iv = setInterval(function () { if (signal && signal.aborted) { clearTimeout(t); clearInterval(iv); resolve() } }, 150)
+  })
+}
 function countdownWait(bodyEl, waitMs, resetMs, signal) {
   return new Promise(function (resolve) {
     const fireAt = Date.now() + waitMs
@@ -4904,6 +4928,7 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     // request itself is over-cap (unwinnable) or after several attempts.
     if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) <= (r.limit429 || 200000)) {
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
+      if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
       await countdownWait(bodyEl, waitMs, r.resetMs, signal)
       if (signal && signal.aborted) return null
       continue
@@ -4940,6 +4965,7 @@ async function runSplitSummaries(chat, docs, instruction) {
   const signal = inflightCtl.signal
   const rs = await resolveSystemPrompt(chat)
   const sys = rs && rs.sys
+  if (typeof lclCrumb === 'function') lclCrumb('split_run', { docs: docs.length })
   try {
     for (let i = 0; i < docs.length; i++) {
       if (signal.aborted) break
@@ -4951,12 +4977,17 @@ async function runSplitSummaries(chat, docs, instruction) {
       if (bodyEl) bodyEl.innerHTML = fmt(header + '_Summarising..._')
       let summary = null
       try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
+      if (signal.aborted) {
+        if (bodyEl) bodyEl.innerHTML = fmt(header + '_Stopped._')
+        if (typeof lclCrumb === 'function') lclCrumb('split_stopped', { at: i + 1, total: docs.length })
+        break
+      }
       const finalText = header + (summary != null ? summary : '_Could not summarise this document (over the limit or an error). Try Specific search for it._')
       if (bodyEl) bodyEl.innerHTML = fmt(finalText)
       bubble.dataset.raw = finalText
       chat.messages.push({ role: 'assistant', content: finalText, ts: Date.now(), sources: [doc.name] })
       try { await persist() } catch (e) {}
-      if (!signal.aborted && i < docs.length - 1) await new Promise(function (res) { setTimeout(res, 1200) })
+      if (!signal.aborted && i < docs.length - 1) await abortableSleep(1200, signal)
     }
     setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
   } catch (e) {
