@@ -140,3 +140,7 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
       "Replying — Stop to interrupt" once tokens flow.
 - [ ] `[[streamdie]]` in plain chat → partial reply is discarded and the auto-retry
       box appears (no truncated text left looking complete).
+- [ ] `[[truncate]]` reply → amber "Reply hit the token limit" box with Continue;
+      click Continue → text appends in the SAME bubble, box clears (or shows
+      "Still over the limit after N continuations" if capped again). Box survives
+      a reload. Regenerate remains available next to it.
