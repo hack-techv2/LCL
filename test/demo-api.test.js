@@ -224,6 +224,14 @@ const CASES = [
     const rem = Number((r.body.match(/Remaining:\s*(\d+)/) || [])[1])
     check('T32 [[toobig]] Remaining is near-full', r.status === 429 && lim > 0 && rem >= lim * 0.95, 'rem=' + rem + '/' + lim)
   } },
+  { id: 'T33 [[truncate]] finish_reason length', tags: ['chat'], fn: async () => {
+    // Token-cap cut-off: full stream, finish_reason 'length', usage still present.
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[truncate]] cut me off', true))
+    const lenFin = /"finish_reason":"length"/.test(r.body)
+    const doneOk = /\[DONE\]/.test(r.body)
+    const usageOk = /"usage"/.test(r.body)
+    check('T33 [[truncate]] finish_reason length', r.status === 200 && lenFin && doneOk && usageOk, 'len=' + lenFin + ' usage=' + usageOk)
+  } },
   { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
     const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
     const r1 = json((await g()).body)
