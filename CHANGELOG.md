@@ -3,6 +3,12 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Local-timezone log timestamps (alpha)
+
+Log line timestamps (console + `debug_logs.txt`) now use the machine's local time as ISO 8601 with the
+UTC offset (e.g. `2026-07-02T08:29:36.477+08:00`) instead of UTC `…Z`, via a shared `_logStamp()`. Easier
+to correlate with wall-clock. The gateway's own timestamps (`reset_at` in 429 bodies) stay as sent. Version stays v0.67d.
+
 ## 2 Jul 2026 — Fix false 'request too large' on shared-budget 429 + log consistency (alpha)
 
 Version stays v0.67d.
