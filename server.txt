@@ -703,7 +703,8 @@ function callGccJson(pathName, apiKey, payload, cb, opts = {}) {
         if (err) return true
         if (!upstream) return true
         const s = upstream.statusCode
-        if (s === 502 || s === 503 || s === 504 || s === 429) return true
+        if (s === 429) return !opts.no429Retry   // embed batch owns 429s (a window wait beats 150ms retries)
+        if (s === 502 || s === 503 || s === 504) return true
         const b = upstream.body
         if (!b || !b.trim()) return true
         // Non-JSON response from what should be a JSON endpoint.
@@ -1289,18 +1290,18 @@ function embedLimitsFor(modelId) {
   return { batch: 96, maxChars: 2000 }   // conservative default
 }
 
-function callGccJsonAsync(pathName, apiKey, payload) {
+function callGccJsonAsync(pathName, apiKey, payload, opts) {
   return new Promise((resolve, reject) => {
     callGccJson(pathName, apiKey, payload, (err, upstream) => {
       if (err) return reject(err)
       resolve(upstream)
-    })
+    }, opts)
   })
 }
 
 async function callStandardBatchEmbed(apiKey, modelId, texts) {
   elog('batch embed | ' + texts.length + ' chunks')
-  const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts })
+  const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts }, { no429Retry: true })
 
   if (!upstream.body || !upstream.body.trim()) {
     throw new Error('Empty response from embeddings (status ' + upstream.statusCode + ')')
@@ -1349,6 +1350,19 @@ async function waitForEmbedHeadroom(apiKey, tokenEst, notify) {
     remain -= step
   }
   rateLimitSnapshots.delete(snapshotKey(apiKey))   // window reset - re-measure next call
+}
+
+// Parse the gateway's 429 error text (surfaced as "Embeddings error 429: {...}").
+// The body's Remaining + "Limit resets at" are real-time and reliable (stream
+// headers are not) - same contract the client uses in postClassified.
+function parse429Body(msg) {
+  const s = String(msg || '')
+  const out = { is429: /error 429\b/i.test(s), resetMs: null, remaining: null }
+  const m = s.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s*UTC/i)
+  if (m) { const t = Date.parse(m[1] + 'T' + m[2] + 'Z'); if (!isNaN(t) && t > Date.now()) out.resetMs = t }
+  const r = s.match(/Remaining:\s*(\d+)/i)
+  if (r) out.remaining = Number(r[1])
+  return out
 }
 
 async function handleEmbedBatch(req, res) {
@@ -1424,7 +1438,30 @@ async function handleEmbedBatch(req, res) {
           send({ type: 'pacing', waitSec: secsLeft, done: chunksEmbedded, total: totalMisses,
                  batchDone: batchNum, batchTotal: totalBatches }))
 
-        const embeddings = await callStandardBatchEmbed(apiKey, modelId, batchTexts)
+        // A 429 here means the shared window is exhausted (e.g. a summary run on
+        // the same key). Wait it out (using the 429 body's reset stamp) and retry
+        // the batch, instead of failing the whole doc after the fast retries.
+        let embeddings = null
+        for (let rlTry = 0; ; rlTry++) {
+          try { embeddings = await callStandardBatchEmbed(apiKey, modelId, batchTexts); break }
+          catch (e) {
+            const p = parse429Body(e.message)
+            if (!p.is429 || rlTry >= 4) throw e
+            let waitMs = p.resetMs ? (p.resetMs - Date.now() + 1500) : 61000
+            waitMs = Math.max(5000, Math.min(90000, waitMs))
+            elog('batch ' + batchNum + '/' + totalBatches + ' hit 429 (remaining=' + p.remaining + ') - waiting ' +
+                 Math.round(waitMs / 1000) + 's for the window, retry ' + (rlTry + 1) + '/4')
+            let remainMs = waitMs
+            while (remainMs > 0) {
+              send({ type: 'pacing', waitSec: Math.ceil(remainMs / 1000), done: chunksEmbedded, total: totalMisses,
+                     batchDone: batchNum, batchTotal: totalBatches })
+              const step = Math.min(3000, remainMs)
+              await sleep(step)
+              remainMs -= step
+            }
+            rateLimitSnapshots.delete(snapshotKey(apiKey))   // window reset - drop the stale snapshot
+          }
+        }
 
         for (let i = 0; i < embeddings.length; i++) {
           const origIdx  = batchOrigIdx[i]
