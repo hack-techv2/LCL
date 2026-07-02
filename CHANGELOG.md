@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Large-doc summaries: adaptive map-reduce + fast-fail (alpha)
+
+Fixes the 7-minute retry loop where a whole-doc summary 429'd on every attempt despite a free budget (the char/4 token estimate undershot, so a >200k-token doc got sent whole). Version stays v0.67d.
+
+- **Conservative split cap** (`perRequestTokenCap` clamped to ~110k est): big docs split into parts up front, leaving margin for estimate error.
+- **Meter-based 'too big' detection**: on a 429, if the REAL remaining budget (from embed headers) is near-full yet the request was still rejected, it's the request that's too big — don't retry, split it. If the budget was consumed (embeddings), it's transient — wait + retry as before. (The 429 body's `Remaining` is templated/unreliable, so we use the meter.)
+- **Adaptive recursive map-reduce**: a part that's still too big splits again (depth-guarded), so a genuinely large doc now completes as a combined summary instead of 'could not summarise'.
+- **Retry cap lowered to 3** so nothing loops for minutes. New `map_reduce` crumb for visibility.
+
 ## 2 Jul 2026 — Cancel-embed, responsive Stop, + diagnostic crumbs (alpha)
 
 Confident fixes from the logs, plus logging for the uncertain ones. Version stays v0.67d.
