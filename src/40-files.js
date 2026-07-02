@@ -806,9 +806,10 @@ async function embedDoc(doc, opts) {
       doc.status = 'embedding'; doc.error = null
       doc.embedProgress = { state: 'embedding', done: 0, total: toEmbed.length, batchDone: 0, batchTotal: 0 }
       renderDocPanel()
+      if (typeof lclCrumb === 'function') lclCrumb('embed_start', { doc: doc.name, chunks: toEmbed.length })
       const { hashes, embeddings, storeVectors } = await embedBatch(toEmbed, prog => {
         doc.embedProgress = prog; renderDocPanel()
-      })
+      }, function () { return doc._cancelled })
       noteEmbed(_est)
       for (let k = 0; k < toEmbedIdx.length; k++) {
         const idx = toEmbedIdx[k]
@@ -830,12 +831,20 @@ async function embedDoc(doc, opts) {
     persist()
     setHealth('ok', connectedLabel())
     toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
+    if (typeof lclCrumb === 'function') lclCrumb('embed_done', { doc: doc.name, chunks: doc.chunks.length })
     renderDocPanel()
     if (typeof refreshBudget === 'function') refreshBudget()
   } catch (e) {
+    if (e && e.cancelled) {   // removed mid-embed — stop quietly, no error card
+      doc.embedProgress = null
+      if (typeof lclCrumb === 'function') lclCrumb('embed_cancelled', { doc: doc.name })
+      setHealth('ok', connectedLabel())
+      return
+    }
     doc.status = 'error'
     doc.error  = e.message
     doc.embedProgress = null
+    if (typeof lclCrumb === 'function') lclCrumb('embed_fail', { doc: doc.name, err: String(e && e.message || '').slice(0, 60) })
     toast('Embed failed: ' + e.message, 'err')
     setHealth('ok', connectedLabel())
     renderDocPanel()
@@ -847,6 +856,8 @@ async function retryEmbed(id, event) {
   if (event) event.stopPropagation()
   const found = findDocInAnyChat(id)
   if (!found) return
+  found.doc._cancelled = false
+  if (typeof lclCrumb === 'function') lclCrumb('retry_embed', { doc: found.doc.name })
   await embedDoc(found.doc)
   await persist()
 }
@@ -857,6 +868,8 @@ async function removeDoc(id, event) {
   const found = findDocInAnyChat(id)
   if (!found) return
   const doc = found.doc
+  doc._cancelled = true   // stop any in-flight embedding for this doc (checked between batches)
+  if (typeof lclCrumb === 'function') lclCrumb('remove_doc', { doc: doc.name, wasEmbedding: doc.status === 'embedding' || doc.status === 'pending' })
   for (const ch of Object.values(D.chats || {})) {
     if (!Array.isArray(ch.docs)) continue
     ch.docs = ch.docs.filter(d => d.id !== id)
