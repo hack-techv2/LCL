@@ -252,7 +252,11 @@ let toastT=null
 
 function toast(msg,type) {
   const el=document.getElementById('toast'); el.textContent=msg; el.className='show '+(type||'')
-  clearTimeout(toastT); toastT=setTimeout(()=>el.className='',2800)
+  // Duration: floor by type (errors need reading time: 6s err / 4s ok / 2.8s info),
+  // scaled up for long messages (45ms/char), capped at 8s. Was a flat 2.8s.
+  const floor = type==='err' ? 6000 : type==='ok' ? 4000 : 2800
+  const dur = Math.min(8000, Math.max(floor, 1500 + String(msg).length * 45))
+  clearTimeout(toastT); toastT=setTimeout(()=>el.className='',dur)
 }
 
 // Update a range slider's --fill custom property so the gradient track
