@@ -455,18 +455,7 @@ async function runStream(chat, payload, ragSources) {
 
     if (filtered) msgObj.filtered = true
     if (truncated) msgObj.truncated = true
-    if (filtered && bubble) {
-      const warn = document.createElement('div')
-      warn.className = 'filter-warn'
-      warn.textContent = 'Filtered by safety guardrail'
-      bubble.insertBefore(warn, bubble.querySelector('.msg-acts'))
-    }
-    if (truncated && bubble) {
-      const warn = document.createElement('div')
-      warn.style.cssText = 'font-size:11px;color:#f0a500;font-style:italic;margin-top:6px;padding-left:37px'
-      warn.textContent = '⚠️ Response was truncated (token limit reached). Consider increasing max tokens or splitting your question.'
-      bubble.insertBefore(warn, bubble.querySelector('.msg-acts'))
-    }
+    if (bubble) attachMsgFlags(bubble, msgObj)
     retry5xxCount = 0
     setHealth('ok', connectedLabel())
   } catch (err) {
@@ -808,7 +797,7 @@ async function streamChatOnce(payload, onToken, signal) {
   payload.stream = true
   const r = await postClassified('/api/chat', { apiKey: creds.apiKey, modelId: creds.model, payload }, signal ? { signal: signal } : {})
   if (!r.ok) return { ok: false, status: r.status, kind: r.kind, limit429: r.limit429, remaining429: r.remaining429, resetMs: r.resetMs, message: r.message }
-  let acc = '', usage = null, streamErr = null
+  let acc = '', usage = null, streamErr = null, finish = null
   await streamSse(r.resp, function (data) {
     if (data === '[DONE]') return
     let j; try { j = JSON.parse(data) } catch (e) { return }
@@ -816,11 +805,13 @@ async function streamChatOnce(payload, onToken, signal) {
     // this check a truncated summary was silently accepted as complete.
     if (j && j.error && !j.choices) { streamErr = String(j.error.message || j.error); return }
     if (j && j.usage) usage = j.usage   // terminal chunk: REAL token count for this request
-    const dc = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content
+    const ch0 = j.choices && j.choices[0]
+    if (ch0 && ch0.finish_reason) finish = ch0.finish_reason
+    const dc = ch0 && ch0.delta && ch0.delta.content
     if (dc) { acc += dc; if (onToken) onToken(acc) }
   }, { aborted: function () { return signal && signal.aborted } })
   if (streamErr && !(signal && signal.aborted)) return { ok: false, status: 0, kind: 'transient', message: streamErr }
-  return { ok: true, text: acc, usage: usage }
+  return { ok: true, text: acc, usage: usage, finish: finish }
 }
 
 // Summarise one blob (a whole doc, or one part during map-reduce), streaming into
@@ -1037,6 +1028,112 @@ async function runSplitSummaries(chat, docs, instruction) {
   } finally {
     busy = false; if (typeof updateSendBtn === 'function') updateSendBtn()
     inflightCtl = null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Truncated / filtered reply notes (persisted): rendered from msg flags by BOTH
+// the live stream path and renderMessages, so they survive reloads. The
+// truncation note carries a Continue button that extends the SAME message.
+// ---------------------------------------------------------------------------
+function attachMsgFlags(bubble, msg) {
+  if (!bubble || !msg || typeof document === 'undefined') return
+  const acts = bubble.querySelector('.msg-acts')
+  if (msg.filtered) {
+    const w = document.createElement('div')
+    w.className = 'filter-warn'
+    w.textContent = 'Filtered by safety guardrail'
+    bubble.insertBefore(w, acts)
+  }
+  if (msg.truncated) {
+    const n = msg.continues || 0
+    const kTok = ((creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192).toLocaleString()
+    const w = document.createElement('div')
+    w.className = 'trunc-note'
+    w.style.cssText = 'margin-top:4px'
+    w.innerHTML = statusBox('warn',
+      n ? ('Still over the limit after ' + n + ' continuation' + (n > 1 ? 's' : '')) : 'Reply hit the token limit',
+      '<div style="margin-bottom:8px">' + (n
+        ? 'Each continue adds up to ~' + kTok + ' more tokens.'
+        : 'Showing the first ~' + kTok + ' tokens (the max per reply — adjustable in Settings). Continue picks up exactly where it stopped, in this same message.') + '</div>' +
+      '<button class="btn-s" style="font-size:11px;padding:4px 12px" onclick="continueTruncated(event)">Continue reply</button>',
+      { icon: 'clock' })
+    bubble.insertBefore(w, acts)
+  }
+}
+
+// Continue a token-limit-truncated reply IN PLACE: buildPayload on the original
+// question keeps the same doc/system context, the history already includes the
+// partial reply, and a continue instruction is appended to the PAYLOAD only
+// (it never appears in the chat).
+async function continueTruncated(event) {
+  if (event && event.stopPropagation) event.stopPropagation()
+  if (busy) { toast('Still replying — wait for it to finish or press Stop, then continue', 'info'); return }
+  const chat = curChat(); if (!chat || !creds) return
+  let idx = -1
+  for (let i = chat.messages.length - 1; i >= 0; i--) {
+    const m = chat.messages[i]
+    if (m.role === 'assistant' && m.truncated) { idx = i; break }
+  }
+  if (idx < 0) return
+  const msg = chat.messages[idx]
+  if (typeof lclCrumb === 'function') lclCrumb('continue_truncated', { n: (msg.continues || 0) + 1 })
+  let userText = ''
+  for (let i = idx - 1; i >= 0; i--) {
+    const m = chat.messages[i]
+    if (m.role === 'user') { userText = typeof m.content === 'string' ? m.content : (((m.content || []).find && (m.content.find(b => b.type === 'text') || {}).text) || ''); break }
+  }
+  let bubble = event && event.target ? event.target.parentElement : null
+  while (bubble && !(bubble.querySelector && bubble.querySelector('.msg-body'))) bubble = bubble.parentElement
+  const bodyEl = bubble ? bubble.querySelector('.msg-body') : null
+  const noteEl = bubble ? bubble.querySelector('.trunc-note') : null
+  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
+  inflightCtl = new AbortController()
+  const signal = inflightCtl.signal
+  setHealth('warn', 'Continuing reply')
+  try {
+    const built = await buildPayload(chat, userText)
+    if (built.skillErr) { toast(built.skillErr, 'err'); return }
+    const payload = built.payload
+    payload.messages.push({ role: 'user', content: 'Continue your previous reply EXACTLY from where it was cut off. Do not repeat any earlier content and do not add a preamble — output only the continuation text.' })
+    const base = typeof msg.content === 'string' ? msg.content : ''
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (noteEl) noteEl.innerHTML = statusBox('warn', 'Continuing the reply', '<div>Picking up from where it stopped…</div>', { icon: 'clock' })
+      const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(base + acc) }, signal)
+      if (signal.aborted) return
+      if (r.ok) {
+        msg.content = base + (r.text || '')
+        msg.continues = (msg.continues || 0) + 1
+        msg.truncated = (r.finish === 'length')
+        chat.updatedAt = Date.now()
+        try { await persist() } catch (e) {}
+        setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+        return
+      }
+      if (r.kind === 'ratelimit') {
+        if (r.remaining429 != null && r.limit429 && r.remaining429 >= r.limit429 * 0.95) {
+          toast('The continuation request itself is over the token limit — ask about fewer documents at once.', 'err'); return
+        }
+        const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
+        if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'continue', secs: Math.round(waitMs / 1000) })
+        await countdownWait(noteEl, waitMs, r.resetMs, signal, 'Continuing the reply')
+        if (signal.aborted) return
+        continue
+      }
+      if (r.kind === 'transient') {
+        if (typeof lclCrumb === 'function') lclCrumb('summary_transient_retry', { attempt: attempt + 1, status: r.status, where: 'continue' })
+        await abortableSleep(4000, signal)
+        if (signal.aborted) return
+        continue
+      }
+      toast('Continue failed: ' + cleanErrMsg(r.message), 'err')
+      return
+    }
+    toast('Continue failed after retries — try again in a minute.', 'err')
+  } finally {
+    busy = false; if (typeof updateSendBtn === 'function') updateSendBtn()
+    inflightCtl = null
+    renderMessages()
   }
 }
 
