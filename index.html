@@ -5172,7 +5172,7 @@ function attachMsgFlags(bubble, msg) {
     const kTok = ((creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192).toLocaleString()
     const w = document.createElement('div')
     w.className = 'trunc-note'
-    w.style.cssText = 'margin-top:4px'
+    w.style.cssText = 'margin-top:4px;margin-bottom:14px'   // breathing room above the Copy/Regenerate row
     w.innerHTML = statusBox('warn',
       n ? ('Still over the limit after ' + n + ' continuation' + (n > 1 ? 's' : '')) : 'Reply hit the token limit',
       '<div style="margin-bottom:8px">' + (n
