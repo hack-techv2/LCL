@@ -348,7 +348,7 @@ async function hashText(s) {
 // embedBatch — send texts to /api/embed-batch; returns vectors in input order.
 // Full cache hit → plain JSON; partial / full miss → SSE with progress toasts.
 // ---------------------------------------------------------------------------
-async function embedBatch(texts, onProgress) {
+async function embedBatch(texts, onProgress, shouldAbort) {
   const embedModel = creds?.embedModelId
   if (!embedModel) throw new Error('No embedding model configured')
   if (!creds?.embedApiKey) throw new Error('No embedding API key configured')
@@ -507,6 +507,7 @@ async function embedBatch(texts, onProgress) {
   const allEmbeddings = []
   const allHashes = []
   for (let i = 0; i < groups.length; i++) {
+    if (shouldAbort && shouldAbort()) { const _e = new Error('embedding cancelled'); _e.cancelled = true; throw _e }
     const part = await embedBatchRequest(groups[i], i + 1, groups.length)
     allEmbeddings.push(...part.embeddings)
     allHashes.push(...part.hashes)
