@@ -1023,7 +1023,16 @@ function demoErrorFor(text) {
   if (/\[\[500\]\]/.test(text)) return { status: 500, body: { error: { message: 'Internal server error (demo 500)' } } }
   if (/\[\[429\]\]/.test(text)) {
     const n = (_demo429.get(text) || 0) + 1; _demo429.set(text, n)
-    if (n <= 1) return { status: 429, body: { error: { message: 'Rate limit exceeded (demo 429). Limit resets at: ' + demoResetStamp(5) } } }
+    // Full gateway body format (2 Jul log fixture) so the client's limit429 /
+    // remaining429 / resetMs parsing is exercised in demo, not just the status.
+    if (n <= 1) return { status: 429, headers: { 'retry-after': '5', rate_limit_type: 'tokens' }, body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo 429). Limit type: tokens. Current limit: 200000, Remaining: 0. Limit resets at: ' + demoResetStamp(5), type: 'None', param: 'None', code: '429' } } }
+    return null
+  }
+  if (/\[\[429partial\]\]/.test(text)) {
+    // Partially-drained window (Remaining: 58944 verbatim from the 21:45:46 log)
+    // - the case that must classify as WAIT, never "too big -> split".
+    const n = (_demo429.get(text) || 0) + 1; _demo429.set(text, n)
+    if (n <= 1) return { status: 429, headers: { 'retry-after': '2', rate_limit_type: 'tokens' }, body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo partial). Limit type: tokens. Current limit: 200000, Remaining: 58944. Limit resets at: ' + demoResetStamp(2), type: 'None', param: 'None', code: '429' } } }
     return null
   }
   return null
@@ -1051,8 +1060,8 @@ function demoChatStream(res, payload) {
   if (!/\[\[/.test(text)) {
     _demoChatN++
     if (_demoChatN % 5 === 0) {
-      res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8' })
-      res.end(JSON.stringify({ error: { message: 'Rate limit reached (demo — auto every 5 messages). Limit resets at: ' + demoResetStamp(5) } }))
+      res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'retry-after': '5', rate_limit_type: 'tokens' })
+      res.end(JSON.stringify({ error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo auto every 5 messages). Limit type: tokens. Current limit: 200000, Remaining: 0. Limit resets at: ' + demoResetStamp(5), type: 'None', param: 'None', code: '429' } }))
       return
     }
   }
@@ -1064,12 +1073,24 @@ function demoChatStream(res, payload) {
   const reply = /code|snippet|function|script/i.test(text) ? DEMO_REPLY_CODE : DEMO_REPLY_MD
   const slow  = /\[\[slow\]\]/.test(text)
   const toks  = reply.match(/\s+|\S+/g) || [reply]
+  // [[streamdie]]: die MID-stream after a few tokens - an error frame, then end
+  // with NO finish/[DONE] (mirrors the proxy's behaviour when the upstream socket
+  // dies; the 21:47 log stall). Exercises the client's truncation guard.
+  const dieAt = /\[\[streamdie\]\]/.test(text) ? 6 : 0
   let i = 0, done = false
   res.on('close', () => { done = true })
   const tick = () => {
     if (done || res.writableEnded) return
+    if (dieAt && i >= dieAt) {
+      res.write('data: ' + JSON.stringify({ error: 'upstream stream error: socket hang up (demo [[streamdie]])' }) + '\n\n')
+      res.end(); return
+    }
     if (i >= toks.length) {
       res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\n')
+      // Terminal usage chunk like the real gateway (est x ~1.8, per the 2 Jul logs)
+      // - feeds the client's adaptive est->real inflation learning in #demo.
+      const _pTok = Math.round((JSON.stringify(payload || {}).length / 4) * 1.8)
+      res.write('data: ' + JSON.stringify({ usage: { prompt_tokens: _pTok, completion_tokens: toks.length, total_tokens: _pTok + toks.length } }) + '\n\n')
       res.write('data: [DONE]\n\n'); res.end(); return
     }
     res.write('data: ' + JSON.stringify({ choices: [{ delta: { content: toks[i] }, finish_reason: null }] }) + '\n\n')
@@ -1187,6 +1208,21 @@ function demoServeEmbedBatch(res, body) {
     const key = hashText('embedfail:' + ins.join('\u0001'))
     const n = (_demoEmbedFail.get(key) || 0) + 1; _demoEmbedFail.set(key, n)
     if (n <= 1) { sse(); send({ type: 'error', message: 'Embeddings error 503 (demo [[embedfail]] marker)' }); return res.end() }
+  }
+
+  // [[embed429]]: the batch hits the rate-limit window and the SERVER waits it out
+  // and retries (handleEmbedBatch's real 429 loop) - ONE request that emits pacing
+  // ticks then done, never an error frame. Mirrors the 19:41 log's embed_fail fix.
+  if (ins.some(t => t.includes('[[embed429]]'))) {
+    sse()
+    ;(async () => {
+      elog('batch 1/1 hit 429 (remaining=0) - waiting 2s for the window, retry 1/4 (demo [[embed429]])')
+      for (let sec = 2; sec >= 1; sec--) { send({ type: 'pacing', waitSec: sec, done: 0, total: ins.length, batchDone: 1, batchTotal: 1 }); await sleep(150) }
+      send({ type: 'progress', done: ins.length, total: ins.length, batchDone: 1, batchTotal: 1 })
+      send({ type: 'done', embeddings: ins.map(t => demoVector(t)), hashes: ins.map(t => mkHash(t)) })
+      res.end()
+    })()
+    return
   }
 
   if (ins.length <= DEMO_EMBED_BATCH) {
