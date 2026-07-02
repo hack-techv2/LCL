@@ -4850,10 +4850,11 @@ function perRequestTokenCap() {
   const rate = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
   const computed = Math.min(ctx || Infinity, rate) - reserve - 4000
-  // Conservative clamp: the char/4 token estimate can undershoot the real count by
-  // ~1.5x, so a doc that looks like it fits can still 429. Cap well under the limit
-  // so docs split up front with margin (a part that is still too big re-splits).
-  return Math.max(20000, Math.min(computed, 110000))
+  // Conservative clamp: the char/4 token estimate undershoots the real count (HTML
+  // docs measured ~1.8-2.6x in the 2 Jul logs). Size parts so est x learned-inflation
+  // fits a FRESH window with 10% margin, so parts stop probe-429ing before splitting.
+  const inflCap = Math.floor((_rlPace.limit * 0.9) / _rlPace.infl)
+  return Math.max(20000, Math.min(computed, inflCap, 110000))
 }
 
 // Client-side view of the shared per-minute token window, used to pace multi-part
@@ -4862,7 +4863,11 @@ function perRequestTokenCap() {
 // reliable body fields of any 429 we do hit. Avoids the fire-into-a-drained-window
 // pattern: every part->part transition used to burn a guaranteed 429.
 const _RL_WINDOW_MS = 62000
-const _rlPace = { windowStart: 0, spentEst: 0, limit: 200000 }
+// infl = real-tokens / est ratio. Starts at 1.8 (2 Jul log: HTML docs measured
+// ~1.8-2.6x, prose ~1.5x) and is re-learned from every 429 body: the gateway's
+// (limit - Remaining) is the REAL spend of this window's successful requests,
+// so used / ourRawEst gives the true ratio for the doc being processed.
+const _rlPace = { windowStart: 0, spentEst: 0, limit: 200000, infl: 1.8 }
 
 function offerDocSplit(chat, docs, instruction) {
   const n = docs.length
@@ -4940,12 +4945,13 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     // Proactive pacing: if this request cannot fit in what is left of the current
     // window, wait for the reset BEFORE firing instead of collecting a guaranteed 429.
     const _winAge = Date.now() - _rlPace.windowStart
-    if (_rlPace.spentEst > 0 && _winAge < _RL_WINDOW_MS && (_rlPace.spentEst + reqTok) * 1.55 > _rlPace.limit * 0.95) {
+    if (_rlPace.spentEst > 0 && _winAge < _RL_WINDOW_MS && (_rlPace.spentEst + reqTok) * _rlPace.infl > _rlPace.limit * 0.95) {
       const pauseMs = _RL_WINDOW_MS - _winAge
       if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'pace', secs: Math.round(pauseMs / 1000) })
       await countdownWait(bodyEl, pauseMs, _rlPace.windowStart + _RL_WINDOW_MS, signal, uiLabel)
       if (signal && signal.aborted) return { text: null }
       _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0
+      if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — resuming…_')
     }
     if (Date.now() - _rlPace.windowStart >= _RL_WINDOW_MS) { _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0 }
     _rlPace.spentEst += reqTok
@@ -4954,16 +4960,36 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     if (signal && signal.aborted) return { text: null }
     if (r.kind === 'ratelimit') {
       if (r.limit429) _rlPace.limit = r.limit429
+      // The gateway did NOT count this rejected request; drop it from our model and
+      // re-learn the est->real inflation from the body's real-time figures: what the
+      // window's earlier successful requests consumed vs what we estimated for them.
+      _rlPace.spentEst -= reqTok
+      if (r.remaining429 != null && r.limit429 && _rlPace.spentEst > 3000) {
+        const used = r.limit429 - r.remaining429
+        if (used > 0) _rlPace.infl = Math.max(1.4, Math.min(3.0, used / _rlPace.spentEst))
+      }
       // Judge by the gateway's REAL-TIME body Remaining (not the stale client meter,
-      // which streams never refresh). If there was room for this request yet it was
-      // still rejected, the real token count exceeds the estimate -> too big -> split.
-      // If Remaining is ~0, the window is just exhausted -> wait for reset + retry.
-      if (r.remaining429 != null && r.remaining429 >= reqTok) return { text: null, tooBig: true }
+      // which streams never refresh). "Too big -> split" ONLY when a NEAR-FULL window
+      // still rejected the request (no wait can ever fit it). A partially-drained
+      // window rejecting it (2 Jul log: est 53k vs Remaining 59k, real ~95k) is NOT
+      // too big - it fits a fresh window; wait for the reset + retry instead.
+      if (r.remaining429 != null && r.remaining429 >= (r.limit429 || _rlPace.limit) * 0.95) return { text: null, tooBig: true }
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
       if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
       await countdownWait(bodyEl, waitMs, r.resetMs, signal, uiLabel)
       if (signal && signal.aborted) return { text: null }
       _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0
+      if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — resuming…_')
+      continue
+    }
+    // Transient upstream failure (5xx / inactivity-timeout 502): retry after a short
+    // pause instead of failing the whole doc (2 Jul log: one 60s upstream stall on
+    // part 2/5 killed the remaining parts). The attempt cap still bounds this.
+    if (r.kind === 'transient') {
+      if (typeof lclCrumb === 'function') lclCrumb('summary_transient_retry', { attempt: attempt + 1, status: r.status })
+      if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — upstream hiccup (' + (r.status || '5xx') + '), retrying…_')
+      await abortableSleep(4000, signal)
+      if (signal && signal.aborted) return { text: null }
       continue
     }
     return { text: null }
@@ -4994,15 +5020,27 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   for (let i = 0; i < text.length; i += partLen) parts.push(text.slice(i, i + partLen))
   if (typeof lclCrumb === 'function') lclCrumb('map_reduce', { label: label, parts: parts.length, depth: depth })
   const partSummaries = []
+  // Finished part-summaries stay VISIBLE (doneEl) while the next part streams into
+  // its own area (liveEl) - previously each new part's placeholder wiped the summary
+  // the user was reading. The final combine replaces everything with the full summary.
+  let doneEl = null, liveEl = null
+  if (bodyEl) {
+    bodyEl.innerHTML = ''
+    doneEl = document.createElement('div')
+    liveEl = document.createElement('div')
+    bodyEl.appendChild(doneEl); bodyEl.appendChild(liveEl)
+  }
   for (let p = 0; p < parts.length; p++) {
     if (signal && signal.aborted) return null
-    if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' - summarising part ' + (p + 1) + ' of ' + parts.length + '..._')
-    const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], 'Summarise this part of a document.', bodyEl, signal, depth + 1)
+    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' - summarising part ' + (p + 1) + ' of ' + parts.length + '..._')
+    const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], 'Summarise this part of a document.', liveEl, signal, depth + 1)
     if (s == null) return null
     partSummaries.push('Part ' + (p + 1) + ': ' + s)
+    if (doneEl) doneEl.innerHTML = fmt(partSummaries.join('\n\n'))
+    if (liveEl) liveEl.innerHTML = ''
   }
-  if (bodyEl) bodyEl.innerHTML = fmt('_Combining ' + parts.length + ' part-summaries..._')
-  return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), 'Combine these part-summaries into one cohesive summary of the whole document.', bodyEl, signal, depth + 1)
+  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + ' part-summaries..._')
+  return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), 'Combine these part-summaries into one cohesive summary of the whole document.', liveEl || bodyEl, signal, depth + 1)
 }
 
 // Embedding-vs-summary contention gate: embeddings are the RAG prerequisite and
