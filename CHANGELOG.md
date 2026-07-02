@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Cancel-embed, responsive Stop, + diagnostic crumbs (alpha)
+
+Confident fixes from the logs, plus logging for the uncertain ones. Version stays v0.67d.
+
+- **✕ now cancels an in-flight embed** (`15-rag.js` `embedBatch` `shouldAbort`, `40-files.js` `removeDoc`): removing a doc mid-embed sets a cancel flag checked between batches, so embedding stops (was: card gone but embedding continued, still spending budget).
+- **Stop is responsive during a split**: the 1.2s inter-doc pacing is now an abortable sleep, and on Stop the run ends immediately with a '_Stopped._' note instead of pushing a 'could not summarise' bubble and continuing.
+- **Split labelled by run count** via a `split_run docs=N` crumb.
+- **Diagnostic crumbs added** (for the still-unconfirmed bugs): `embed_start/embed_done/embed_fail/embed_cancelled`, `retry_embed`, `remove_doc`, `rl_wait (where/secs)`, `split_stopped`, and `stop` now records `{inflight, pendingRetry, busy}`. These make the Retry-hang, Stop efficacy, and budget-wait behaviours visible in the next capture.
+
 ## 2 Jul 2026 — Fix: composer hidden for the whole embed (alpha)
 
 Follow-up to the composer fix: `confirmFilePreview` restored the message box only after `await commitDocs()`, which doesn't return until ALL docs finish embedding (minutes for large files) — so a new chat that starts by embedding showed no message box the entire time. Now the composer/messages are restored IMMEDIATELY and embedding runs in the background (docs show as 'pending'), so you can chat while files embed. Version stays v0.67d.
