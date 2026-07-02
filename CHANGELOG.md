@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Log Mammoth DOCX warning details (alpha)
+
+The docx extractor only reported a COUNT ("parsed with N Mammoth warning(s)") and discarded the messages. Now the full list goes to the browser console and the first 3 to the server log via a `docx_warnings` crumb (doc, count, messages) — typically unrecognised styles or skipped elements (text boxes, TOC fields, footnotes). Version stays v0.67d.
+
 ## 2 Jul 2026 — Fix: deleted chat's run leaked into the next chat (alpha)
 
 Reported by CL: delete a chat while its docs are embedding / its split-summary is running, and the run keeps going — new summary bubbles append into whichever chat becomes active, and the deleted chat's docs keep embedding (spending shared budget). `deleteChat` now aborts the in-flight run when it belongs to the deleted chat (crumb `delete_chat abortedRun=true`) and sets `_cancelled` on its docs unless another chat still references them; `runSplitSummaries` also stops if its chat vanishes mid-run. Version stays v0.67d.
