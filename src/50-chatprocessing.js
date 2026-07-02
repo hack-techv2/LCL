@@ -529,7 +529,7 @@ async function autoTitleChat(chat) {
 }
 
 function stopStreaming(silent = false) {
-  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop')
+  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop', { inflight: !!inflightCtl, pendingRetry: !!pendingRetry, busy: busy })
   if (inflightCtl) {
     try { inflightCtl.abort() } catch {}
     if (!silent) toast('Stopped', 'info')
@@ -581,6 +581,7 @@ function scheduleRetry(opts) {
 // not get pushed into chat.messages, so retry can transparently replace it
 // with the real assistant response.
 function handleRateLimitWait(chat, payload, ragSources, resetMs, rawErrMsg) {
+  if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'chat', secs: Math.max(0, Math.round((resetMs - Date.now()) / 1000)) })
   const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
   const localTime = new Date(resetMs).toLocaleString(undefined, {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
@@ -780,6 +781,15 @@ async function streamChatOnce(payload, onToken, signal) {
 // Standard rate-limit countdown used during split summaries: renders the same
 // 'Error 429: Rate limit reached' box as the main chat path and resolves after
 // waitMs (or immediately on abort).
+// Sleep that resolves early when the signal aborts (so Stop is responsive during
+// the pacing gap between docs).
+function abortableSleep(ms, signal) {
+  return new Promise(function (resolve) {
+    if (signal && signal.aborted) return resolve()
+    const t = setTimeout(function () { clearInterval(iv); resolve() }, ms)
+    const iv = setInterval(function () { if (signal && signal.aborted) { clearTimeout(t); clearInterval(iv); resolve() } }, 150)
+  })
+}
 function countdownWait(bodyEl, waitMs, resetMs, signal) {
   return new Promise(function (resolve) {
     const fireAt = Date.now() + waitMs
@@ -817,6 +827,7 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     // request itself is over-cap (unwinnable) or after several attempts.
     if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) <= (r.limit429 || 200000)) {
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
+      if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
       await countdownWait(bodyEl, waitMs, r.resetMs, signal)
       if (signal && signal.aborted) return null
       continue
@@ -853,6 +864,7 @@ async function runSplitSummaries(chat, docs, instruction) {
   const signal = inflightCtl.signal
   const rs = await resolveSystemPrompt(chat)
   const sys = rs && rs.sys
+  if (typeof lclCrumb === 'function') lclCrumb('split_run', { docs: docs.length })
   try {
     for (let i = 0; i < docs.length; i++) {
       if (signal.aborted) break
@@ -864,12 +876,17 @@ async function runSplitSummaries(chat, docs, instruction) {
       if (bodyEl) bodyEl.innerHTML = fmt(header + '_Summarising..._')
       let summary = null
       try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
+      if (signal.aborted) {
+        if (bodyEl) bodyEl.innerHTML = fmt(header + '_Stopped._')
+        if (typeof lclCrumb === 'function') lclCrumb('split_stopped', { at: i + 1, total: docs.length })
+        break
+      }
       const finalText = header + (summary != null ? summary : '_Could not summarise this document (over the limit or an error). Try Specific search for it._')
       if (bodyEl) bodyEl.innerHTML = fmt(finalText)
       bubble.dataset.raw = finalText
       chat.messages.push({ role: 'assistant', content: finalText, ts: Date.now(), sources: [doc.name] })
       try { await persist() } catch (e) {}
-      if (!signal.aborted && i < docs.length - 1) await new Promise(function (res) { setTimeout(res, 1200) })
+      if (!signal.aborted && i < docs.length - 1) await abortableSleep(1200, signal)
     }
     setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
   } catch (e) {
