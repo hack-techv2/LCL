@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Fix: composer hidden for the whole embed (alpha)
+
+Follow-up to the composer fix: `confirmFilePreview` restored the message box only after `await commitDocs()`, which doesn't return until ALL docs finish embedding (minutes for large files) — so a new chat that starts by embedding showed no message box the entire time. Now the composer/messages are restored IMMEDIATELY and embedding runs in the background (docs show as 'pending'), so you can chat while files embed. Version stays v0.67d.
+
 ## 2 Jul 2026 — Fix: composer vanishes if embed commit errors (alpha)
 
 `confirmFilePreview` hid the message list + composer, ran `await commitDocs()`, then restored them — so if commit/embedding threw (e.g. during induced errors), the restore never ran and a new chat was left with no message box. Wrapped the commit in try/finally so the composer + messages always come back. Version stays v0.67d.
