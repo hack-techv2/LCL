@@ -66,3 +66,34 @@ countdown UI, Stop mid-stream, the DEMOKEY key-field hint, disconnect→reconnec
 - RAG ranking depth / cosine behaviour (we assert non-null + consistent dims, not
   retrieval quality — demo vectors are non-semantic by design).
 - Normal-mode (non-demo) real-key path is intentionally not exercised here.
+
+## 2 Jul 2026 additions — rate-limit pacing / truncation contracts
+
+Server suite (`demo-api.test.js`, now 32 cases):
+
+| ID | groups | What it does | Expects |
+|----|--------|--------------|---------|
+| T27 | embed, retry | `[[embed429]]` embed-batch | ONE request: pacing ticks then done, no error frame (server-internal 429 window-wait) |
+| T28 | errors, retry | `[[429]]` body | full gateway format: `Limit type: tokens`, `Current limit: 200000`, `Remaining: 0`, parseable reset stamp |
+| T29 | errors, retry | `[[429partial]]` | `Remaining: 58944` (21:45:46 log fixture), then 200 on retry |
+| T30 | chat, errors | `[[streamdie]]` | deltas, then `{"error":…}` frame, NO finish/[DONE] |
+| T31 | chat | `[[usage]]` stream | terminal usage chunk with numeric prompt/total tokens |
+| T32 | errors | `[[toobig]]` | Remaining ≥ 95% of limit (aligns with the client too-big rule) |
+
+Client-logic suite (`client-logic.test.js`, 13 cases, run: `node test/client-logic.test.js`):
+loads the REAL `src/12-transport.js` / `50-chatprocessing.js` / `30-chatlist.js` /
+`toast()` in a vm sandbox (stubbed fetch/DOM; `_RL_WINDOW_MS` 62000→1500 and the
+transient-retry sleep 4000→200 are the only patches, timing-only). Fixtures are
+verbatim 2 Jul 2026 log bodies. C1–C2 postClassified parsing/kinds; C3 truncation
+guard (mid-stream error → transient); C4 usage capture; C5 near-full 429 → tooBig;
+C6 partial 429 (58944) → wait not split; C7 transient retry; C8 infl EMA learning;
+C9 proactive pace gate; C10 map-reduce doneEl/liveEl + single-level split;
+C11 embedsActive; C12 deleteChat abort + unshared-doc cancel; C13 toast durations.
+
+### C14–C16 (busy-send / stream-death / toast position)
+
+C14 busy `send()` → toast "Still replying…" + `send_blocked_busy` crumb (was a silent
+no-op — the 2 Jul "excel attach failed" report); C15 mid-reply stream death →
+partial discarded, `stream_died_midreply` crumb, standard transient auto-retry
+(was silently accepted as a complete answer); C16 `#toast` sits ≥100px up,
+above the composer. Harness has a per-case 20s watchdog + synchronous output.
