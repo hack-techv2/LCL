@@ -336,9 +336,11 @@ async function runStream(chat, payload, ragSources) {
         return
       }
 
-      // 429 with a usable reset time → countdown + auto-retry when it expires.
-      if (r.kind === 'ratelimit' && r.resetMs) {
-        handleRateLimitWait(chat, payload, ragSources, r.resetMs, errData?.error?.message || '')
+      // Any non-unwinnable 429 → standard countdown + auto-retry. Use the parsed
+      // reset when present, else a default 60s backoff (covers a 429 from embeddings
+      // using the shared budget, or a 429 whose reset time did not parse).
+      if (r.kind === 'ratelimit') {
+        handleRateLimitWait(chat, payload, ragSources, r.resetMs || (Date.now() + 60000), errData?.error?.message || '')
         return
       }
 
@@ -775,19 +777,48 @@ async function streamChatOnce(payload, onToken, signal) {
 
 // Summarise one blob (a whole doc, or one part during map-reduce), streaming into
 // bodyEl. Waits out a partial-budget 429; returns text, or null on abort/terminal.
+// Standard rate-limit countdown used during split summaries: renders the same
+// 'Error 429: Rate limit reached' box as the main chat path and resolves after
+// waitMs (or immediately on abort).
+function countdownWait(bodyEl, waitMs, resetMs, signal) {
+  return new Promise(function (resolve) {
+    const fireAt = Date.now() + waitMs
+    const pad = function (n) { return String(n).padStart(2, '0') }
+    const fmtCd = function (ms) { if (ms <= 0) return '0:00'; const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60; return (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(ss) }
+    let iv = null, to = null
+    function cleanup() { if (iv) clearInterval(iv); if (to) clearTimeout(to) }
+    function tick() {
+      if (signal && signal.aborted) { cleanup(); resolve(); return }
+      const remain = fireAt - Date.now()
+      if (bodyEl) {
+        const resetLine = resetMs ? '<div>Resets at: <strong style="color:var(--tx);font-family:var(--mono)">' + new Date(resetMs).toLocaleTimeString() + '</strong></div>' : ''
+        bodyEl.innerHTML = statusBox('warn', 'Error 429: Rate limit reached', resetLine + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + fmtCd(remain) + '</strong></div>', { icon: 'clock' })
+      }
+      if (remain <= 0) { cleanup(); resolve() }
+    }
+    iv = setInterval(tick, 1000)
+    to = setTimeout(function () { cleanup(); resolve() }, waitMs)
+    tick()
+  })
+}
+
 async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal) {
   const payload = { messages: [
     { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' + (sysPrompt ? '\n\n' + sysPrompt : '') },
     { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
   ] }
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
     if (r.ok) return r.text
     if (signal && signal.aborted) return null
-    if (r.kind === 'ratelimit' && !r.unwinnable && r.resetMs) {
-      const waitMs = Math.max(1000, r.resetMs - Date.now() + 1500)
-      if (bodyEl) bodyEl.innerHTML = fmt('_Rate-limited - resuming in ' + Math.ceil(waitMs / 1000) + 's..._')
-      await new Promise(function (res) { setTimeout(res, waitMs) })
+    // A non-unwinnable 429 (e.g. ongoing embeddings are using the shared budget)
+    // can succeed after a wait, so show the standard countdown and retry. Use the
+    // parsed reset when present, else a default 60s backoff. Give up only when the
+    // request itself is over-cap (unwinnable) or after several attempts.
+    if (r.kind === 'ratelimit' && !r.unwinnable) {
+      const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
+      await countdownWait(bodyEl, waitMs, r.resetMs, signal)
+      if (signal && signal.aborted) return null
       continue
     }
     return null
@@ -807,7 +838,7 @@ async function summariseDoc(sysPrompt, doc, instruction, bodyEl, signal) {
   for (let pi = 0; pi < parts.length; pi++) {
     if (signal && signal.aborted) return null
     if (bodyEl) bodyEl.innerHTML = fmt('_' + doc.name + ' is large - summarising part ' + (pi + 1) + ' of ' + parts.length + '..._')
-    const s = await summariseInto(sysPrompt, doc.name + ' (part ' + (pi + 1) + '/' + parts.length + ')', parts[pi], 'Summarise this part of a document.', null, signal)
+    const s = await summariseInto(sysPrompt, doc.name + ' (part ' + (pi + 1) + '/' + parts.length + ')', parts[pi], 'Summarise this part of a document.', bodyEl, signal)
     if (s == null) return null
     partSummaries.push('Part ' + (pi + 1) + ':\n' + s)
   }
