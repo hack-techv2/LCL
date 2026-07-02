@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Toast duration: type floor + length scaling (alpha)
+
+Toasts were a flat 2.8s regardless of content. Now: errors ≥6s, ok ≥4s, info ≥2.8s, scaled by message length (45ms/char), capped at 8s — "Saved" stays snappy, "Embed failed: …" lingers long enough to read. Replace-on-arrival behaviour unchanged. Version stays v0.67d.
+
 ## 2 Jul 2026 — Mammoth warnings: log-only, no toast (alpha)
 
 Per CL: Mammoth conversion warnings are cosmetic (unrecognised styles, skipped text boxes/TOC fields) — they no longer toast or annotate the preview; they go to the browser console (full) and the server log via the `docx_warnings` crumb (first 3). Toasts remain for real extraction failures. Version stays v0.67d.
