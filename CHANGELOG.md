@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 3 Jul 2026 — Continue button for token-capped replies (alpha)
+
+From CL's 23:52 log: a reply hit `finish length` (max_tokens cap), the truncation warning was a cramped italic line that vanished on re-render, and Regenerate just re-truncated (137s wasted). Version stays v0.67d.
+
+- **Continue reply**: truncated replies get the standard amber status box ("Reply hit the token limit — showing the first ~8,192 tokens…") with a **Continue reply** button. It rebuilds the same doc/system context (buildPayload on the original question), appends the partial turn + a payload-only continue instruction, and streams the continuation INTO THE SAME message. Capped again → box returns with the continuation count. 429/transient handling matches the summary path (countdown in the note area, not over the reply). Crumb: `continue_truncated {n}`.
+- **Flags now persist**: truncation/filter notes render from `msg.truncated`/`msg.filtered` in `renderMessages` (shared `attachMsgFlags`), so they survive reloads and chat switches — previously live-bubble-only.
+- `streamChatOnce` now reports `finish` (needed to know if the continuation was capped again); demo marker `[[truncate]]` simulates a token-cap cut-off; tests: T33 (server), C17 finish capture + C18 note/count rendering (client) — 33/33 + 18/18.
+- Verified live in Chrome: flag → box → Continue → appended in place, `continues:1`, box cleared. Regenerate stays alongside Continue.
+
 ## 2 Jul 2026 — Busy-send feedback, main-chat truncation guard, toast position, Replying pill (alpha)
 
 From CL's "multiple excels attach failed" report (23:01 log) + the Chrome pass. Version stays v0.67d.
