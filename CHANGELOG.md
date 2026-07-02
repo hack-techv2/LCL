@@ -3,6 +3,26 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Busy-send feedback, main-chat truncation guard, toast position, Replying pill (alpha)
+
+From CL's "multiple excels attach failed" report (23:01 log) + the Chrome pass. Version stays v0.67d.
+
+- **Busy send is no longer a silent no-op**: the 23:00 send streamed for 110s (`finish length`); sends during it did NOTHING — no toast, no crumb — so the excel attach looked broken. Now: "Still replying — wait for it to finish or press Stop" toast + `send_blocked_busy` crumb. (The attach path itself was verified fine via live browser repro.)
+- **Main-chat mid-reply stream death no longer silently truncates**: `runStream` captured the error frame but ignored it once tokens had arrived — a partial reply was accepted as complete (`[[streamdie]]` repro). Now the partial is discarded (`stream_died_midreply` crumb) and the standard transient auto-retry runs.
+- **Toast moved above the composer** (bottom 20px → 132px) so it never covers the message box.
+- **Health pill: "Replying — Stop to interrupt"** once tokens flow (consistent with "Summarising i/N").
+- Client-logic suite → 16 cases (C14–C16) with a per-case watchdog + synchronous output; UI_CHECKS updated.
+- Note: rapid re-edits in this OneDrive-synced folder were observed being reverted by sync — verify md5 after writes during dev sessions.
+
+## 2 Jul 2026 — Demo + test suite upgraded for the pacing batch (alpha)
+
+Everything shipped today is now regression-tested, with fixtures taken verbatim from the day's debug logs. Version stays v0.67d.
+
+- **Demo realism**: `[[429]]` and the auto-every-5th 429 now return the FULL gateway body (`Limit type / Current limit / Remaining: 0 / Limit resets at`); new markers `[[429partial]]` (Remaining: 58944, the 21:45:46 fixture), `[[streamdie]]` (mid-stream death: error frame, no [DONE]), `[[embed429]]` (server-internal embed window-wait: pacing→done in one request); demo chat streams now end with a realistic terminal `usage` chunk (est ×1.8) so inflation-learning works in #demo.
+- **Server suite 26→32** (`demo-api.test.js` T27–T32): embed 429 window-wait contract, full 429 body fields, partial-window body, mid-stream error frame shape, usage chunk, `[[toobig]]` Remaining ≥95% alignment.
+- **NEW client-logic suite** (`test/client-logic.test.js`, 13 cases): runs the real `src/` modules in a vm sandbox (stubbed fetch/DOM, timing-only patches) — automates what previously needed a manual Chrome pass: 429-body parsing, too-big vs wait classification (both directions), truncation guard, transient retry, infl EMA learning, proactive pace gate, doneEl part persistence, embedsActive, deleteChat run-abort, toast durations.
+- `UI_CHECKS.md` trimmed to visual-only items; `TEST_CASES.md` documents the new cases.
+
 ## 2 Jul 2026 — Toast duration: type floor + length scaling (alpha)
 
 Toasts were a flat 2.8s regardless of content. Now: errors ≥6s, ok ≥4s, info ≥2.8s, scaled by message length (45ms/char), capped at 8s — "Saved" stays snappy, "Embed failed: …" lingers long enough to read. Replace-on-arrival behaviour unchanged. Version stays v0.67d.
