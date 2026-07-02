@@ -3,6 +3,16 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Pacing v2 from the 21:42 log: adaptive inflation, too-big fix, transient retry, persistent part-summaries (alpha)
+
+The 21:42–21:54 capture showed pacing v1 working but inconsistent. Four fixes, all log-driven. Version stays v0.67d.
+
+- **"Too big → split" misclassification fixed**: the test compared the gateway's `Remaining` to the RAW estimate, so a part rejected by a partially-drained window (est 53k vs Remaining 59k, real ~95k) was wrongly split to depth 2 — the "(part 1/5) (part 2/2)" mess. Too-big now only triggers when a **near-full** window (≥95% of limit) still rejects; anything else waits for the reset and retries.
+- **Adaptive est→real inflation** (`_rlPace.infl`, starts 1.8, clamped 1.4–3.0): the fixed ×1.55 undershot badly on HTML docs (measured ~1.8–2.6× in this log), letting parts through the pace gate to a guaranteed 429. Every 429 body now re-teaches the ratio (window `used ÷ our est`), rejected requests are un-counted, and `perRequestTokenCap` uses the learned ratio so later parts are sized to fit a fresh window instead of probe-429ing.
+- **Transient upstream failures retried during summaries**: the 21:47:29 request stalled 60s → inactivity 502 → the whole doc died with parts 3–5 never attempted. `summariseInto` now retries 5xx after a 4s pause (bounded by the attempt cap), with an "upstream hiccup, retrying…" note and a `summary_transient_retry` crumb. Also: after any countdown ends, the box switches to "resuming…" instead of freezing at 00:00.
+- **Part summaries stay visible**: finished part-summaries used to be wiped by the next part's placeholder. `summariseText` now renders finished parts in a persistent area while the current part streams below; the final combine replaces the lot.
+- **#3 note**: this log shows the event loop kept running during the perceived hang (timeout fired on time; the `undefined >` lines were Enter presses echoing in the REPL). Weakens the QuickEdit theory — the "hang" may just be a stalled upstream with a frozen-looking countdown, which the two fixes above now cover.
+
 ## 2 Jul 2026 — Rate-limit pacing: embed 429 survival, proactive part waits, embed-vs-summary gate (alpha)
 
 Closes the shared-budget pacing item from the 19:41/20:11 log analysis. All 22 429s in that log were `Limit type: tokens` — the 20 req/min cap never fired — so no request-count gate was added (KIV until a `Limit type: requests` 429 is actually observed). Version stays v0.67d.
