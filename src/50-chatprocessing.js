@@ -746,7 +746,11 @@ function perRequestTokenCap() {
   const ctx = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
   const rate = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
-  return Math.max(20000, Math.min(ctx || Infinity, rate) - reserve - 4000)
+  const computed = Math.min(ctx || Infinity, rate) - reserve - 4000
+  // Conservative clamp: the char/4 token estimate can undershoot the real count by
+  // ~1.5x, so a doc that looks like it fits can still 429. Cap well under the limit
+  // so docs split up front with margin (a part that is still too big re-splits).
+  return Math.max(20000, Math.min(computed, 110000))
 }
 
 function offerDocSplit(chat, docs, instruction) {
@@ -817,45 +821,60 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' + (sysPrompt ? '\n\n' + sysPrompt : '') },
     { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
   ] }
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
-    if (r.ok) return r.text
-    if (signal && signal.aborted) return null
-    // A non-unwinnable 429 (e.g. ongoing embeddings are using the shared budget)
-    // can succeed after a wait, so show the standard countdown and retry. Use the
-    // parsed reset when present, else a default 60s backoff. Give up only when the
-    // request itself is over-cap (unwinnable) or after several attempts.
-    if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) <= (r.limit429 || 200000)) {
+    if (r.ok) return { text: r.text }
+    if (signal && signal.aborted) return { text: null }
+    if (r.kind === 'ratelimit') {
+      const limit = r.limit429 || (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
+      const realRemaining = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
+      // Budget is (near) free yet still 429 -> the request itself is too big; retrying
+      // can never help. Signal the caller to split it into smaller parts instead.
+      if (realRemaining != null && realRemaining >= 0.8 * limit) return { text: null, tooBig: true }
+      // Otherwise transient (embeddings using the shared budget): wait + retry.
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
       if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
       await countdownWait(bodyEl, waitMs, r.resetMs, signal)
-      if (signal && signal.aborted) return null
+      if (signal && signal.aborted) return { text: null }
       continue
     }
-    return null
+    return { text: null }
   }
-  return null
+  return { text: null }
 }
 
 async function summariseDoc(sysPrompt, doc, instruction, bodyEl, signal) {
+  return await summariseText(sysPrompt, doc.name, doc.content, instruction, bodyEl, signal, 0)
+}
+
+// Summarise one blob, splitting into parts (map-reduce) when it is over the cap OR
+// when the gateway rejects it as too big even with a free budget. Recurses so a part
+// that is still too big splits again. Depth-guarded to avoid runaway.
+async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal, depth) {
+  if (signal && signal.aborted) return null
   const cap = perRequestTokenCap()
-  if (estTokens(doc.content) <= cap) {
-    return await summariseInto(sysPrompt, doc.name, doc.content, instruction, bodyEl, signal)
+  const est = estTokens(text)
+  if (est <= cap) {
+    const r = await summariseInto(sysPrompt, label, text, instruction, bodyEl, signal)
+    if (r.text != null) return r.text
+    if (!r.tooBig) return null
   }
-  const partChars = Math.max(4000, (cap - 2000) * 4)
+  if (depth >= 4 || text.length < 4000) return null
+  const nParts = Math.max(2, Math.ceil(est / Math.max(20000, cap)))
+  const partLen = Math.ceil(text.length / nParts)
   const parts = []
-  for (let i = 0; i < doc.content.length; i += partChars) parts.push(doc.content.slice(i, i + partChars))
+  for (let i = 0; i < text.length; i += partLen) parts.push(text.slice(i, i + partLen))
+  if (typeof lclCrumb === 'function') lclCrumb('map_reduce', { label: label, parts: parts.length, depth: depth })
   const partSummaries = []
-  for (let pi = 0; pi < parts.length; pi++) {
+  for (let p = 0; p < parts.length; p++) {
     if (signal && signal.aborted) return null
-    if (bodyEl) bodyEl.innerHTML = fmt('_' + doc.name + ' is large - summarising part ' + (pi + 1) + ' of ' + parts.length + '..._')
-    const s = await summariseInto(sysPrompt, doc.name + ' (part ' + (pi + 1) + '/' + parts.length + ')', parts[pi], 'Summarise this part of a document.', bodyEl, signal)
+    if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' - summarising part ' + (p + 1) + ' of ' + parts.length + '..._')
+    const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], 'Summarise this part of a document.', bodyEl, signal, depth + 1)
     if (s == null) return null
-    partSummaries.push('Part ' + (pi + 1) + ':\n' + s)
+    partSummaries.push('Part ' + (p + 1) + ': ' + s)
   }
   if (bodyEl) bodyEl.innerHTML = fmt('_Combining ' + parts.length + ' part-summaries..._')
-  return await summariseInto(sysPrompt, doc.name + ' (combined from ' + parts.length + ' parts)', partSummaries.join('\n\n'),
-    'Combine these part-summaries into one cohesive summary of the whole document.', bodyEl, signal)
+  return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), 'Combine these part-summaries into one cohesive summary of the whole document.', bodyEl, signal, depth + 1)
 }
 
 async function runSplitSummaries(chat, docs, instruction) {
