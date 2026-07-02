@@ -46,9 +46,9 @@ function sseResp(frames) {           // frames: array of strings (already JSON) 
     text: async () => ''
   }
 }
-const okStream = (text, usage) => sseResp([
+const okStream = (text, usage, finish) => sseResp([
   JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] }),
-  JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }),
+  JSON.stringify({ choices: [{ delta: {}, finish_reason: finish || 'stop' }] }),
   ...(usage ? [JSON.stringify({ usage })] : []),
   '[DONE]'
 ])
@@ -61,7 +61,7 @@ function mkCtx(fetchQueue) {
   const sb = {
     console, setTimeout, clearTimeout, setInterval, clearInterval,
     TextEncoder, TextDecoder, AbortController,
-    document: { getElementById: () => null, createElement: () => ({ innerHTML: '', children: [], appendChild(c) { this.children.push(c) } }) },
+    document: { getElementById: () => null, createElement: () => ({ innerHTML: '', children: [], style: {}, appendChild(c) { this.children.push(c) } }) },
     fetch: async () => { if (!fetchQueue.length) throw new Error('fetch queue empty'); const r = fetchQueue.shift(); return typeof r === 'function' ? r() : r },
     lclCrumb: (k, d) => crumbs.push(Object.assign({ k }, d)),
     creds: { model: 'demo', apiKey: 'K', maxTokens: 8192 },
@@ -241,6 +241,29 @@ const CASES = [
     const m = css.match(/#toast\{position:fixed;bottom:(\d+)px/)
     const px = m ? Number(m[1]) : 0
     check('C16 toast is positioned above the composer', px >= 100, 'bottom=' + px + 'px (composer is ~100px tall)')
+  } },
+
+  { id: 'C17 streamChatOnce reports finish_reason', fn: async () => {
+    const { get } = mkCtx([okStream('partial answer', null, 'length'), okStream('full answer')])
+    const sco = get('streamChatOnce')
+    const a = await sco({ messages: [] }, null, null)
+    const b = await sco({ messages: [] }, null, null)
+    check('C17 streamChatOnce reports finish_reason', a.finish === 'length' && b.finish === 'stop', a.finish + '/' + b.finish)
+  } },
+
+  { id: 'C18 truncation note: Continue button + continuation count', fn: async () => {
+    const { get } = mkCtx([])
+    const mkBubble = () => ({ children: [], querySelector: () => null, insertBefore(el) { this.children.push(el) } })
+    const flags = get('attachMsgFlags')
+    const b1 = mkBubble()
+    flags(b1, { truncated: true })
+    const first = b1.children[0] && b1.children[0].innerHTML || ''
+    const b2 = mkBubble()
+    flags(b2, { truncated: true, continues: 2 })
+    const second = b2.children[0] && b2.children[0].innerHTML || ''
+    const ok = /Reply hit the token limit/.test(first) && /continueTruncated/.test(first)
+      && /Still over the limit after 2 continuations/.test(second) && /continueTruncated/.test(second)
+    check('C18 truncation note: Continue button + continuation count', ok, 'first=' + /token limit/.test(first) + ' second=' + /2 continuations/.test(second))
   } },
 
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
