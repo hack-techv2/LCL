@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Fix map-reduce runaway split (use 429 body Remaining) (alpha)
+
+The adaptive split was cascading: a part that 429'd with `Remaining: 0` (budget just exhausted by the previous part) was misread as 'too big' and split down to 7k tokens before giving up — because it used the STALE client token meter (streams never refresh it) instead of the gateway's real figure. Now the too-big-vs-transient decision uses the **429 body's real-time Remaining** vs the request size: room available yet rejected → too big (split); Remaining ~0 → exhausted → wait for the window and retry. Retry cap raised 3→4. Version stays v0.67d.
+
 ## 2 Jul 2026 — Large-doc summaries: adaptive map-reduce + fast-fail (alpha)
 
 Fixes the 7-minute retry loop where a whole-doc summary 429'd on every attempt despite a free budget (the char/4 token estimate undershot, so a >200k-token doc got sent whole). Version stays v0.67d.
