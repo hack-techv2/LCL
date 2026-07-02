@@ -12,7 +12,6 @@ From CL's "multiple excels attach failed" report (23:01 log) + the Chrome pass. 
 - **Toast moved above the composer** (bottom 20px → 132px) so it never covers the message box.
 - **Health pill: "Replying — Stop to interrupt"** once tokens flow (consistent with "Summarising i/N").
 - Client-logic suite → 16 cases (C14–C16) with a per-case watchdog + synchronous output; UI_CHECKS updated.
-- Note: rapid re-edits in this OneDrive-synced folder were observed being reverted by sync — verify md5 after writes during dev sessions.
 
 ## 2 Jul 2026 — Demo + test suite upgraded for the pacing batch (alpha)
 
