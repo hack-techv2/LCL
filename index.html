@@ -4856,6 +4856,14 @@ function perRequestTokenCap() {
   return Math.max(20000, Math.min(computed, 110000))
 }
 
+// Client-side view of the shared per-minute token window, used to pace multi-part
+// summaries PROACTIVELY. Streams return no rate-limit headers, so this is fed by
+// our own request estimates (x1.55 approximates the real token count) plus the
+// reliable body fields of any 429 we do hit. Avoids the fire-into-a-drained-window
+// pattern: every part->part transition used to burn a guaranteed 429.
+const _RL_WINDOW_MS = 62000
+const _rlPace = { windowStart: 0, spentEst: 0, limit: 200000 }
+
 function offerDocSplit(chat, docs, instruction) {
   const n = docs.length
   const bubble = appendMsg('ai', '', null, null)
@@ -4897,7 +4905,7 @@ function abortableSleep(ms, signal) {
     const iv = setInterval(function () { if (signal && signal.aborted) { clearTimeout(t); clearInterval(iv); resolve() } }, 150)
   })
 }
-function countdownWait(bodyEl, waitMs, resetMs, signal) {
+function countdownWait(bodyEl, waitMs, resetMs, signal, uiLabel) {
   return new Promise(function (resolve) {
     const fireAt = Date.now() + waitMs
     const pad = function (n) { return String(n).padStart(2, '0') }
@@ -4909,7 +4917,9 @@ function countdownWait(bodyEl, waitMs, resetMs, signal) {
       const remain = fireAt - Date.now()
       if (bodyEl) {
         const resetLine = resetMs ? '<div>Resets at: <strong style="color:var(--tx);font-family:var(--mono)">' + new Date(resetMs).toLocaleTimeString() + '</strong></div>' : ''
-        bodyEl.innerHTML = statusBox('warn', 'Error 429: Rate limit reached', resetLine + '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + fmtCd(remain) + '</strong></div>', { icon: 'clock' })
+        const title = uiLabel ? 'Waiting for the rate-limit window' : 'Error 429: Rate limit reached'
+        const lead  = uiLabel ? '<div>' + uiLabel + ' — the shared per-minute token window is used up. This is normal for large documents; the run resumes automatically.</div>' : ''
+        bodyEl.innerHTML = statusBox('warn', title, lead + resetLine + '<div>' + (uiLabel ? 'Resuming' : 'Retrying') + ' in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + fmtCd(remain) + '</strong></div>', { icon: 'clock' })
       }
       if (remain <= 0) { cleanup(); resolve() }
     }
@@ -4924,12 +4934,26 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' + (sysPrompt ? '\n\n' + sysPrompt : '') },
     { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
   ] }
+  const reqTok = Math.ceil(JSON.stringify(payload).length / 4)
+  const uiLabel = 'Summarising ' + (typeof esc === 'function' ? esc(label) : label)
   for (let attempt = 0; attempt < 4; attempt++) {
+    // Proactive pacing: if this request cannot fit in what is left of the current
+    // window, wait for the reset BEFORE firing instead of collecting a guaranteed 429.
+    const _winAge = Date.now() - _rlPace.windowStart
+    if (_rlPace.spentEst > 0 && _winAge < _RL_WINDOW_MS && (_rlPace.spentEst + reqTok) * 1.55 > _rlPace.limit * 0.95) {
+      const pauseMs = _RL_WINDOW_MS - _winAge
+      if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'pace', secs: Math.round(pauseMs / 1000) })
+      await countdownWait(bodyEl, pauseMs, _rlPace.windowStart + _RL_WINDOW_MS, signal, uiLabel)
+      if (signal && signal.aborted) return { text: null }
+      _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0
+    }
+    if (Date.now() - _rlPace.windowStart >= _RL_WINDOW_MS) { _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0 }
+    _rlPace.spentEst += reqTok
     const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
     if (r.ok) return { text: r.text }
     if (signal && signal.aborted) return { text: null }
     if (r.kind === 'ratelimit') {
-      const reqTok = Math.ceil(JSON.stringify(payload).length / 4)
+      if (r.limit429) _rlPace.limit = r.limit429
       // Judge by the gateway's REAL-TIME body Remaining (not the stale client meter,
       // which streams never refresh). If there was room for this request yet it was
       // still rejected, the real token count exceeds the estimate -> too big -> split.
@@ -4937,8 +4961,9 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
       if (r.remaining429 != null && r.remaining429 >= reqTok) return { text: null, tooBig: true }
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
       if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
-      await countdownWait(bodyEl, waitMs, r.resetMs, signal)
+      await countdownWait(bodyEl, waitMs, r.resetMs, signal, uiLabel)
       if (signal && signal.aborted) return { text: null }
+      _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0
       continue
     }
     return { text: null }
@@ -4980,6 +5005,25 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), 'Combine these part-summaries into one cohesive summary of the whole document.', bodyEl, signal, depth + 1)
 }
 
+// Embedding-vs-summary contention gate: embeddings are the RAG prerequisite and
+// share the same per-minute budget, so a split-summary run waits for any active
+// embeds to finish instead of starving them (seen as embed_fail 429 in the logs).
+function embedsActive() {
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    for (const d of ch.docs) if (d && (d.status === 'embedding' || d.status === 'pending')) return true
+  }
+  return false
+}
+async function waitForEmbedsIdle(bodyEl, header, signal) {
+  if (!embedsActive()) return
+  if (typeof lclCrumb === 'function') lclCrumb('summary_wait_embed', {})
+  while (embedsActive() && !(signal && signal.aborted)) {
+    if (bodyEl) bodyEl.innerHTML = fmt(header + '_Waiting for document embedding to finish before summarising…_')
+    await abortableSleep(1000, signal)
+  }
+}
+
 async function runSplitSummaries(chat, docs, instruction) {
   busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
   inflightCtl = new AbortController()
@@ -4996,6 +5040,7 @@ async function runSplitSummaries(chat, docs, instruction) {
       const bubble = appendMsg('ai', '', null, [doc.name])
       const bodyEl = bubble.querySelector('.msg-body')
       if (bodyEl) bodyEl.innerHTML = fmt(header + '_Summarising..._')
+      await waitForEmbedsIdle(bodyEl, header, signal)
       let summary = null
       try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
       if (signal.aborted) {
