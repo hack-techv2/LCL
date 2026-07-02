@@ -78,19 +78,21 @@ async function postClassified(path, body, opts) {
   let errData = {}
   try { errData = JSON.parse(await resp.text()) } catch {}
   const message = (errData && errData.error && (errData.error.message || errData.error)) || ('HTTP ' + resp.status)
-  let kind = 'terminal', resetMs = null, limit429 = null
+  let kind = 'terminal', resetMs = null, limit429 = null, remaining429 = null
   if (resp.status === 429) {
     kind = 'ratelimit'
     const msg = String((errData.error && (errData.error.message || errData.error)) || '')
     const m = msg.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
     if (m) { const t = Date.parse(m[1].replace(' ', 'T') + 'Z'); if (!isNaN(t) && t > Date.now()) resetMs = t }
-    // Parse the stated per-minute limit so callers can judge 'too big' by the
-    // REQUEST's own size (the 429 body reports Remaining==limit even mid-burst,
-    // so Remaining is not a reliable 'unwinnable' signal).
+    // Parse the gateway's real-time limit + remaining from the 429 body. If it had
+    // room for this request yet still rejected it, the request is genuinely too big;
+    // if Remaining is ~0 the budget is just exhausted (wait for the window).
     const lim = msg.match(/Current limit:\s*(\d+)/i)
     if (lim) limit429 = Number(lim[1])
+    const rem = msg.match(/Remaining:\s*(\d+)/i)
+    if (rem) remaining429 = Number(rem[1])
   } else if (resp.status >= 500 && resp.status < 600) {
     kind = 'transient'
   }
-  return { ok: false, status: resp.status, errData, message, kind, resetMs, limit429 }
+  return { ok: false, status: resp.status, errData, message, kind, resetMs, limit429, remaining429 }
 }
