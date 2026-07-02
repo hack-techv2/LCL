@@ -328,7 +328,7 @@ async function runStream(chat, payload, ragSources) {
       // A 429 that reports a FULL remaining budget means the request itself is
       // bigger than the token cap — waiting can't help, so don't auto-retry (this
       // was the infinite "retry in 60s" loop on oversized whole-doc turns).
-      if (r.kind === 'ratelimit' && r.unwinnable) {
+      if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) > (r.limit429 || 200000)) {
         const note = 'Error 429: this request is larger than the model\u2019s token limit, so waiting won\u2019t help. Reduce the documents in context (switch Search mode to Auto or Specific, or ask about fewer files) and try again.'
         chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
         appendMsg('ai', note, null, ragSources, null, true)
@@ -764,7 +764,7 @@ function offerDocSplit(chat, docs, instruction) {
 async function streamChatOnce(payload, onToken, signal) {
   payload.stream = true
   const r = await postClassified('/api/chat', { apiKey: creds.apiKey, modelId: creds.model, payload }, signal ? { signal: signal } : {})
-  if (!r.ok) return { ok: false, status: r.status, kind: r.kind, unwinnable: r.unwinnable, resetMs: r.resetMs, message: r.message }
+  if (!r.ok) return { ok: false, status: r.status, kind: r.kind, limit429: r.limit429, resetMs: r.resetMs, message: r.message }
   let acc = ''
   await streamSse(r.resp, function (data) {
     if (data === '[DONE]') return
@@ -815,7 +815,7 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     // can succeed after a wait, so show the standard countdown and retry. Use the
     // parsed reset when present, else a default 60s backoff. Give up only when the
     // request itself is over-cap (unwinnable) or after several attempts.
-    if (r.kind === 'ratelimit' && !r.unwinnable) {
+    if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) <= (r.limit429 || 200000)) {
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
       await countdownWait(bodyEl, waitMs, r.resetMs, signal)
       if (signal && signal.aborted) return null
