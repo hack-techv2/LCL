@@ -3502,7 +3502,13 @@ async function extractDocxStructured(file) {
         const raw = await mammoth.extractRawText({ arrayBuffer: ab.slice(0) })
         text = inferHeadingNumbers((raw.value || '').trim())
       }
-      if (result.messages && result.messages.length) warnings.push('DOCX parsed with ' + result.messages.length + ' Mammoth warning(s).')
+      if (result.messages && result.messages.length) {
+        warnings.push('DOCX parsed with ' + result.messages.length + ' Mammoth warning(s).')
+        // Surface WHAT the warnings were (previously discarded): browser console in
+        // full + first 3 into the server log, so docx extraction issues are debuggable.
+        try { console.warn('[docx] Mammoth warnings for ' + file.name + ':', result.messages.map(m => (m.type || 'warn') + ': ' + m.message)) } catch {}
+        if (typeof lclCrumb === 'function') lclCrumb('docx_warnings', { doc: file.name, n: result.messages.length, first: result.messages.slice(0, 3).map(m => String(m.message || '').slice(0, 90)) })
+      }
       return { text: text || '[No text found in DOCX]', scanWarning: null, parseWarning: warnings.join(' '), structure: { kind: 'docx-html' } }
     } catch (e) {
       warnings.push('Mammoth failed (' + e.message + '); used DOCX XML fallback.')
