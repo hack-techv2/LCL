@@ -60,8 +60,20 @@ async function deleteChat(id, e) {
     okText: 'Delete', cancelText: 'Cancel'
   })
   if (!ok) return
-  if (typeof lclCrumb === 'function') lclCrumb('delete_chat', { hadDocs: hadDocs })
+  // Deleting a chat used to leave its in-flight work running: split-summary
+  // bubbles kept appending into whichever chat became active, and its docs kept
+  // embedding (spending budget). Abort the run if it belongs to this chat, and
+  // cancel embeds for docs no other chat still references.
+  const hadRun = (chatId === id && typeof inflightCtl !== 'undefined' && inflightCtl)
+  if (typeof lclCrumb === 'function') lclCrumb('delete_chat', { hadDocs: hadDocs, abortedRun: !!hadRun })
+  if (hadRun) { try { inflightCtl.abort() } catch {} }
   delete D.chats[id]
+  if (chat && Array.isArray(chat.docs)) {
+    for (const d of chat.docs) {
+      const shared = Object.values(D.chats).some(ch => Array.isArray(ch.docs) && ch.docs.some(x => x.id === d.id))
+      if (!shared) d._cancelled = true
+    }
+  }
   const afterDelete = () => {
     if (hadDocs) {
       gcEmbedCache().catch(err => console.warn('[deleteChat] gc', err.message))
