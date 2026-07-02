@@ -769,7 +769,7 @@ function offerDocSplit(chat, docs, instruction) {
 async function streamChatOnce(payload, onToken, signal) {
   payload.stream = true
   const r = await postClassified('/api/chat', { apiKey: creds.apiKey, modelId: creds.model, payload }, signal ? { signal: signal } : {})
-  if (!r.ok) return { ok: false, status: r.status, kind: r.kind, limit429: r.limit429, resetMs: r.resetMs, message: r.message }
+  if (!r.ok) return { ok: false, status: r.status, kind: r.kind, limit429: r.limit429, remaining429: r.remaining429, resetMs: r.resetMs, message: r.message }
   let acc = ''
   await streamSse(r.resp, function (data) {
     if (data === '[DONE]') return
@@ -821,17 +821,17 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' + (sysPrompt ? '\n\n' + sysPrompt : '') },
     { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
   ] }
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
     if (r.ok) return { text: r.text }
     if (signal && signal.aborted) return { text: null }
     if (r.kind === 'ratelimit') {
-      const limit = r.limit429 || (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
-      const realRemaining = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokRemaining != null) ? lastBudget.tokRemaining : null
-      // Budget is (near) free yet still 429 -> the request itself is too big; retrying
-      // can never help. Signal the caller to split it into smaller parts instead.
-      if (realRemaining != null && realRemaining >= 0.8 * limit) return { text: null, tooBig: true }
-      // Otherwise transient (embeddings using the shared budget): wait + retry.
+      const reqTok = Math.ceil(JSON.stringify(payload).length / 4)
+      // Judge by the gateway's REAL-TIME body Remaining (not the stale client meter,
+      // which streams never refresh). If there was room for this request yet it was
+      // still rejected, the real token count exceeds the estimate -> too big -> split.
+      // If Remaining is ~0, the window is just exhausted -> wait for reset + retry.
+      if (r.remaining429 != null && r.remaining429 >= reqTok) return { text: null, tooBig: true }
       const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
       if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
       await countdownWait(bodyEl, waitMs, r.resetMs, signal)
