@@ -617,17 +617,15 @@ async function confirmFilePreview() {
   previewQueue  = []
   const target = previewTarget
   previewTarget = null
-  try {
-    if (target === 'attach') commitAttachments(files)
-    else await commitDocs(files)
-  } finally {
-    // Always restore the composer + message list, even if embedding threw — a
-    // commit error must NOT leave a new chat with no message box (reported bug).
-    document.getElementById('file-preview').classList.add('hidden')
-    document.getElementById('messages').style.display = ''
-    document.getElementById('input-wrap').style.display = ''
-    document.getElementById('file-in').value = ''
-  }
+  // Restore the composer + message list IMMEDIATELY. Embedding can take minutes,
+  // so it runs in the BACKGROUND (docs show as 'pending') instead of holding the UI
+  // hostage — otherwise a new chat looks like it has no message box while it embeds.
+  document.getElementById('file-preview').classList.add('hidden')
+  document.getElementById('messages').style.display = ''
+  document.getElementById('input-wrap').style.display = ''
+  document.getElementById('file-in').value = ''
+  if (target === 'attach') commitAttachments(files)
+  else commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
 function commitAttachments(files) {
