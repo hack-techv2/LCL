@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Fix false 'request too large' on shared-budget 429 + log consistency (alpha)
+
+Version stays v0.67d.
+
+- **Bug (from live logs): summaries failed instead of retrying.** The gateway's token 429 reports `Remaining: 200000` (== limit) even when concurrent embeddings have drained the per-minute budget, so a 185k-token request that actually fits was wrongly judged 'unwinnable' and given up on. Now 'too big' is judged by the REQUEST's own estimated tokens vs the stated limit (`limit429`), not the misleading Remaining field — a recoverable 429 waits and retries (both main chat and split-summary paths).
+- **Console/file log parity** (`server.txt`): terminal output now carries the same `<iso> [level]` prefix as `debug_logs.txt` (one shared timestamp per call), so console and file read identically.
+- **Quieter meter poll**: the once-a-second `[rl] /api/ratelimit read` line is de-duplicated — logged only when the snapshot changes.
+
 ## 2 Jul 2026 — Rate-limit retry fixes (alpha)
 
 Two fixes to rate-limit handling during summaries. Version stays v0.67d.
