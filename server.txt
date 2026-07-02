@@ -875,6 +875,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
     })
     upRes.on('error', err => {
       log.warn('[stream] upstream stream error =', err.message)
+      try { res.write('data: ' + JSON.stringify({ error: 'upstream stream error: ' + err.message }) + '\n\n') } catch {}
       try { res.end() } catch {}
     })
   })
