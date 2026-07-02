@@ -196,7 +196,14 @@ async function send() {
   if (!creds) { openConnect(); return }
   const input = document.getElementById('msg-in')
   const text  = input.value.trim()
-  if (!text||busy||!chatId) return
+  if (!text || !chatId) return
+  if (busy) {
+    // Was a SILENT no-op: during a long reply (23:00 log: 110s stream) a send did
+    // nothing - no toast, no crumb - and looked like the attach/send had failed.
+    if (typeof lclCrumb === 'function') lclCrumb('send_blocked_busy', { chars: text.length })
+    toast('Still replying — wait for it to finish or press Stop, then send again', 'info')
+    return
+  }
 
   // If a 429 retry was pending from a previous send, cancel it. The user
   // is starting fresh; the old payload shouldn't auto-fire later.
@@ -307,6 +314,7 @@ async function runStream(chat, payload, ragSources) {
   const swapBubble = () => {
     if (firstToken) return
     firstToken = true
+    setHealth('warn', 'Replying — Stop to interrupt')   // consistent with 'Summarising i/N'
     try { typingEl.remove() } catch {}
     msgObj = { role:'assistant', content:'', sources: ragSources, ts: Date.now() }
     chat.messages.push(msgObj)
@@ -412,6 +420,21 @@ async function runStream(chat, payload, ragSources) {
         appendMsg('ai', '(stopped)', null, ragSources)
       }
       setHealth('ok', 'Stopped')
+      return
+    }
+    if (streamErr && msgObj) {
+      // Stream died MID-reply. Without this, the partial was accepted as a normal
+      // complete answer (silent truncation - the [[streamdie]] / 21:47 stall case).
+      // Discard the partial and route through the standard transient auto-retry.
+      if (chat.messages[chat.messages.length - 1] === msgObj) chat.messages.pop()
+      try { bubble.remove() } catch (e) {}
+      if (typeof lclCrumb === 'function') lclCrumb('stream_died_midreply', { chars: accumulated.length, err: String(streamErr).slice(0, 60) })
+      if (retry5xxCount < 3) { handle5xxRetry(chat, payload, ragSources, 0, String(streamErr)); return }
+      retry5xxCount = 0
+      const note = 'Stream error: ' + cleanErrMsg(String(streamErr)) + ' — the reply was cut off mid-stream. Please try again.'
+      chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
+      appendMsg('ai', note, null, ragSources, null, true)
+      setHealth('err', 'Stream died')
       return
     }
     if (streamErr && !msgObj) {
@@ -633,10 +656,12 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   const delays = (typeof RETRY_STEPS_MS !== 'undefined') ? RETRY_STEPS_MS : [10000, 20000, 60000]
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
   const statusLabels = { 500: 'Server error', 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
-  const statusLabel = statusLabels[status] || 'Server error'
+  // status 0 = mid-stream death (no HTTP status) - label it honestly, not 'Error 0'.
+  const statusLabel = statusLabels[status] || (status ? 'Server error' : 'Stream interrupted')
+  const titleText = status ? ('Error ' + status + ': ' + statusLabel) : statusLabel
   const hint = status === 504
     ? 'The AI took too long to respond. If it keeps failing, try a shorter request.'
-    : 'The AI service is temporarily unavailable.'
+    : (status ? 'The AI service is temporarily unavailable.' : 'The reply was cut off mid-stream.')
   const pad = (n) => String(n).padStart(2, '0')
   const formatCountdown = (ms) => {
     if (ms <= 0) return '0'
@@ -648,7 +673,7 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
     ragSources,
     delayMs,
     intervalMs: 500,
-    render: (bodyEl, remain) => { bodyEl.innerHTML = statusBox('err', 'Error ' + status + ': ' + statusLabel,
+    render: (bodyEl, remain) => { bodyEl.innerHTML = statusBox('err', titleText,
       '<div style="margin-bottom:4px">' + hint + '</div>' +
       '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(remain) + '</strong>' +
       '&nbsp;<span style="font-size:11px;opacity:.7">(attempt ' + retry5xxCount + ' of 3)</span></div>',
