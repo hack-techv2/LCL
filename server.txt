@@ -1077,6 +1077,7 @@ function demoChatStream(res, payload) {
   // with NO finish/[DONE] (mirrors the proxy's behaviour when the upstream socket
   // dies; the 21:47 log stall). Exercises the client's truncation guard.
   const dieAt = /\[\[streamdie\]\]/.test(text) ? 6 : 0
+  const finReason = /\[\[truncate\]\]/.test(text) ? 'length' : 'stop'   // [[truncate]] = token-cap cut-off
   let i = 0, done = false
   res.on('close', () => { done = true })
   const tick = () => {
@@ -1086,7 +1087,7 @@ function demoChatStream(res, payload) {
       res.end(); return
     }
     if (i >= toks.length) {
-      res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\n')
+      res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: finReason }] }) + '\n\n')
       // Terminal usage chunk like the real gateway (est x ~1.8, per the 2 Jul logs)
       // - feeds the client's adaptive est->real inflation learning in #demo.
       const _pTok = Math.round((JSON.stringify(payload || {}).length / 4) * 1.8)
