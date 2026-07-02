@@ -113,7 +113,7 @@ function dbgRotateIfNeeded() {
   try { fs.renameSync(DEBUG_LOG_FILE, DEBUG_LOG_BACKUP) } catch {}
   _dbgBytes = 0
 }
-function dbgWrite(level, args) {
+function dbgWrite(level, args, ts) {
   if (!fileLogActive()) return
   try {
     dbgRotateIfNeeded()
@@ -122,7 +122,7 @@ function dbgWrite(level, args) {
       try { _dbgBytes = fs.existsSync(DEBUG_LOG_FILE) ? fs.statSync(DEBUG_LOG_FILE).size : 0 } catch { _dbgBytes = 0 }
     }
     const body = args.map(a => (typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity }))).join(' ')
-    const line = new Date().toISOString() + ' [' + level + '] ' + _stripAnsi(body) + '\n'
+    const line = (ts || new Date().toISOString()) + ' [' + level + '] ' + _stripAnsi(body) + '\n'
     _dbgStream.write(line)
     _dbgBytes += Buffer.byteLength(line)
   } catch {}
@@ -131,9 +131,11 @@ function dbgWrite(level, args) {
 const _origConsoleLog   = console.log.bind(console)
 const _origConsoleWarn  = console.warn.bind(console)
 const _origConsoleError = console.error.bind(console)
-console.log   = (...a) => { _origConsoleLog(...a);   dbgWrite('log',  a) }
-console.warn  = (...a) => { _origConsoleWarn(...a);  dbgWrite('warn', a) }
-console.error = (...a) => { _origConsoleError(...a); dbgWrite('error', a) }
+// Console lines carry the SAME '<iso> [level]' prefix as the file sink (one shared
+// timestamp per call) so the terminal and debug_logs.txt read identically.
+console.log   = (...a) => { const ts = new Date().toISOString(); _origConsoleLog(ts + ' [log]', ...a);     dbgWrite('log',  a, ts) }
+console.warn  = (...a) => { const ts = new Date().toISOString(); _origConsoleWarn(ts + ' [warn]', ...a);   dbgWrite('warn', a, ts) }
+console.error = (...a) => { const ts = new Date().toISOString(); _origConsoleError(ts + ' [error]', ...a); dbgWrite('error', a, ts) }
 
 // ---------------------------------------------------------------------------
 // Update channel TLS. A TLS-intercepting proxy (Zscaler) re-signs the GitHub
@@ -1130,9 +1132,12 @@ function handleRateLimit(req, res) {
   // populated (or vice-versa). The old `apiKey || embedApiKey` only ever queried
   // the chat key when it was set, so an embed-only snapshot was invisible.
   const rl = getLastRateLimit(settings.apiKey) || getLastRateLimit(settings.embedApiKey) || {}
-  log.debug('[rl] /api/ratelimit read chatKey=' + snapshotKey(settings.apiKey) +
+  // Dedupe the meter poll: the client reads this every second, so only log when
+  // the snapshot actually changes (kills a repetitive line from the log).
+  const _rlLine = '[rl] /api/ratelimit read chatKey=' + snapshotKey(settings.apiKey) +
             ' embedKey=' + snapshotKey(settings.embedApiKey) +
-            ' -> ' + (rl.tokRemaining != null ? ('tok=' + rl.tokRemaining + '/' + rl.tokLimit) : 'no snapshot'))
+            ' -> ' + (rl.tokRemaining != null ? ('tok=' + rl.tokRemaining + '/' + rl.tokLimit) : 'no snapshot')
+  if (_rlLine !== handleRateLimit._last) { handleRateLimit._last = _rlLine; log.debug(_rlLine) }
   json(res, { tokLimit: rl.tokLimit ?? null, tokRemaining: rl.tokRemaining ?? null, reqLimit: rl.reqLimit ?? null, reqRemaining: rl.reqRemaining ?? null, ts: rl.ts ?? null })
 }
 
