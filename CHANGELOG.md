@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 2 Jul 2026 — Fix: deleted chat's run leaked into the next chat (alpha)
+
+Reported by CL: delete a chat while its docs are embedding / its split-summary is running, and the run keeps going — new summary bubbles append into whichever chat becomes active, and the deleted chat's docs keep embedding (spending shared budget). `deleteChat` now aborts the in-flight run when it belongs to the deleted chat (crumb `delete_chat abortedRun=true`) and sets `_cancelled` on its docs unless another chat still references them; `runSplitSummaries` also stops if its chat vanishes mid-run. Version stays v0.67d.
+
 ## 2 Jul 2026 — Pacing v2 review: truncation guard + usage-based inflation learning (alpha)
 
 Self-review of pacing v2 found two gaps; both closed. Version stays v0.67d.
