@@ -84,5 +84,5 @@ node test/client-logic.test.js    # client-logic suite (real src modules, vm san
 
 ## Credits
 
-Local Comet LLM (LCL) — CSA / ASG
+Local Comet LLM (LCL) — CSA / ASG\
 Contributors: Melvin Yung, Ko Zheng Teng.
