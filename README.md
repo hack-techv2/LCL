@@ -8,7 +8,7 @@ browser interface at `http://localhost:3000`.
 - **Footprint:** two files — `index.html` (the whole app) and `server.txt`
   (the proxy). No build tools or dependencies required to *run*.
 - **Current version:** v0.67d — see [CHANGELOG.md](CHANGELOG.md) for history.
-- **Install:** see the end-user [Setup Guide](LCL_Setup_Guide.html).
+- **Install:** see the end-user [Setup Guide](docs/LCL_Setup_Guide.html).
 
 ![LCL](docs/screenshot-chat.png)
 
@@ -62,7 +62,7 @@ Browser (index.html)  ──>  Node proxy (server.txt)  ──>  GovTech Platfor
 | `build.js` | Concatenates `src/` into `index.html` + verification checks. |
 | `test/` | Regression suites: `demo-api.test.js` (server) and `client-logic.test.js` (client logic in a vm sandbox). |
 | `CHANGELOG.md` | Version history. |
-| `LCL_Setup_Guide.html` | End-user setup guide (start here to install). |
+| `docs/` | Setup guide, screenshots. |
 
 Not committed (see `.gitignore`): `lcl_data.json` and `embed_cache.bin`
 (runtime data/caches), backups, and internal working docs.
