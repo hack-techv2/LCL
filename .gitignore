@@ -3,6 +3,14 @@ llms.txt
 CLAUDE.md
 UPGRADE_PLAN.md
 REFACTOR_PLAN.md
+INTEGRATION_PROPOSAL_v0.67e.md
+MODEL_CONTEXT_REFERENCE.md
+
+# Test fixtures — binaries are regenerable via test/fixtures/make_fixtures.py
+test/fixtures/*.pdf
+test/fixtures/*.docx
+test/fixtures/*.pptx
+test/fixtures/*.xlsx
 
 # Runtime data & caches — never commit (hold API keys / chat history
 # if Node is ever run from this folder)
