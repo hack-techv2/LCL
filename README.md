@@ -30,7 +30,7 @@ browser interface at `http://localhost:3000`.
   rather than silently truncating a reply.
 - **Skills:** reusable system-prompt presets (e.g. report writer, code
   reviewer), manageable from the UI.
-- **Self-updating:** stable and experimental (alpha) channels with checksum
+- **Self-updating:** stable and experimental update channels with checksum
   verification, switchable in Settings.
 
 ---
