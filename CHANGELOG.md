@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — Proxy-origin shim: index.html works from file:// (alpha)
+
+From the v0.67e review (colleague's stable-based build): people double-click `index.html` and it fails on CORS because relative `/api/...` paths resolve against `file://`. Ported the upload's shim + server deltas. Version stays v0.67d.
+
+- **Client** (`12-transport.js`): `/api` and `/skills` paths are rewritten to `http://127.0.0.1:3000` whenever the page isn't served by the proxy (file:// or another local origin); override via `window.LCL_API_BASE` / localStorage `lcl_api_base`. All transport helpers + the clientlog fetches route through it.
+- **Server** (CORS block): `Origin: null` (what file:// sends) is now reflected; `x-lcl-demo` added to Allow-Headers; Chrome Private-Network-Access preflight answered. Still no wildcard — internet origins get no grant (verified by T35) — behind the existing localhost host-guard and 127.0.0.1 bind.
+- Tests: C19 (shim mapping), T34 (null-origin preflight), T35 (foreign origin refused). Suites now 35/35 + 19/19.
+- Review outcome recorded here: all nine v0.67e changelog items verified present in alpha (some deliberately adapted: window-scaled full-text budget "2a", re-embed instead of doc migration, shared confirm dialog); alpha is already on pdf.js 5.7.284 so the upload's "upgrade pdfjs 3.11" note is closed; version bump to v0.67e deferred to the stable promotion.
+
 ## 3 Jul 2026 — Bubble spacing polish (alpha)
 
 Per CL, applied consistently: the truncation/Continue box gets a 14px bottom margin, and the RAG source-chip row (`.rag-row`) gets 10px above / 14px below / 6px chip gaps — both were sitting flush against the Copy/Regenerate action row, worst with many long chips (11-file EES case). Verified live in #demo. Version stays v0.67d.
