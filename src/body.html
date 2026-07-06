@@ -210,6 +210,7 @@
           <div class="fp-header-sub">This text will be attached to your next message as context. Edit if needed, then click Confirm.</div>
         </div>
         <div class="fp-tabs" id="fp-tabs"></div>
+        <div class="fp-oversize hidden" id="fp-oversize"></div>
         <div class="fp-body">
           <div class="fp-label"><span id="fp-filename"></span><span id="fp-charcount"></span></div>
           <textarea class="fp-textarea" id="fp-textarea" spellcheck="false"></textarea>
@@ -217,7 +218,8 @@
         <div class="fp-foot">
           <div class="fp-hint" id="fp-hint"></div>
           <button class="btn-s" onclick="cancelFilePreview()">Cancel</button>
-          <button class="btn-sv" onclick="confirmFilePreview()">Confirm &amp; attach</button>
+          <button class="btn-sv hidden" id="fp-embed-btn" onclick="confirmFilePreviewAsEmbed()">Embed for RAG instead</button>
+          <button class="btn-sv" id="fp-confirm-btn" onclick="confirmFilePreview()">Confirm &amp; attach</button>
         </div>
       </div>
 
