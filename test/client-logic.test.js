@@ -402,6 +402,70 @@ const CASES = [
     check('C26 removeAllDocs clears the chat, cancels embeds, keeps on decline', cleared && crumbOk && gc && kept, 'cleared=' + cleared + ' gc=' + gc + ' kept=' + kept)
   } },
 
+  { id: 'C27 tray collapse: summary line, persist, over-state actions kept', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const store = {}
+    sb.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v) } }
+    const el = { className: '', innerHTML: '' }
+    sb.document = { getElementById: id => (id === 'attach-tray' ? el : null) }
+    sb.esc = s => String(s)
+    sb.persist = async () => {}
+    const chat = { attachedFiles: [
+      { name: 'a.txt', textContent: 'x'.repeat(400) },
+      { name: 'b.txt', textContent: 'y'.repeat(400) },
+      { name: 'c.txt', textContent: 'z'.repeat(400) }
+    ], messages: [], docs: [] }
+    sb.curChat = () => chat
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    get('renderAttachTray')()
+    const expanded = el.innerHTML.includes('at-chip') && el.innerHTML.includes('remove all') &&
+      el.innerHTML.includes('▾') && !el.className.includes('min') &&
+      el.innerHTML.includes('class="at-lbl"') && el.innerHTML.includes('onclick="toggleTrayMin(event)"')
+    get('toggleTrayMin')(null)
+    const collapsed = el.className.includes('min') && el.innerHTML.includes('3 files attached') &&
+      !el.innerHTML.includes('at-chip') && !el.innerHTML.includes('remove all') &&
+      el.innerHTML.includes('at-meter') && el.innerHTML.includes('▸') && store.lcl_tray_min === '1'
+    const crumbOk = crumbs.some(c => c.k === 'attach_tray_min' && c.min === true)
+    // Over-budget while collapsed: the warning label + Embed action must stay visible.
+    chat.attachedFiles = [{ name: 'huge.txt', textContent: 'x'.repeat(900000) }]
+    get('renderAttachTray')()
+    const overMin = el.className.includes('over') && el.className.includes('min') &&
+      el.innerHTML.includes('Embed all for RAG') && el.innerHTML.includes('too large to send')
+    get('toggleTrayMin')(null)
+    const back = !el.className.includes('min') && el.innerHTML.includes('at-chip') && store.lcl_tray_min === '0'
+    check('C27 tray collapse: summary line, persist, over-state actions kept',
+      expanded && collapsed && crumbOk && overMin && back,
+      'expanded=' + expanded + ' collapsed=' + collapsed + ' overMin=' + overMin + ' back=' + back)
+  } },
+
+  { id: 'C28 settings spNav: single section on, persisted, legacy spTab alias', fn: async () => {
+    const S = src('80-ui.js')
+    const mNav = S.match(/function spNav\(sec\)\{[\s\S]*?\n\}/)
+    const mTab = S.match(/function spTab\(name\)\{.*\}/)
+    if (!mNav || !mTab) return check('C28 settings spNav', false, 'spNav/spTab not found in 80-ui.js')
+    const SECS = ['connection', 'embedding', 'rag', 'defaults', 'updates', 'account']
+    const node = sec => { const n = { dataset: { sec }, on: null }; n.classList = { toggle: (c, v) => { if (c === 'on') n.on = v } }; return n }
+    const secs = SECS.map(node), navs = SECS.map(node)
+    const store = {}
+    const ctx = vm.createContext({
+      document: { querySelectorAll: sel => (sel.indexOf('.sp-sec') >= 0 ? secs : navs) },
+      localStorage: { setItem: (k, v) => { store[k] = String(v) }, getItem: k => (k in store ? store[k] : null) }
+    })
+    vm.runInContext(mNav[0] + '\n' + mTab[0], ctx)
+    vm.runInContext('spNav("rag")', ctx)
+    const onSecs = secs.filter(s => s.on), onNavs = navs.filter(n => n.on)
+    const routed = onSecs.length === 1 && onSecs[0].dataset.sec === 'rag' &&
+      onNavs.length === 1 && onNavs[0].dataset.sec === 'rag'
+    const persisted = store.lcl_sp_sec === 'rag'
+    vm.runInContext('spTab("settings")', ctx)
+    const alias1 = store.lcl_sp_sec === 'defaults' && secs.filter(s => s.on)[0].dataset.sec === 'defaults'
+    vm.runInContext('spTab("models")', ctx)
+    const alias2 = store.lcl_sp_sec === 'connection'
+    check('C28 settings spNav: single section on, persisted, legacy spTab alias',
+      routed && persisted && alias1 && alias2,
+      'routed=' + routed + ' persisted=' + persisted + ' alias=' + (alias1 && alias2))
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
