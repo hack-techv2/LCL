@@ -554,6 +554,7 @@ async function queueFilesForPreview(files, target) {
 }
 
 function showFilePreview() {
+  const _ob = document.getElementById('fp-oversize'); if (_ob) _ob._crumbed = false
   document.getElementById('messages').style.display = 'none'
   document.getElementById('input-wrap').style.display = 'none'
   const panel = document.getElementById('file-preview')
@@ -564,11 +565,74 @@ function showFilePreview() {
 }
 
 function renderPreviewTabs() {
+  // One ROW per file (full name, char/token meta, per-file remove) - the old
+  // horizontally-scrolling tabs hid every file after the first with long names.
   const tabsEl = document.getElementById('fp-tabs')
-  tabsEl.innerHTML = previewQueue.map((f, i) => `
-    <div class="fp-tab ${i === previewTabIdx ? 'active' : ''}" onclick="selectPreviewTab(${i})">
-      ${esc(f.name)}
-    </div>`).join('')
+  const over = (typeof attachOversizeInfo === 'function') ? attachOversizeInfo(previewQueue).over : false
+  tabsEl.innerHTML = previewQueue.map((f, i) => {
+    const meta = over
+      ? '~' + Math.round(estTokens(f.extractedText || '') / 1000) + 'k tok'
+      : (f.extractedText || '').length.toLocaleString() + ' chars'
+    return `
+    <div class="fp-row ${i === previewTabIdx ? 'active' : ''}" onclick="selectPreviewTab(${i})">
+      <span class="fp-row-name">${esc(f.name)}</span>
+      <span class="fp-row-meta">${meta}</span>
+      <span class="fp-row-x" title="Remove this file" onclick="removePreviewFile(${i}, event)">\u2715</span>
+    </div>`
+  }).join('')
+  renderPreviewOversize()
+}
+
+// Remove ONE file from the preview queue (the row's remove button); empty queue = cancel.
+function removePreviewFile(i, event) {
+  if (event) event.stopPropagation()
+  if (typeof lclCrumb === 'function') lclCrumb('attach_preview_remove', { file: (previewQueue[i] || {}).name })
+  previewQueue.splice(i, 1)
+  if (!previewQueue.length) { cancelFilePreview(); return }
+  if (i < previewTabIdx) previewTabIdx--
+  if (previewTabIdx >= previewQueue.length) previewTabIdx = previewQueue.length - 1
+  selectPreviewTab(previewTabIdx)
+  updateFpHint()
+}
+
+// Oversize note + footer buttons: when the extracted text cannot fit inline,
+// offer "Embed for RAG instead" and relabel Confirm to "Attach anyway".
+function renderPreviewOversize() {
+  const box = document.getElementById('fp-oversize')
+  const embedBtn = document.getElementById('fp-embed-btn')
+  const confirmBtn = document.getElementById('fp-confirm-btn')
+  if (!box) return
+  const info = attachOversizeInfo(previewQueue)
+  const k = n => Math.round(n / 1000) + 'k'
+  if (info.over && previewQueue.length) {
+    box.classList.remove('hidden')
+    box.innerHTML = '<div class="fp-oversize-box"><strong style="color:var(--pin)">Too large to attach inline:</strong> ' +
+      (previewQueue.length > 1 ? ('these ' + previewQueue.length + ' files are') : 'this file is') + ' ~' + k(info.newEst) +
+      ' tokens' + (info.histEst > 2000 ? ' (+ ~' + k(info.histEst) + ' already in this chat\u2019s history \u2014 earlier attachments are re-sent every turn)' : '') + ' \u2014 over the ~' + k(info.ceil) + ' per-request limit. Embedding stores them once and retrieves only the relevant parts per question. Or remove files until it fits.</div>'
+    if (embedBtn) embedBtn.classList.remove('hidden')
+    if (confirmBtn) confirmBtn.textContent = 'Attach anyway'
+    if (typeof lclCrumb === 'function' && !box._crumbed) { box._crumbed = true; lclCrumb('attach_oversize_offered', { files: previewQueue.length, est: info.est, where: 'preview' }) }
+  } else {
+    box.classList.add('hidden')
+    if (embedBtn) embedBtn.classList.add('hidden')
+    if (confirmBtn) confirmBtn.innerHTML = 'Confirm &amp; attach'
+  }
+}
+
+// "Embed for RAG instead": reroute the already-extracted preview files through
+// the embed flow (no re-extraction) - RAG budgets them properly per question.
+async function confirmFilePreviewAsEmbed() {
+  const ta = document.getElementById('fp-textarea')
+  if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
+  const files = previewQueue.slice()
+  previewQueue = []
+  previewTarget = null
+  document.getElementById('file-preview').classList.add('hidden')
+  document.getElementById('messages').style.display = ''
+  document.getElementById('input-wrap').style.display = ''
+  document.getElementById('file-in').value = ''
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: files.length, where: 'preview' })
+  commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
 function selectPreviewTab(i) {
@@ -588,9 +652,11 @@ function updateFpHint() {
   const hint  = document.getElementById('fp-hint')
   if (!hint) return
   const f = previewQueue[previewTabIdx]
+  const info = (typeof attachOversizeInfo === 'function') ? attachOversizeInfo(previewQueue) : { over: false }
   let text = total > 1
-    ? `File ${previewTabIdx + 1} of ${total} — review each tab before confirming`
+    ? `File ${previewTabIdx + 1} of ${total} — review each row before confirming`
     : 'Review and edit the text above if needed'
+  if (info.over) text += ' · Total ~' + Math.round(info.est / 1000) + 'k tokens — limit ~' + Math.round(info.ceil / 1000) + 'k'
   if (f?.scanWarning) text += ' · Warning: ' + f.scanWarning
   if (f?.parseWarning) text += ' · Note: ' + f.parseWarning
   hint.textContent = text
