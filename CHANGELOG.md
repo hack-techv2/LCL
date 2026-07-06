@@ -3,6 +3,13 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — UI consistency pass + honest embedding states (alpha)
+
+Two batches, both demo-verified live before push. Version stays v0.67d.
+
+- **Sidebar-language sections in the embed panel**: SEARCH MODE / FILES as uppercase section labels (like PINNED / TODAY), box-in-box and the awkward divider removed; "+ other chats" toggle inline on the label row (Option A), caption appends "Includes other chats' files." when on; file rows restyled as chat-item-style cards (same border/radius/bg/hover as the sidebar). Fixed a light-theme override that was silently defeating doc-row styling; unified section-label metrics (`.sp-lbl`) and status-badge radii (8px → full round); preview header weight aligned.
+- **Honest embedding states** (from CL's "looks usable before it loads" report): the docs path hands off "Extracting n/N" → "Preparing to embed…" → "Embedding…" without flashing green; sending while docs are `pending`/`embedding` toasts "N files are still embedding — this answer won't use them yet" (`send_during_embed` crumb) since `buildPayload` only uses `ready` docs; the pending badge reads "waiting to embed…".
+
 ## 6 Jul 2026 — Embed panel streamlined + remove all (alpha)
 
 Per CL's mockup approval. Version stays v0.67d.
