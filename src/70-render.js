@@ -223,6 +223,7 @@ function renderMessages() {
     }
     el.innerHTML = ''
     el.appendChild(empty)
+    if (typeof renderAttachTray === 'function') renderAttachTray()
     return
   }
 
@@ -240,6 +241,7 @@ function renderMessages() {
   el.appendChild(inner)
   el.scrollTop = el.scrollHeight
   refreshTailActions()
+  if (typeof renderAttachTray === 'function') renderAttachTray()
 }
 
 function appendMsg(role, text, date, sources, fileNames, errored) {
