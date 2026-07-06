@@ -466,6 +466,28 @@ const CASES = [
       'routed=' + routed + ' persisted=' + persisted + ' alias=' + (alias1 && alias2))
   } },
 
+  { id: 'C29 split run carries the user instruction through map-reduce', fn: async () => {
+    const q = [okStream('EXTRACT-1'), okStream('EXTRACT-2'), okStream('ANSWER')]
+    const { get, sb } = mkCtx(q)
+    const bodies = []
+    sb.fetch = async (url, opts) => { bodies.push(String((opts && opts.body) || '')); if (!q.length) throw new Error('fetch queue empty'); const r = q.shift(); return typeof r === 'function' ? r() : r }
+    const ask = "Search the presenter's name in the document."
+    const out = await get('summariseText')(null, 'slides.html', 'w'.repeat(450000), ask, null, null, 0)
+    const partOk = bodies.length === 3 &&
+      bodies[0].includes('extract everything relevant') && bodies[0].includes("presenter's name") &&
+      bodies[1].includes('extract everything relevant') && bodies[1].includes("presenter's name")
+    const combineOk = bodies[2].includes('answer the original request') && bodies[2].includes("presenter's name") && bodies[2].includes('EXTRACT-1')
+    const sysOk = !bodies[0].includes('You are summarising') && bodies[0].includes('processing a document')
+    // A summarise-style ask keeps the original generic prompts:
+    const q2 = [okStream('S1'), okStream('S2'), okStream('SUM')]
+    const m2 = mkCtx(q2)
+    const bodies2 = []
+    m2.sb.fetch = async (url, opts) => { bodies2.push(String((opts && opts.body) || '')); return q2.shift() }
+    await m2.get('summariseText')(null, 'big.html', 'w'.repeat(450000), 'Summarise this document.', null, null, 0)
+    const genericOk = bodies2.length === 3 && bodies2[0].includes('Summarise this part of a document.') && bodies2[2].includes('one cohesive summary')
+    check('C29 split run carries the user instruction through map-reduce', out === 'ANSWER' && partOk && combineOk && sysOk && genericOk, 'part=' + partOk + ' combine=' + combineOk + ' sys=' + sysOk + ' generic=' + genericOk)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
