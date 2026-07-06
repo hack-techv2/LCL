@@ -405,11 +405,14 @@ function renderDocPanel() {
   // Always-visible caption: teaches the ACTIVE mode at the moment of choice
   // (hover tooltips keep the long form; the old intro paragraph is gone).
   const _capEl = document.getElementById('dp-mode-cap')
-  if (_capEl) _capEl.textContent = _mode === 'specific'
-    ? 'Always searches for relevant passages only — best for many or large files.'
-    : _mode === 'whole'
-      ? 'Sends full documents when they fit the window — best for summaries and reviews.'
-      : 'Finds the most relevant passages; small files are sent whole.'
+  if (_capEl) {
+    const _past = (typeof chatUsesPastEmbeddings === 'function') && chatUsesPastEmbeddings(chat)
+    _capEl.textContent = (_mode === 'specific'
+      ? 'Always searches for relevant passages only — best for many or large files.'
+      : _mode === 'whole'
+        ? 'Sends full documents when they fit the window — best for summaries and reviews.'
+        : 'Finds the most relevant passages; small files are sent whole.') + (_past ? ' Includes other chats’ files.' : '')
+  }
   const docs = chat?.docs||[]
   const _cnt = document.getElementById('dp-count')
   if (_cnt) {
@@ -456,7 +459,7 @@ function renderDocPanel() {
       ]))
     } else {
       const stCls   = status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'pending'
-      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status) ]
+      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status === 'pending' ? 'waiting to embed…' : status) ]
       if (status === 'error') {
         stKids.push(mkEl('button',
           { class: 'doc-retry', title: d.error || 'Retry embedding', onclick: (e) => retryEmbed(d.id, e) },
