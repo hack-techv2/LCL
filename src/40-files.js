@@ -817,6 +817,29 @@ async function clearTrayFiles() {
   renderAttachTray()
 }
 
+// Remove every embedded file from THIS chat (confirm first), then GC orphaned
+// vectors. Docs referenced by other chats keep their entries + vectors there.
+async function removeAllDocs() {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  const docs = (chat && chat.docs) || []
+  if (!docs.length) return
+  const n = docs.length
+  if (typeof confirmDialog === 'function') {
+    const ok = await confirmDialog({ title: 'Remove all embedded files?', message: 'Remove all ' + n + ' file' + (n > 1 ? 's' : '') + ' from this chat and prune their embeddings from the local cache? Files shared with other chats are kept there.', okText: 'Remove all', cancelText: 'Cancel' })
+    if (!ok) return
+  }
+  if (typeof lclCrumb === 'function') lclCrumb('docs_remove_all', { files: n })
+  for (const d of docs) d._cancelled = true   // stop any in-flight embedding
+  chat.docs = []
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
+  renderDocPanel(); updateDocsBtn()
+  toast('Removed ' + n + ' file' + (n > 1 ? 's' : '') + ' from RAG memory', 'ok')
+  ;(async () => {
+    try { await persist() } catch (e) { console.warn('[removeAllDocs] persist', e.message) }
+    try { await gcEmbedCache() } catch (e) { console.warn('[removeAllDocs] gc', e.message) }
+  })()
+}
+
 function embedTrayFiles() {
   const chat = (typeof curChat === 'function') ? curChat() : null
   if (!chat || !Array.isArray(chat.attachedFiles) || !chat.attachedFiles.length) return
