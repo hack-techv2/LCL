@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Split runs answer the QUESTION, not just summarise (alpha)
+
+From CL's first field run of pacing v2 (which held up): he asked a whole-docs run to "search the presenter's name" and got summaries back. Cause: the user's text reached the top level, but the map-reduce SPLIT path hardcoded 'Summarise this part…' / 'Combine these part-summaries…', so any doc big enough to split dropped the question entirely. Version stays v0.67d.
+
+- **Instruction threading**: non-summary asks now ride through both levels — map = "extract everything relevant to the request below… If nothing is relevant, reply exactly: Nothing relevant in this part." + the ask verbatim; reduce = "Using ONLY these extracts, answer the original request…". Cheaper AND correct for needle-in-haystack asks (irrelevant parts return one line, not a paragraph of summary).
+- **`isSummariseAsk()` gate**: empty or summarise-style asks (summary/overview/tl;dr/key points) keep the original generic prompts — pure "summarise each" behaviour is unchanged.
+- **Honest wording**: system line becomes "processing a document to answer the user's request" for non-summary asks; UI says "Processing i/N", "**doc** - response (i of N)", "processing part x of y", "Combining N part-extracts" instead of summary-speak; embed-wait line neutralised.
+- Test **C29** (part + combine prompts carry the ask, system line switches, generic path preserved — real fetch bodies captured); C10 guards the generic path. Suites **35/35 + 29/29**. Verified live in #demo: 2-doc split run renders "response (1 of 2)" end-to-end.
+
 ## 7 Jul 2026 — Attachment tray: height cap + collapse to a summary line (alpha)
 
 Per CL: a big working set shouldn't eat the chat. Version stays v0.67d.
