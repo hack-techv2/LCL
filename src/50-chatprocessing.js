@@ -134,6 +134,17 @@ function attachOversizeInfo(queue, chat) {
   return { est: est + hist, newEst: est, histEst: hist, ceil: ceil, budget: budget, over: (est + hist) > budget }
 }
 
+// Working-set tray -> payload: the chat's CURRENT attached files are injected
+// ONCE per request into the system context, never baked into message history.
+// Removing a file from the tray immediately shrinks every future send.
+function trayContextBlock(chat) {
+  const files = ((chat && chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
+  if (!files.length) return ''
+  return files.map(function (a) {
+    return '<file name="' + String(a.name || 'file').replace(/"/g, "'") + '">\n' + a.textContent + '\n</file>'
+  }).join('\n\n')
+}
+
 // Send-time backstop for oversized ATTACHMENTS (docs get offerDocSplit; before
 // this, attachments got useless "switch Search mode" advice - 6 Jul log).
 function offerAttachEmbed(atts, est, ceil) {
@@ -149,12 +160,14 @@ function offerAttachEmbed(atts, est, ceil) {
     mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () {
       try { bubble.remove() } catch (e) {}
       if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: atts.length, where: 'send' })
+      const _c = (typeof curChat === 'function') ? curChat() : null
+      if (_c && Array.isArray(_c.attachedFiles) && _c.attachedFiles.length && typeof embedTrayFiles === 'function') { embedTrayFiles(); return }
       const files = atts.map(function (a) { return { name: a.name, size: (a.textContent || '').length, extractedText: a.textContent } })
       attachments = []
       renderChips()
       commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
     } }, 'Embed attached files instead'),
-    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Keep as attachments')
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Dismiss')
   ]))
 }
 
@@ -234,6 +247,10 @@ async function buildPayload(chat, queryText) {
     }).join('\n\n')
     sys = 'Use the following document excerpts to answer. If the answer is not in them, say so. Prefer cited excerpts over general knowledge, and mention when the provided excerpts are insufficient.\n\n'+ctx+(sys?'\n\n'+sys:'')
   }
+  const _att = trayContextBlock(chat)
+  if (_att) {
+    sys = 'The user has ATTACHED these working files (their current set - it can change between turns). Use them to answer:\n\n' + _att + (sys ? '\n\n' + sys : '')
+  }
   const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
   const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
   return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
@@ -273,8 +290,21 @@ async function send() {
     chat.title = text.slice(0,42)+(text.length>42?'...':'')
   }
 
-  const sentFileNames = attachments.map(a=>a.name)
-  const sentAttachments = attachments.slice()
+  const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
+  const sentFileNames = trayFiles.length ? trayFiles.map(function (a) { return a.name }) : attachments.map(a=>a.name)
+  const sentAttachments = attachments.slice()   // legacy pre-tray composer chips
+  // Tray gate: an over-budget working set never leaves the client - the tray
+  // meter is already amber with an "Embed all for RAG" button at this point.
+  if (trayFiles.length) {
+    const _ti = attachOversizeInfo(trayFiles, chat)
+    if (_ti.over) {
+      if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_blocked', { files: trayFiles.length, est: _ti.est, where: 'tray' })
+      toast('Attached files are ~' + Math.round(_ti.est / 1000) + 'k tokens — over the send limit. Remove some from the tray or use Embed all for RAG.', 'err')
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
+  }
   const content = buildContent(text)
   chat.messages.push({role:'user',content,ts:Date.now(),fileNames:sentFileNames})
   chat.updatedAt = Date.now()
@@ -305,16 +335,15 @@ async function send() {
   const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const _ceil = Math.min(_ctx || Infinity, _rateCap)
   if (_estTok > _ceil) {
-    if (sentAttachments.length) {
+    if (trayFiles.length || sentAttachments.length) {
       // Attachments (not docs) blew the budget: undo the send, restore the
-      // composer + chips so nothing is lost, and offer to embed instead.
+      // composer so nothing is lost, and offer to embed instead.
       chat.messages.pop()
       chat.updatedAt = Date.now()
       renderMessages()
-      attachments = sentAttachments
-      renderChips()
+      if (sentAttachments.length) { attachments = sentAttachments; renderChips() }
       input.value = text; autoResize(input)
-      offerAttachEmbed(sentAttachments, _estTok, _ceil)
+      offerAttachEmbed((trayFiles.length ? trayFiles : sentAttachments).slice(), _estTok, _ceil)
       busy = false
       if (typeof updateSendBtn === 'function') updateSendBtn()
       return
@@ -399,7 +428,15 @@ async function runStream(chat, payload, ragSources) {
       // A 429 that reports a FULL remaining budget means the request itself is
       // bigger than the token cap — waiting can't help, so don't auto-retry (this
       // was the infinite "retry in 60s" loop on oversized whole-doc turns).
-      if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) > (r.limit429 || 200000)) {
+      const _est429 = Math.ceil(JSON.stringify(payload).length / 4)
+      const _tooBig429 = _est429 > (r.limit429 || 200000) ||
+        (r.remaining429 != null && r.remaining429 >= (r.limit429 || 200000) * 0.95)   // near-FULL window still rejected: waiting can NEVER help (6 Jul retry loop)
+      if (r.kind === 'ratelimit' && _tooBig429) {
+        if ((chat.attachedFiles || []).length && typeof offerAttachEmbed === 'function') {
+          offerAttachEmbed(chat.attachedFiles.slice(), _est429, r.limit429 || 200000)
+          setHealth('err', 'Request too large')
+          return
+        }
         const note = 'Error 429: this request is larger than the model\u2019s token limit, so waiting won\u2019t help. Reduce the documents in context (switch Search mode to Auto or Specific, or ask about fewer files) and try again.'
         chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
         appendMsg('ai', note, null, ragSources, null, true)
