@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Attachment tray: height cap + collapse to a summary line (alpha)
+
+Per CL: a big working set shouldn't eat the chat. Version stays v0.67d.
+
+- **30vh cap**: the chips area (`.at-chips`) is capped at 30% of the viewport and scrolls internally — the tray can never push the composer around.
+- **Collapse chevron** (▾/▸) in the tray header — the header label ("Attached files — …" / "N files attached") is clickable too: collapsed = one "N files attached" summary line. The token meter and, when over budget, the amber "too large to send" label + **Embed all for RAG** action stay visible collapsed — warnings can't be hidden. remove-all and chips return on expand. State is a global preference (`lcl_tray_min`, localStorage) so it sticks across chats and reloads; `attach_tray_min` crumb on toggle.
+- **Demo seed**: new "GovTech maia - working files" chat ships a 7-file working set so the tray, cap, and collapse are exercisable in `#demo` (drives U26 and future client cases). The floating demo buttons (Reset demo / + Many chats) moved from bottom-right to top-right under the Embed pill so they never cover the tray.
+- Tests **C27** (collapse render/persist/over-state) + **C28** (settings `spNav` routing/persistence/`spTab` alias — companion to the settings revamp below); suites now 35/35 + 28/28. U26 added to UI checks. Verified live in #demo: collapse ↔ expand, reload persistence, meter intact.
+
 ## 7 Jul 2026 — Settings revamp: grouped left-nav + readable type scale (alpha)
 
 Per CL's mockup rounds (nav groups, captions, then option-A labels + sizing). Version stays v0.67d.
