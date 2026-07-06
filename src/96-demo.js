@@ -174,6 +174,22 @@ function maybeDemo() {
     { role: 'assistant', content: 'Three action items: confirm in-scope IP ranges, get a test window sign-off, and set up a shared evidence folder before kickoff.' }
   ])
 
+  // Yesterday — attachment-tray showcase: a 7-file working set, enough chips to
+  // exercise the 30vh cap and the collapse chevron (open this chat to see it).
+  D.chats['demo_tray'] = demoChat('demo_tray', 'GovTech maia - working files', m0 - 10 * hr, false, [
+    { role: 'user', content: 'Keep these reference files handy while we go through the review.' },
+    { role: 'assistant', content: 'Noted — the working set below is sent with every message. Remove files you’re done with, or collapse the tray with the ▾ chevron if it takes up too much space.' }
+  ])
+  D.chats['demo_tray'].attachedFiles = [
+    { name: 'network-diagram-notes.txt', size: 2400, textContent: 'Core: two Cat9k in VSS. DMZ behind FTD 2130. Management VLAN 99 flat across sites — flag this.' },
+    { name: 'asset-inventory.csv', size: 5200, textContent: 'host,ip,os,owner\napp01,10.1.2.11,RHEL9,team-a\napp02,10.1.2.12,RHEL9,team-a\ndb01,10.1.3.21,Win2022,team-b' },
+    { name: 'firewall-rules-export.csv', size: 8100, textContent: 'id,src,dst,port,action\n' + Array.from({ length: 220 }, (_, i) => (120 + i) + ',10.9.' + (i % 40) + '.0/24,10.1.3.' + (20 + i % 9) + ',' + (1024 + i * 7) + ',allow').join('\n') + '\n340,10.9.0.0/16,any,any,allow — review: overly broad' },
+    { name: 'previous-audit-findings.md', size: 4700, textContent: '## 2025 audit\n- F1 shared local admin creds (open)\n- F2 no MFA on jump host (closed)\n- F3 syslog retention 7d only (open)' },
+    { name: 'change-window-email.txt', size: 1300, textContent: 'Approved window: Sat 0200-0600. Rollback owner: NOC. Freeze applies to prod VLANs only.' },
+    { name: 'vlan-plan.txt', size: 1900, textContent: 'VLAN 10 users, 20 servers, 30 voice, 99 mgmt. Proposal: split mgmt per site, ACL between 20 and 99.' },
+    { name: 'meeting-minutes-jun.md', size: 3600, textContent: '## 12 Jun sync\nAgreed: pilot NAC on level 3, defer IPv6, re-scan after firewall cleanup. Next sync 26 Jun.' }
+  ]
+
   D.chats['demo_active'].skillId = 'pentest-report'
   D.chats['demo_active'].docs = [{
     id: 'demo_doc1', name: 'quarterly-report.pdf', size: 184320,
