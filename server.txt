@@ -2306,14 +2306,23 @@ const server = http.createServer((req, res) => {
     return
   }
 
-  // Reflect the loopback origin only; no wildcard CORS.
+  // Reflect only safe local origins; no wildcard CORS (/api/data holds local
+  // chat history + settings). Origin 'null' is what file:// pages send - required
+  // for the double-click-index.html workflow (v0.67e proxy-origin shim).
   const origin = req.headers.origin
-  if (origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin)) {
+  const allowOrigin = origin === 'null' ||
+    (origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin))
+  if (allowOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Vary', 'Origin')
   }
+  // Chrome Private Network Access preflight: another local origin -> 127.0.0.1.
+  // Safe to allow only because the localhost host-guard above already ran.
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true')
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-lcl-demo')
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204)
