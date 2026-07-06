@@ -103,6 +103,13 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   embeddings" ON → chat B retrieves from A's docs; toggle OFF → only B's own docs.
 - **U24 delete prune** — delete a chat that had docs → confirm dialog → "Deleted chat
   and pruned embeddings" toast; embed cache GC'd.
+- **U25 settings revamp** — open Settings: two-pane modal with grouped nav (MODEL /
+  SYSTEM are non-clickable headings — 11.5px uppercase with a divider underline;
+  items 13.5px, active = orange tint). Click through all six sections: each shows a
+  caption line under its header; the chosen section persists across close/reopen
+  (`lcl_sp_sec`). Defaults → MAX TOKENS value pill is 14px in a 30px pill, slider
+  ticks (64/32768) 12px; Account → Disconnect reads at 13.5px; footer shows
+  "Contributors · LCL · Melvin Yung · Ko Zheng Teng". Check both themes.
 
 ### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
 - Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
