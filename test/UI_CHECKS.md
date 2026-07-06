@@ -152,3 +152,7 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
       "Attach anyway"). Send-time backstop: oversized attachments restore the
       composer and offer "Embed attached files instead". Sent chips now expand
       on click to show each file's text.
+- [ ] Attachment tray: attach files → blue tray above composer (aligned with it),
+      per-file ~tok + ✕, "+ add files", live meter; survives sends and reloads; user
+      messages carry name-tags only. Oversize → amber + "Embed all for RAG", send
+      blocked with toast; preview hides "Attach anyway" when hopeless (reactive).
