@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — Attachment overhaul: row preview + per-file remove, expandable chips, oversize→embed flow (alpha)
+
+Three fixes from CL's multi-file attach reports (6 Jul logs). Version stays v0.67d.
+
+- **Preview shows every file** — the horizontally-scrolling tabs hid all but the first long filename ("only shows text for first file"). Now ONE ROW PER FILE (full name, char/token meta), click to view/edit, ✕ removes a single file (`attach_preview_remove` crumb). List scrolls only past ~8 files.
+- **Sent chips expand again** — `buildContent` emitted `--- name ---` content-block arrays, but the renderer's expandable-chip parser expects `<file name="...">` blocks (only demo seeds matched). Now a single string in the renderer's format: every sent chip click-expands to its file text.
+- **Oversize attachments get a real exit** — attachments bypass RAG budgeting and previously dead-ended at "switch Search mode" advice (est 238k/278k/386k blocks in the log). Now: (a) the preview warns when the batch can't fit inline and offers **Embed for RAG instead** (reuses extracted text; Confirm becomes "Attach anyway"); (b) the send guard restores the composer + chips and offers the same conversion (`attach_oversize_offered/converted` crumbs). The check is **history-aware**: earlier batches ride along in every payload (log: est climbed 39k→386k across batches), so batch N is warned about batches 1..N-1 too.
+- Tests C20 (chip format incl. quote-sanitised names) + C21 (budget math incl. history stacking); suites 35/35 + 21/21. Verified live in #demo end-to-end: rows → remove → attach → expandable chips, and 240k-token file → oversize note → Embed for RAG instead → budget dialog → 1,500 chunks ready.
+
 ## 6 Jul 2026 — Proxy-origin shim: index.html works from file:// (alpha)
 
 From the v0.67e review (colleague's stable-based build): people double-click `index.html` and it fails on CORS because relative `/api/...` paths resolve against `file://`. Ported the upload's shim + server deltas. Version stays v0.67d.
