@@ -402,7 +402,23 @@ function renderDocPanel() {
   if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
   const _mode = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
   document.querySelectorAll('#dp-search-mode .dp-seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === _mode))
+  // Always-visible caption: teaches the ACTIVE mode at the moment of choice
+  // (hover tooltips keep the long form; the old intro paragraph is gone).
+  const _capEl = document.getElementById('dp-mode-cap')
+  if (_capEl) _capEl.textContent = _mode === 'specific'
+    ? 'Always searches for relevant passages only — best for many or large files.'
+    : _mode === 'whole'
+      ? 'Sends full documents when they fit the window — best for summaries and reviews.'
+      : 'Finds the most relevant passages; small files are sent whole.'
   const docs = chat?.docs||[]
+  const _cnt = document.getElementById('dp-count')
+  if (_cnt) {
+    const _tot = docs.reduce((n, d) => n + (d.size || 0), 0)
+    _cnt.textContent = docs.length ? String(docs.length) : ''
+    _cnt.title = docs.length ? (docs.length + ' file' + (docs.length > 1 ? 's' : '') + ' · ' + fmtSz(_tot)) : ''
+  }
+  const _clr = document.getElementById('dp-clear')
+  if (_clr) _clr.classList.toggle('hidden', docs.length < 2)
   el.innerHTML = ''
   if (!docs.length) {
     el.append(mkEl('div', { class: 'dp-empty', html: 'No files attached.<br>Upload files to use as context for this chat.' }))
@@ -430,7 +446,7 @@ function renderDocPanel() {
       })
       const lbl = pace
         ? 'Rate limit — resuming in ' + (p.waitSec || 0) + 's'
-        : (p.batchTotal ? 'Embedding — batch ' + p.batchDone + '/' + p.batchTotal : 'Embedding…')
+        : (total ? 'Embedding ' + pct + '%' : 'Embedding…')
       infKids.push(mkEl('div', { class: 'doc-prog' }, [
         mkEl('div', { class: 'doc-prog-track' }, [fill]),
         mkEl('div', { class: 'doc-prog-meta' }, [
