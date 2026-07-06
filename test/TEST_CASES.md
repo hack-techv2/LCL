@@ -123,3 +123,5 @@ Preview rows/removal + the embed-instead offers are visual: see UI_CHECKS.
 C22 `trayContextBlock` builds the per-request working-set block (quote-safe, empty-safe).
 C23 near-full-window 429 in `runStream` → embed offer, NO retry loop. C24 tray remove +
 embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
+
+### C25 (6 Jul) — `clearTrayFiles` empties the working set after confirm; declined confirm keeps files.
