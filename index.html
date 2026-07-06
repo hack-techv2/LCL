@@ -544,9 +544,9 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .skill-row-title{font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .skill-row-meta{font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:1px}
 .skill-row .tb-btn{padding:4px 9px}
-#demo-reset{position:fixed;right:24px;bottom:104px;z-index:120;background:var(--ac);color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:.9;transition:all .15s}
+#demo-reset{position:fixed;right:16px;top:58px;z-index:120;background:var(--ac);color:#fff;border:none;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:.9;transition:all .15s}
 #demo-reset:hover{opacity:1;transform:translateY(-1px)}
-#demo-more{position:fixed;right:24px;bottom:150px;z-index:120;background:var(--bg3);color:var(--tx2);border:1px solid var(--bdr2);border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:.9;transition:all .15s}
+#demo-more{position:fixed;right:16px;top:100px;z-index:120;background:var(--bg3);color:var(--tx2);border:1px solid var(--bdr2);border-radius:20px;padding:8px 14px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:.9;transition:all .15s}
 #demo-more:hover{opacity:1;color:var(--tx);border-color:var(--ac);transform:translateY(-1px)}
 .ver-alpha{font-size:9px;font-weight:400;font-family:var(--mono);color:#fff;background:var(--red);border:1px solid var(--red);border-radius:4px;padding:2px 6px;flex-shrink:0;white-space:nowrap;line-height:1.4;cursor:pointer;min-width:48px;text-align:center}
 .btn-s{padding:8px 16px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s}
@@ -646,7 +646,7 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 #attach-tray.over .at-head{color:var(--pin)}
 .at-meter{font-family:var(--mono);font-size:10px;font-weight:400;background:var(--bg2);border-radius:999px;padding:2px 10px;color:var(--info)}
 #attach-tray.over .at-meter{color:var(--pin);font-weight:600}
-.at-chips{display:flex;flex-wrap:wrap;gap:6px}
+.at-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:30vh;overflow-y:auto}
 .at-chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--info);background:var(--bg2);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);border-radius:999px;padding:3px 10px}
 #attach-tray.over .at-chip{color:var(--pin);border-color:rgba(240,165,0,.45)}
 .at-tok{opacity:.65}
@@ -655,6 +655,10 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .at-add{display:inline-flex;align-items:center;font-size:11px;color:var(--info);border:1px dashed color-mix(in srgb, var(--info) 50%, transparent);border-radius:999px;padding:3px 10px;cursor:pointer}
 .at-embed{font-size:11px;padding:3px 12px}
 .at-clear{font-size:10px;font-weight:400;color:var(--tx2);cursor:pointer;text-decoration:underline dotted;margin-right:2px}
+.at-lbl{cursor:pointer;user-select:none}
+.at-min{cursor:pointer;font-weight:700;font-size:13px;line-height:1;padding:0 4px;user-select:none}
+.at-min:hover{color:var(--tx)}
+#attach-tray.min .at-head{margin-bottom:0}
 .at-clear:hover{color:#e05050}
 .dp-count{font-family:var(--mono);font-size:10px;color:var(--ac-tx);background:var(--acbg);border-radius:999px;padding:1px 7px;flex-shrink:0}
 .dp-upload-sm{width:20px;height:20px;border:1px solid var(--bdr2);color:var(--ac);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;margin:0 2px;flex-shrink:0}
@@ -4107,6 +4111,19 @@ function commitAttachments(files) {
   renderAttachTray()
 }
 
+// Collapsed state is a global preference (localStorage) so it sticks across
+// chats and reloads. Collapsed = one summary line; the token meter and the
+// over-budget "Embed all" action stay visible so warnings can't be hidden.
+function trayMin() { try { return localStorage.getItem('lcl_tray_min') === '1' } catch (e) { return false } }
+
+function toggleTrayMin(event) {
+  if (event && event.stopPropagation) event.stopPropagation()
+  const min = !trayMin()
+  try { localStorage.setItem('lcl_tray_min', min ? '1' : '0') } catch (e) {}
+  if (typeof lclCrumb === 'function') lclCrumb('attach_tray_min', { min: min })
+  renderAttachTray()
+}
+
 function renderAttachTray() {
   const el = document.getElementById('attach-tray')
   if (!el) return
@@ -4115,23 +4132,28 @@ function renderAttachTray() {
   if (!files.length) { el.className = 'hidden'; el.innerHTML = ''; return }
   const info = attachOversizeInfo(files, chat)
   const k = function (n) { return Math.round(n / 1000) + 'k' }
-  el.className = info.over ? 'over' : ''
-  const chips = files.map(function (a, i) {
+  const min = trayMin()
+  el.className = ((info.over ? 'over' : '') + (min ? ' min' : '')).trim()
+  const label = min
+    ? files.length + ' file' + (files.length > 1 ? 's' : '') + ' attached' + (info.over ? ' \u2014 too large to send' : '')
+    : (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message')
+  const chips = min ? '' : files.map(function (a, i) {
     return '<span class="at-chip">' + esc(a.name) +
       ' <span class="at-tok">~' + k(estTokens(a.textContent || '')) + '</span>' +
       '<span class="at-x" title="Remove from the working set" onclick="removeTrayFile(' + i + ', event)">\u2715</span></span>'
   }).join('')
   el.innerHTML =
     '<div class="at-head">' +
-      '<span>' + (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message') + '</span>' +
+      '<span class="at-lbl" title="' + (min ? 'Expand attached files' : 'Collapse attached files') + '" onclick="toggleTrayMin(event)">' + label + '</span>' +
       '<span style="flex:1"></span>' +
-      (files.length > 1 ? '<span class="at-clear" title="Remove all attached files" onclick="clearTrayFiles()">remove all</span>' : '') +
+      (!min && files.length > 1 ? '<span class="at-clear" title="Remove all attached files" onclick="clearTrayFiles()">remove all</span>' : '') +
       '<span class="at-meter">~' + k(info.est) + ' / ' + k(info.budget) + ' tokens</span>' +
       (info.over ? '<button class="btn-s at-embed" onclick="embedTrayFiles()">Embed all for RAG</button>' : '') +
+      '<span class="at-min" title="' + (min ? 'Expand attached files' : 'Collapse attached files') + '" onclick="toggleTrayMin(event)">' + (min ? '\u25b8' : '\u25be') + '</span>' +
     '</div>' +
-    '<div class="at-chips">' + chips +
+    (min ? '' : '<div class="at-chips">' + chips +
       '<span class="at-add" onclick="document.getElementById(&quot;file-in&quot;).click()">+ add files</span>' +
-    '</div>'
+    '</div>')
   if (info.over && typeof lclCrumb === 'function' && !el._overCrumbed) { el._overCrumbed = true; lclCrumb('attach_oversize_offered', { files: files.length, est: info.est, where: 'tray' }) }
   if (!info.over) el._overCrumbed = false
 }
@@ -7647,6 +7669,22 @@ function maybeDemo() {
     { role: 'user', content: 'Summarise the scoping call action items.' },
     { role: 'assistant', content: 'Three action items: confirm in-scope IP ranges, get a test window sign-off, and set up a shared evidence folder before kickoff.' }
   ])
+
+  // Yesterday — attachment-tray showcase: a 7-file working set, enough chips to
+  // exercise the 30vh cap and the collapse chevron (open this chat to see it).
+  D.chats['demo_tray'] = demoChat('demo_tray', 'GovTech maia - working files', m0 - 10 * hr, false, [
+    { role: 'user', content: 'Keep these reference files handy while we go through the review.' },
+    { role: 'assistant', content: 'Noted — the working set below is sent with every message. Remove files you’re done with, or collapse the tray with the ▾ chevron if it takes up too much space.' }
+  ])
+  D.chats['demo_tray'].attachedFiles = [
+    { name: 'network-diagram-notes.txt', size: 2400, textContent: 'Core: two Cat9k in VSS. DMZ behind FTD 2130. Management VLAN 99 flat across sites — flag this.' },
+    { name: 'asset-inventory.csv', size: 5200, textContent: 'host,ip,os,owner\napp01,10.1.2.11,RHEL9,team-a\napp02,10.1.2.12,RHEL9,team-a\ndb01,10.1.3.21,Win2022,team-b' },
+    { name: 'firewall-rules-export.csv', size: 8100, textContent: 'id,src,dst,port,action\n' + Array.from({ length: 220 }, (_, i) => (120 + i) + ',10.9.' + (i % 40) + '.0/24,10.1.3.' + (20 + i % 9) + ',' + (1024 + i * 7) + ',allow').join('\n') + '\n340,10.9.0.0/16,any,any,allow — review: overly broad' },
+    { name: 'previous-audit-findings.md', size: 4700, textContent: '## 2025 audit\n- F1 shared local admin creds (open)\n- F2 no MFA on jump host (closed)\n- F3 syslog retention 7d only (open)' },
+    { name: 'change-window-email.txt', size: 1300, textContent: 'Approved window: Sat 0200-0600. Rollback owner: NOC. Freeze applies to prod VLANs only.' },
+    { name: 'vlan-plan.txt', size: 1900, textContent: 'VLAN 10 users, 20 servers, 30 voice, 99 mgmt. Proposal: split mgmt per site, ACL between 20 and 99.' },
+    { name: 'meeting-minutes-jun.md', size: 3600, textContent: '## 12 Jun sync\nAgreed: pilot NAC on level 3, defer IPv6, re-scan after firewall cleanup. Next sync 26 Jun.' }
+  ]
 
   D.chats['demo_active'].skillId = 'pentest-report'
   D.chats['demo_active'].docs = [{
