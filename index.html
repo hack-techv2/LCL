@@ -350,7 +350,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 /* Doc panel */
 #doc-panel{width:272px;border-left:1px solid var(--bdr);background:var(--bg2);display:flex;flex-direction:column;flex-shrink:0;position:relative}
 #doc-panel.hidden{display:none}
-.dp-hd{padding:13px 15px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between}
+.dp-hd{padding:11px 12px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:6px;white-space:nowrap}
 .dp-title{font-size:13px;font-weight:500}
 .dp-close{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx3);font-size:13px;transition:all .12s;background:none;border:none}
 .dp-close:hover{background:var(--bg3);color:var(--tx)}
@@ -358,14 +358,16 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .dp-body::-webkit-scrollbar{width:3px}
 .dp-body::-webkit-scrollbar-thumb{background:var(--ac);border-radius:2px}
 .dp-body::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
-.doc-card{display:flex;align-items:flex-start;gap:8px;padding:10px;border-radius:var(--r);border:1px solid var(--bdr);background:var(--bg3);margin-bottom:7px;transition:border-color .12s}
+.doc-card{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border-radius:var(--r);border:1px solid transparent;background:transparent;margin-bottom:2px;transition:border-color .12s}
+.doc-card:nth-child(even){background:var(--bg3)}
 .doc-card:hover{border-color:var(--bdr2)}
-.doc-ext{width:32px;height:32px;border-radius:6px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;color:var(--tx2);font-family:var(--mono)}
+.doc-card:hover{border-color:var(--bdr2)}
+.doc-ext{min-width:30px;height:18px;padding:0 4px;border-radius:4px;background:var(--infobg);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex-shrink:0;color:var(--info);font-family:var(--mono);margin-top:1px}
 .doc-inf{flex:1;min-width:0}
-.doc-name{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-name{font-size:11.5px;font-weight:500;color:var(--info);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .doc-sz{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:2px}
 .doc-st{font-size:10px;font-family:var(--mono);margin-top:3px;display:inline-block;padding:2px 7px;border-radius:8px}
-.doc-st.ready{background:rgba(232,97,10,.12);color:var(--ac-tx)}
+.doc-st.ready{background:rgba(99,153,34,.14);color:#3B6D11}
 .doc-st.pending{background:rgba(255,200,0,.1);color:var(--pin-tx)}
 .doc-st.error{background:var(--redbg);color:var(--red)}
 .doc-del{font-size:12px;color:var(--tx3);cursor:pointer;padding:2px 4px;border-radius:3px;transition:all .12s;background:none;border:none;flex-shrink:0}
@@ -656,6 +658,11 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .at-embed{font-size:11px;padding:3px 12px}
 .at-clear{font-size:10px;font-weight:400;color:var(--tx2);cursor:pointer;text-decoration:underline dotted;margin-right:2px}
 .at-clear:hover{color:#e05050}
+.dp-count{font-family:var(--mono);font-size:10px;color:var(--info);background:var(--infobg);border-radius:999px;padding:1px 7px;flex-shrink:0}
+.dp-upload-sm{width:20px;height:20px;border:1px solid var(--bdr2);color:var(--ac);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;margin:0 2px;flex-shrink:0}
+.dp-upload-sm:hover{border-color:var(--ac)}
+.dp-mode-cap{font-size:10.5px;color:var(--tx3);line-height:1.5;margin:6px 2px 2px}
+.dp-foot{padding:8px 12px;border-top:1px solid var(--bdr);font-size:10px;color:var(--tx3);text-align:center;line-height:1.5}
 .fp-oversize-box{background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.6}
 .fp-body{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px 6px}
 .fp-label{font-size:11px;color:var(--info);font-weight:600;font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
@@ -1066,14 +1073,18 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <!-- Doc panel -->
     <div id="doc-panel" class="hidden">
       <div class="dp-hd">
-        <div class="dp-title">Chat Embeddings</div>
+        <div class="dp-title">Embedded files</div>
+        <span class="dp-count" id="dp-count"></span>
+        <span style="flex:1"></span>
+        <span class="at-clear hidden" id="dp-clear" onclick="removeAllDocs()" title="Remove all embedded files from this chat and prune their vectors">remove all</span>
+        <label class="dp-upload-sm" title="Upload files to embed as RAG context for this chat">+
+          <input type="file" id="doc-file-in" style="display:none" multiple onchange="uploadDocs(this.files)">
+        </label>
         <button class="dp-close" onclick="toggleDP()" title="Close panel">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
         </button>
       </div>
-      <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
-      </div>
+
       <div id="rag-info" class="rag-info hidden">
         <div class="rag-info-hd"><span>RAG — retrieval-augmented generation</span><button type="button" class="rag-info-x" onclick="toggleRagInfo(event)" title="Close">&times;</button></div>
         <p>The AI answers using your uploaded files, not just its general knowledge. How much of a file it draws on is set by <b>Search mode</b>:</p>
@@ -1084,13 +1095,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         </ul>
         <p><b>Also search other chats' embedded files</b> widens the search to files you embedded in your other chats.</p>
       </div>
-      <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
-        + Upload file
-        <!-- No accept allowlist: dedicated extractors for pdf/docx/pptx/xlsx;
-             everything else is read as text (rejected if it sniffs as binary). -->
-        <input type="file" id="doc-file-in" style="display:none" multiple
-          onchange="uploadDocs(this.files)">
-      </label>
+
       <div class="dp-options">
         <div class="dp-search-label">Search mode</div>
         <div class="dp-seg" id="dp-search-mode">
@@ -1098,12 +1103,14 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
           <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
         </div>
+        <div class="dp-mode-cap" id="dp-mode-cap"></div>
         <label class="dp-check dp-scope">
           <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
           <span>Also search other chats' embedded files</span>
         </label>
       </div>
       <div class="dp-body" id="dp-body"></div>
+      <div class="dp-foot">Drop files anywhere (Shift+drop) or use + · text is extracted and embedded locally · <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">about RAG</span></div>
     </div>
   </div>
 
@@ -4112,6 +4119,29 @@ async function clearTrayFiles() {
   renderAttachTray()
 }
 
+// Remove every embedded file from THIS chat (confirm first), then GC orphaned
+// vectors. Docs referenced by other chats keep their entries + vectors there.
+async function removeAllDocs() {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  const docs = (chat && chat.docs) || []
+  if (!docs.length) return
+  const n = docs.length
+  if (typeof confirmDialog === 'function') {
+    const ok = await confirmDialog({ title: 'Remove all embedded files?', message: 'Remove all ' + n + ' file' + (n > 1 ? 's' : '') + ' from this chat and prune their embeddings from the local cache? Files shared with other chats are kept there.', okText: 'Remove all', cancelText: 'Cancel' })
+    if (!ok) return
+  }
+  if (typeof lclCrumb === 'function') lclCrumb('docs_remove_all', { files: n })
+  for (const d of docs) d._cancelled = true   // stop any in-flight embedding
+  chat.docs = []
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
+  renderDocPanel(); updateDocsBtn()
+  toast('Removed ' + n + ' file' + (n > 1 ? 's' : '') + ' from RAG memory', 'ok')
+  ;(async () => {
+    try { await persist() } catch (e) { console.warn('[removeAllDocs] persist', e.message) }
+    try { await gcEmbedCache() } catch (e) { console.warn('[removeAllDocs] gc', e.message) }
+  })()
+}
+
 function embedTrayFiles() {
   const chat = (typeof curChat === 'function') ? curChat() : null
   if (!chat || !Array.isArray(chat.attachedFiles) || !chat.attachedFiles.length) return
@@ -6118,7 +6148,23 @@ function renderDocPanel() {
   if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
   const _mode = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
   document.querySelectorAll('#dp-search-mode .dp-seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === _mode))
+  // Always-visible caption: teaches the ACTIVE mode at the moment of choice
+  // (hover tooltips keep the long form; the old intro paragraph is gone).
+  const _capEl = document.getElementById('dp-mode-cap')
+  if (_capEl) _capEl.textContent = _mode === 'specific'
+    ? 'Always searches for relevant passages only — best for many or large files.'
+    : _mode === 'whole'
+      ? 'Sends full documents when they fit the window — best for summaries and reviews.'
+      : 'Finds the most relevant passages; small files are sent whole.'
   const docs = chat?.docs||[]
+  const _cnt = document.getElementById('dp-count')
+  if (_cnt) {
+    const _tot = docs.reduce((n, d) => n + (d.size || 0), 0)
+    _cnt.textContent = docs.length ? String(docs.length) : ''
+    _cnt.title = docs.length ? (docs.length + ' file' + (docs.length > 1 ? 's' : '') + ' · ' + fmtSz(_tot)) : ''
+  }
+  const _clr = document.getElementById('dp-clear')
+  if (_clr) _clr.classList.toggle('hidden', docs.length < 2)
   el.innerHTML = ''
   if (!docs.length) {
     el.append(mkEl('div', { class: 'dp-empty', html: 'No files attached.<br>Upload files to use as context for this chat.' }))
@@ -6146,7 +6192,7 @@ function renderDocPanel() {
       })
       const lbl = pace
         ? 'Rate limit — resuming in ' + (p.waitSec || 0) + 's'
-        : (p.batchTotal ? 'Embedding — batch ' + p.batchDone + '/' + p.batchTotal : 'Embedding…')
+        : (total ? 'Embedding ' + pct + '%' : 'Embedding…')
       infKids.push(mkEl('div', { class: 'doc-prog' }, [
         mkEl('div', { class: 'doc-prog-track' }, [fill]),
         mkEl('div', { class: 'doc-prog-meta' }, [
