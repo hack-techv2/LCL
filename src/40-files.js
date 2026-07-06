@@ -546,7 +546,12 @@ async function queueFilesForPreview(files, target) {
       }
     }
   }
-  if (typeof setHealth === 'function') setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+  // Attach: back to ok. Docs: hand off to the embed flow without flashing green
+  // ("Extracting 5/5" -> ok -> "Embedding" read as "done, usable" - it is not).
+  if (typeof setHealth === 'function') {
+    if (progressive) setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    else setHealth('warn', 'Preparing to embed…')
+  }
   if (progressive && !previewQueue.length) { cancelFilePreview(); return }
   if (!previewQueue.length) return
 
