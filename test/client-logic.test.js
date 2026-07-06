@@ -312,6 +312,54 @@ const CASES = [
     check('C21 attachOversizeInfo: budget math both sides', ok, 'small=' + small.est + '/' + small.over + ' big=' + big.est + '/' + big.over)
   } },
 
+  { id: 'C22 trayContextBlock: current working set only', fn: async () => {
+    const { get } = mkCtx([])
+    const tcb = get('trayContextBlock')
+    const chat = { attachedFiles: [{ name: 'a "1".txt', textContent: 'AAA' }, { name: 'b.txt', textContent: 'BBB' }] }
+    const out = tcb(chat)
+    const empty = tcb({ attachedFiles: [] }) === '' && tcb(null) === ''
+    const blocks = (out.match(/<file name="/g) || []).length
+    check('C22 trayContextBlock: current working set only', blocks === 2 && out.includes("a '1'.txt") && empty, 'blocks=' + blocks)
+  } },
+
+  { id: 'C23 unwinnable 429 (near-full window) -> embed offer, no retry loop', fn: async () => {
+    // The 6 Jul loop fixture: est 198k passed the guard, gateway said Remaining: 200000.
+    const { ctx, get, sb, crumbs } = mkCtx([rl429(200000, Date.now() + 60000)])
+    const bodyStub = { innerHTML: '', style: {}, appendChild() {} }
+    const fakeBubble = () => ({ dataset: {}, querySelector: () => bodyStub, insertBefore() {}, remove() {} })
+    sb.appendTyping = () => ({ remove() {} })
+    sb.appendMsg = () => fakeBubble()
+    sb.mkEl = () => ({ appendChild() {} })
+    sb.renderMessages = () => {}; sb.updateSendBtn = () => {}; sb.setHealth = () => {}
+    sb.connectedLabel = () => 'ok'; sb.toast = () => {}; sb.persist = async () => {}
+    sb.renderChatList = () => {}; sb.renderTopbar = () => {}; sb.updateDocsBtn = () => {}; sb.renderDocPanel = () => {}
+    vm.runInContext('busy = false; retry5xxCount = 0; pendingRetry = null; inflightCtl = null; RETRY_STEPS_MS = [10000, 20000, 60000]', ctx)
+    const chat = { messages: [{ role: 'user', content: 'q' }], docs: [], attachedFiles: [{ name: 'big.pdf', textContent: 'x'.repeat(9000) }] }
+    sb.curChat = () => chat
+    await get('runStream')(chat, { messages: [] }, null)
+    const offered = crumbs.some(c => c.k === 'attach_oversize_offered' && c.where === 'send')
+    const waited = crumbs.some(c => c.k === 'rl_wait')
+    check('C23 unwinnable 429 (near-full window) -> embed offer, no retry loop', offered && !waited, 'offered=' + offered + ' waited=' + waited)
+  } },
+
+  { id: 'C24 tray remove + embed-all mutate the chat working set', fn: async () => {
+    const { ctx, get, sb } = mkCtx([])
+    const chat = { attachedFiles: [{ name: 'a.txt', textContent: 'AAA' }, { name: 'b.txt', textContent: 'BBB' }], messages: [], docs: [] }
+    sb.curChat = () => chat
+    sb.persist = async () => {}
+    let committed = null
+    sb.commitDocs = async files => { committed = files }
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    vm.runInContext('commitDocs = async files => { __committed = files }', ctx)
+    get('removeTrayFile')(0, null)
+    const afterRemove = chat.attachedFiles.length === 1 && chat.attachedFiles[0].name === 'b.txt'
+    get('embedTrayFiles')()
+    await new Promise(r => setTimeout(r, 20))
+    const committedCtx = vm.runInContext('typeof __committed !== "undefined" ? __committed : null', ctx)
+    const afterEmbed = chat.attachedFiles.length === 0 && committedCtx && committedCtx.length === 1 && committedCtx[0].extractedText === 'BBB'
+    check('C24 tray remove + embed-all mutate the chat working set', afterRemove && afterEmbed, 'remove=' + afterRemove + ' embed=' + afterEmbed)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
