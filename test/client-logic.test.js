@@ -360,6 +360,23 @@ const CASES = [
     check('C24 tray remove + embed-all mutate the chat working set', afterRemove && afterEmbed, 'remove=' + afterRemove + ' embed=' + afterEmbed)
   } },
 
+  { id: 'C25 clearTrayFiles empties the working set (after confirm)', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const chat = { attachedFiles: [{ name: 'a.txt', textContent: 'A' }, { name: 'b.txt', textContent: 'B' }], messages: [], docs: [] }
+    sb.curChat = () => chat
+    sb.persist = async () => {}
+    sb.confirmDialog = async () => true
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    await get('clearTrayFiles')()
+    const cleared = chat.attachedFiles.length === 0
+    const crumbOk = crumbs.some(c => c.k === 'attach_tray_clear' && c.files === 2)
+    sb.confirmDialog = async () => false
+    chat.attachedFiles = [{ name: 'c.txt', textContent: 'C' }]
+    await get('clearTrayFiles')()
+    const kept = chat.attachedFiles.length === 1
+    check('C25 clearTrayFiles empties the working set (after confirm)', cleared && crumbOk && kept, 'cleared=' + cleared + ' declined-kept=' + kept)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
