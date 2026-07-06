@@ -125,3 +125,5 @@ C23 near-full-window 429 in `runStream` → embed offer, NO retry loop. C24 tray
 embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
 
 ### C25 (6 Jul) — `clearTrayFiles` empties the working set after confirm; declined confirm keeps files.
+
+### C26 (6 Jul) — `removeAllDocs`: clears chat docs, sets `_cancelled` on in-flight embeds, runs GC; declined confirm keeps files.
