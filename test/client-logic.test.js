@@ -377,6 +377,31 @@ const CASES = [
     check('C25 clearTrayFiles empties the working set (after confirm)', cleared && crumbOk && kept, 'cleared=' + cleared + ' declined-kept=' + kept)
   } },
 
+  { id: 'C26 removeAllDocs clears the chat, cancels embeds, keeps on decline', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const d1 = { id: 'x1', name: 'a.pdf', status: 'ready' }
+    const d2 = { id: 'x2', name: 'b.pdf', status: 'embedding' }
+    const chat = { docs: [d1, d2], messages: [], attachedFiles: [] }
+    sb.curChat = () => chat
+    sb.persist = async () => {}
+    sb.confirmDialog = async () => true
+    sb.toast = () => {}
+    sb.updateDocsBtn = () => {}
+    let gc = false
+    sb.gcEmbedCache = async () => { gc = true }
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    vm.runInContext('renderDocPanel = () => {}; ragKeywordIndexCache = {}', ctx)
+    await get('removeAllDocs')()
+    await new Promise(r => setTimeout(r, 20))
+    const cleared = chat.docs.length === 0 && d2._cancelled === true
+    const crumbOk = crumbs.some(c => c.k === 'docs_remove_all' && c.files === 2)
+    sb.confirmDialog = async () => false
+    chat.docs = [{ id: 'x3', name: 'c.pdf' }]
+    await get('removeAllDocs')()
+    const kept = chat.docs.length === 1
+    check('C26 removeAllDocs clears the chat, cancels embeds, keeps on decline', cleared && crumbOk && gc && kept, 'cleared=' + cleared + ' gc=' + gc + ' kept=' + kept)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
