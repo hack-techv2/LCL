@@ -277,18 +277,20 @@
       </div>
 
       <div class="dp-options">
-        <div class="dp-search-label">Search mode</div>
+        <div class="dp-search-label">Search mode
+          <label class="dp-check dp-scope" title="Also search files you embedded in your other chats">
+            <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
+            <span>+ other chats</span>
+          </label>
+        </div>
         <div class="dp-seg" id="dp-search-mode">
           <button type="button" class="dp-seg-btn" data-mode="auto" onclick="setSearchMode('auto')" title="Sends the whole document when it fits the model, otherwise searches for the most relevant passages.">Auto</button>
           <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
           <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
         </div>
         <div class="dp-mode-cap" id="dp-mode-cap"></div>
-        <label class="dp-check dp-scope">
-          <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
-          <span>Also search other chats' embedded files</span>
-        </label>
       </div>
+      <div class="dp-files-lbl">Files</div>
       <div class="dp-body" id="dp-body"></div>
       <div class="dp-foot">Drop files anywhere (Shift+drop) or use + · text is extracted and embedded locally · <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">about RAG</span></div>
     </div>
