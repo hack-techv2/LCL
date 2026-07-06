@@ -654,6 +654,8 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .at-x:hover{color:#e05050}
 .at-add{display:inline-flex;align-items:center;font-size:11px;color:var(--info);border:1px dashed color-mix(in srgb, var(--info) 50%, transparent);border-radius:999px;padding:3px 10px;cursor:pointer}
 .at-embed{font-size:11px;padding:3px 12px}
+.at-clear{font-size:10px;font-weight:400;color:var(--tx2);cursor:pointer;text-decoration:underline dotted;margin-right:2px}
+.at-clear:hover{color:#e05050}
 .fp-oversize-box{background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.6}
 .fp-body{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px 6px}
 .fp-label{font-size:11px;color:var(--info);font-weight:600;font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
@@ -3774,6 +3776,7 @@ async function ocrQueueItem(item) {
 let previewQueue   = []   // { name, size, extractedText, confirmed }
 let previewTarget  = null // 'attach' | 'docs'
 let previewTabIdx  = 0
+let _previewGen    = 0    // bumped on new queue / cancel / confirm: aborts in-flight extraction
 
 // ---------------------------------------------------------------------------
 // merged from 42-files-preview.js
@@ -3791,19 +3794,55 @@ async function queueFilesForPreview(files, target) {
   previewTarget = target
   previewQueue  = []
   previewTabIdx = 0
+  const gen = ++_previewGen
 
-  toast('Extracting text...', 'info')
-  for (const f of valid) {
+  // Attach flow: open the panel IMMEDIATELY with placeholder rows and fill each
+  // in as its extraction completes. Large PDF batches previously left a frozen
+  // gap between the "Extracting text..." toast fading and the panel appearing.
+  const progressive = target === 'attach'
+  if (progressive) {
+    previewQueue = valid.map(f => ({ name: f.name, size: f.size, extractedText: '', _extracting: true }))
+    showFilePreview()
+  } else {
+    toast('Extracting text...', 'info')
+  }
+  for (let _i = 0; _i < valid.length; _i++) {
+    const f = valid[_i]
+    const rec = progressive ? previewQueue.find(r => r.name === f.name && r._extracting) : null
+    if (progressive && !rec) continue   // row was removed while still queued
+    if (typeof setHealth === 'function') setHealth('warn', 'Extracting ' + (_i + 1) + '/' + valid.length)
+    await new Promise(r => setTimeout(r, 0))   // let the placeholder rows paint before the heavy parse
+    if (gen !== _previewGen) return            // cancelled / superseded mid-extraction
     try {
       const extracted = await extractText(f)
       const { text, scanWarning, pdfDoc, emptyPageNums, pages, structure, parseWarning } = extracted
-      previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure })
+      if (gen !== _previewGen) return
+      if (progressive) {
+        const idx = previewQueue.indexOf(rec)
+        if (idx < 0) continue   // removed mid-extraction
+        Object.assign(rec, { extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure, _extracting: false })
+        renderPreviewTabs()
+        if (idx === previewTabIdx) selectPreviewTab(previewTabIdx)
+        updateFpHint()
+      } else {
+        previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure })
+      }
       if (parseWarning) toast(f.name + ': ' + parseWarning, 'info')
     } catch (err) {
       toast('Could not read ' + f.name + ': ' + err.message, 'err')
+      if (progressive) {
+        const idx = previewQueue.indexOf(rec)
+        if (idx >= 0) {
+          previewQueue.splice(idx, 1)
+          if (previewTabIdx >= previewQueue.length) previewTabIdx = Math.max(0, previewQueue.length - 1)
+          renderPreviewTabs()
+          if (previewQueue.length) selectPreviewTab(previewTabIdx)
+        }
+      }
     }
   }
-
+  if (typeof setHealth === 'function') setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+  if (progressive && !previewQueue.length) { cancelFilePreview(); return }
   if (!previewQueue.length) return
 
   // Embed flow: skip the text-preview panel entirely. Users uploading a file
@@ -3841,9 +3880,10 @@ async function queueFilesForPreview(files, target) {
     return
   }
 
-  // Attach-to-message flow: keep the preview panel so the user can edit
-  // the extracted text before sending it into chat context.
-  showFilePreview()
+  // Attach-to-message flow: the panel is already open (progressive rows);
+  // refresh the final state.
+  renderPreviewTabs()
+  updateFpHint()
 }
 
 function showFilePreview() {
@@ -3863,9 +3903,9 @@ function renderPreviewTabs() {
   const tabsEl = document.getElementById('fp-tabs')
   const over = (typeof attachOversizeInfo === 'function') ? attachOversizeInfo(previewQueue).over : false
   tabsEl.innerHTML = previewQueue.map((f, i) => {
-    const meta = over
+    const meta = f._extracting ? 'extracting…' : (over
       ? '~' + Math.round(estTokens(f.extractedText || '') / 1000) + 'k tok'
-      : (f.extractedText || '').length.toLocaleString() + ' chars'
+      : (f.extractedText || '').length.toLocaleString() + ' chars')
     return `
     <div class="fp-row ${i === previewTabIdx ? 'active' : ''}" onclick="selectPreviewTab(${i})">
       <span class="fp-row-name">${esc(f.name)}</span>
@@ -3918,6 +3958,8 @@ function renderPreviewOversize() {
 // "Embed for RAG instead": reroute the already-extracted preview files through
 // the embed flow (no re-extraction) - RAG budgets them properly per question.
 async function confirmFilePreviewAsEmbed() {
+  if (previewQueue.some(function (r) { return r._extracting })) { toast('Still extracting text from some files — one moment…', 'info'); return }
+  _previewGen++
   const ta = document.getElementById('fp-textarea')
   if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
   const files = previewQueue.slice()
@@ -3969,6 +4011,7 @@ function updateCharCount() {
 // fp-textarea input wired up in Boot section below
 
 function cancelFilePreview() {
+  _previewGen++
   previewQueue  = []
   previewTarget = null
   document.getElementById('file-preview').classList.add('hidden')
@@ -3978,6 +4021,8 @@ function cancelFilePreview() {
 }
 
 async function confirmFilePreview() {
+  if (previewQueue.some(function (r) { return r._extracting })) { toast('Still extracting text from some files — one moment…', 'info'); return }
+  _previewGen++
   // Sync final edits from active textarea
   const ta = document.getElementById('fp-textarea')
   if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
@@ -4031,6 +4076,7 @@ function renderAttachTray() {
     '<div class="at-head">' +
       '<span>' + (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message') + '</span>' +
       '<span style="flex:1"></span>' +
+      (files.length > 1 ? '<span class="at-clear" title="Remove all attached files" onclick="clearTrayFiles()">remove all</span>' : '') +
       '<span class="at-meter">~' + k(info.est) + ' / ' + k(info.budget) + ' tokens</span>' +
       (info.over ? '<button class="btn-s at-embed" onclick="embedTrayFiles()">Embed all for RAG</button>' : '') +
     '</div>' +
@@ -4048,6 +4094,20 @@ function removeTrayFile(i, event) {
   const f = chat.attachedFiles[i]
   if (typeof lclCrumb === 'function') lclCrumb('attach_tray_remove', { file: f && f.name })
   chat.attachedFiles.splice(i, 1)
+  persist()
+  renderAttachTray()
+}
+
+async function clearTrayFiles() {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat || !Array.isArray(chat.attachedFiles) || !chat.attachedFiles.length) return
+  const n = chat.attachedFiles.length
+  if (typeof confirmDialog === 'function') {
+    const ok = await confirmDialog({ title: 'Remove all attached files?', message: 'Remove all ' + n + ' file' + (n > 1 ? 's' : '') + ' from this chat’s working set? Their text will no longer be sent with your messages.', okText: 'Remove all', cancelText: 'Cancel' })
+    if (!ok) return
+  }
+  if (typeof lclCrumb === 'function') lclCrumb('attach_tray_clear', { files: n })
+  chat.attachedFiles = []
   persist()
   renderAttachTray()
 }
