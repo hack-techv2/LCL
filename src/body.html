@@ -28,52 +28,72 @@
   <div class="sp-box">
     <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
-    <div class="sp-tabs"><button type="button" class="sp-tab on" data-tab="models" onclick="spTab('models')">Models</button><button type="button" class="sp-tab" data-tab="settings" onclick="spTab('settings')">Settings</button></div>
-    <div class="sp-pane on" data-pane="models"><div class="sp-sec">
+    <div class="sp-cols">
+      <nav class="sp-nav">
+        <div class="sp-nav-lbl">Model</div>
+        <button type="button" class="sp-nav-it on" data-sec="connection" onclick="spNav('connection')">Connection</button>
+        <button type="button" class="sp-nav-it" data-sec="embedding" onclick="spNav('embedding')">Embedding</button>
+        <button type="button" class="sp-nav-it" data-sec="rag" onclick="spNav('rag')">RAG &amp; files</button>
+        <button type="button" class="sp-nav-it" data-sec="defaults" onclick="spNav('defaults')">Defaults</button>
+        <div class="sp-nav-lbl">System</div>
+        <button type="button" class="sp-nav-it" data-sec="updates" onclick="spNav('updates')">Updates</button>
+        <button type="button" class="sp-nav-it" data-sec="account" onclick="spNav('account')">Account</button>
+      </nav>
+      <div class="sp-main">
+    <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
       <div class="sp-lbl">Connection</div>
+      <div class="sp-cap">Your GovTech Models gateway credentials and the chat model LCL uses.</div>
       <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
       <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
+    <div class="sp-sec" data-sec="embedding">
+      <div class="sp-lbl">Embedding</div>
+      <div class="sp-cap">Converts uploaded files into vectors for RAG search. Leave a field blank to keep the current value.</div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
       <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
+    <div class="sp-sec" data-sec="rag">
+      <div class="sp-lbl">RAG &amp; files</div>
+      <div class="sp-cap">How uploaded files are split, embedded, and searched when you chat.</div>
       <div class="sp-grid">
         <div class="sf">
-          <div class="sf-head"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
+          <div class="sf-head"><label>Chunk Size (chars)</label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
           <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="onRangeIn('s-chunk-v',this)"></div>
           <div class="sl-ticks"><span>200</span><span>2000</span></div>
+          <div class="sf-cap">Smaller (400–600) = precise answers; larger (1000–1500) = more context. 800 suits most documents.</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sf-head"><label>Top-K Chunks</label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
           <div class="sl"><input type="range" min="3" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
           <div class="sl-ticks"><span>1</span><span>10</span></div>
+          <div class="sf-cap">Passages retrieved per question. 5 balances detail and token use; raise to 8–10 for broad research.</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Warn above (tokens) <span class="tip" title="Show a confirm before embedding a document estimated to use more than this many tokens of the per-minute budget. Blank or auto uses ~10% of the live limit.">ⓘ</span></label></div>
+          <div class="sf-head"><label>Warn above (tokens)</label></div>
           <input type="text" id="s-embwarn" class="sf-num" placeholder="auto" style="width:100%">
+          <div class="sf-cap">Confirm before embedding a file estimated above this many tokens. Blank = auto (~10% of the live limit).</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Block above (tokens) <span class="tip" title="Hard cap: the server refuses an embed estimated above this. Blank or auto uses ~50% of the live limit.">ⓘ</span></label></div>
+          <div class="sf-head"><label>Block above (tokens)</label></div>
           <input type="text" id="s-embmax" class="sf-num" placeholder="auto" style="width:100%">
+          <div class="sf-cap">Hard cap — the server refuses embeds estimated above this. Blank = auto (~50% of the live limit).</div>
         </div>
       </div>
     </div>
     </div>
-    <div class="sp-pane" data-pane="settings"><div class="sp-sec">
+    <div class="sp-pane" data-pane="settings"><div class="sp-sec" data-sec="defaults">
       <div class="sp-lbl">Defaults</div>
+      <div class="sp-cap">Applied to every message in every chat.</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
       <div class="sf">
-        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sf-head"><label>Max Tokens</label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
         <div class="sl-ticks"><span>64</span><span>32768</span></div>
+        <div class="sf-cap">Maximum reply length (1 token ≈ 4 characters). 8192 suits most tasks — raise it only if replies get cut off.</div>
       </div>
     </div>
-    <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
+    <div class="sp-sec" data-sec="updates"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec" data-sec="account">
       <div class="sp-lbl">Account</div>
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
@@ -85,9 +105,11 @@
     </div>
     </div>
     <div class="sp-foot">
-      <div class="sp-contrib">Contributors &middot; Melvin Yung &middot; Ko Zheng Teng</div>
+      <div class="sp-contrib">Contributors &middot; LCL &middot; Melvin Yung &middot; Ko Zheng Teng</div>
       <button class="btn-s" onclick="closeSP()">Cancel</button>
       <button class="btn-sv" onclick="saveSP()">Save</button>
+    </div>
+      </div>
     </div>
   </div>
 </div>
