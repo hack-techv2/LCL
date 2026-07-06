@@ -293,6 +293,13 @@ async function send() {
   const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
   const sentFileNames = trayFiles.length ? trayFiles.map(function (a) { return a.name }) : attachments.map(a=>a.name)
   const sentAttachments = attachments.slice()   // legacy pre-tray composer chips
+  // Honesty: docs still embedding are NOT in this answer (buildPayload only uses
+  // status === 'ready'). Say so instead of silently answering without them.
+  const _stillEmbedding = ((chat.docs || []).filter(function (d) { return d && (d.status === 'embedding' || d.status === 'pending') })).length
+  if (_stillEmbedding) {
+    if (typeof lclCrumb === 'function') lclCrumb('send_during_embed', { pending: _stillEmbedding })
+    toast(_stillEmbedding + ' file' + (_stillEmbedding > 1 ? 's are' : ' is') + ' still embedding — this answer won’t use ' + (_stillEmbedding > 1 ? 'them' : 'it') + ' yet', 'info')
+  }
   // Tray gate: an over-budget working set never leaves the client - the tray
   // meter is already amber with an "Embed all for RAG" button at this point.
   if (trayFiles.length) {
