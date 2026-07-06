@@ -126,4 +126,8 @@ embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
 
 ### C25 (6 Jul) — `clearTrayFiles` empties the working set after confirm; declined confirm keeps files.
 
-### C26 (6 Jul) — `removeAllDocs`: clears chat docs, sets `_cancelled` on in-flight embeds, runs GC; declined confirm keeps files.
+### C26 (6 Jul) — `removeAllDocs`: clears chat docs, sets `_cancelled` on in-flight embeds, runs GC; declined confirm keeps files.
+
+### C27 (7 Jul) — tray collapse: expanded shows chips + remove-all + ▾; collapsed (`lcl_tray_min`) is one "N files attached" line with the meter kept, chips/remove-all hidden, ▸ to expand; over-budget label + "Embed all for RAG" stay visible while collapsed; toggling persists to localStorage both ways (`attach_tray_min` crumb).
+
+### C28 (7 Jul) — settings `spNav`: exactly one `.sp-sec`/`.sp-nav-it` pair gets `.on` for the routed section; choice persists to `lcl_sp_sec`; legacy `spTab('settings'/'models')` aliases to `defaults`/`connection`. Runs the REAL function source extracted from 80-ui.js.
