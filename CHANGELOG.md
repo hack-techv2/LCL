@@ -3,6 +3,16 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — Attachment tray: attachments become a per-chat WORKING SET (alpha)
+
+CL's design: attached files should live visibly at the bottom, removable and swappable — "old data that is viewed, then discarded". Replaces the bake-into-history model whose accumulation permanently bloated chats (39k→386k est climb in the 6 Jul log). Version stays v0.67d.
+
+- **Tray above the composer** (`chat.attachedFiles`, persisted): blue chips with per-file ~token tags and ✕, "+ add files", and a live total meter (~est / budget). The CURRENT set is injected once per request into the system context (`trayContextBlock`); history stores only the typed text + provenance name-tags. Removing a file immediately shrinks every future send.
+- **Oversize handling built in**: tray turns amber with "Embed all for RAG"; the send is gated client-side (`attach_oversize_blocked` crumb) so doomed requests never fire. Preview's "Attach anyway" is hidden when the batch exceeds the absolute ceiling (it could never send); reappears reactively as files are removed.
+- **Unwinnable 429 fixed in the MAIN chat path**: near-full-window rejections (`Remaining ≥ 95% of limit` — the 6 Jul infinite retry loop at est 198k) stop auto-retrying; with tray files present the embed-conversion offer shows instead. Offer's second button is now "Dismiss".
+- **Option-2 blue file theme**: preview rows (zebra + blue active), editor label strip + charcount pill, 1.75 line-height; tray chips blue — files are blue everywhere, orange stays for actions.
+- Crumbs: `attach_tray_remove`, `attach_oversize_blocked/offered/converted (where=tray)`. Tests C22–C24 (tray block, unwinnable-429 offer, tray mutations); suites 35/35 + 24/24. Verified live in #demo: attach → tray → send (history stays clean, tray persists) → ✕ remove → oversize amber → hopeless Attach-anyway hidden → reactive recovery.
+
 ## 6 Jul 2026 — Attachment overhaul: row preview + per-file remove, expandable chips, oversize→embed flow (alpha)
 
 Three fixes from CL's multi-file attach reports (6 Jul logs). Version stays v0.67d.
