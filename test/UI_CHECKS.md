@@ -162,3 +162,7 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
 - [ ] Embed panel: one-line header (count pill, remove all, + upload), search-mode
       caption switches with selection, blue zebra file rows with status badges,
       footer hint + "about RAG" popover. Remove all → confirm → panel empties.
+- [ ] Embed panel (both themes): SEARCH MODE / FILES section labels, inline
+      "+ other chats" (caption gains suffix when on), file cards match sidebar
+      chat cards. Send during embed → "still embedding" toast; pending badge
+      reads "waiting to embed…"; no green health flash after extraction.
