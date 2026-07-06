@@ -3,6 +3,16 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Settings revamp: grouped left-nav + readable type scale (alpha)
+
+Per CL's mockup rounds (nav groups, captions, then option-A labels + sizing). Version stays v0.67d.
+
+- **Two-pane settings**: the tabbed modal becomes a 980×700 two-column layout — left nav grouped under MODEL (Connection / Embedding / RAG & files / Defaults) and SYSTEM (Updates / Account), chosen section remembered across opens (`lcl_sp_sec`). Appearance and Skills dropped from the nav per CL (reachable from the toolbar); legacy `spTab()` aliases to `spNav()`.
+- **Captions replace ⓘ tooltips**: every section gets a one-line purpose caption (`.sp-cap`) and fields get always-visible hints (`.sf-cap`) — no more hover-to-discover.
+- **Type scale + contrast (option A)**: nav group labels 11.5px uppercase with a divider underline and `cursor:default` (headings, not buttons); nav items 13.5px full text colour; section headers 13px; captions 13/12.5px promoted tx3→tx2; inputs/selects 13px mono; value pills (`.sf-num`) 14px in a taller 30px pill; slider ticks 12px; Disconnect 13.5px; sections sit on bg2 with the stronger border to match sidebar cards; title 19px.
+- Contributors footer: "Contributors · LCL · Melvin Yung · Ko Zheng Teng" at 12px.
+- U25 added to UI checks. Suites 35/35 + 26/26; verified live in #demo across all six sections.
+
 ## 6 Jul 2026 — File colour semantics: orange = embedded, blue = uploaded (alpha)
 
 Per CL: the two file populations now read at a glance. EMBEDDED files (permanent chat knowledge) take the orange TINT family — panel cards, type tags, count pill, and the source tags under replies (they cite embedded docs). UPLOADED working files (tray, preview rows, message chips) stay blue. Tints, not saturated orange, so buttons keep their action pop. Verified in both themes. Version stays v0.67d.
