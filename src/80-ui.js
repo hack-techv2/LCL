@@ -326,17 +326,19 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
   document.getElementById('sp').classList.remove('hidden')
-  let _spTab = 'models'; try { _spTab = localStorage.getItem('lcl_sp_tab') || 'models' } catch {}
-  if (typeof spTab === 'function') spTab(['models','settings'].includes(_spTab) ? _spTab : 'models')
+  let _spSec = 'connection'; try { _spSec = localStorage.getItem('lcl_sp_sec') || 'connection' } catch {}
+  spNav(document.querySelector('#sp .sp-sec[data-sec="' + _spSec + '"]') ? _spSec : 'connection')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
-// Switch the Settings panel tab (Model / Embed / Settings); remembers last choice.
-function spTab(name){
-  document.querySelectorAll('#sp .sp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name))
-  document.querySelectorAll('#sp .sp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name))
-  try { localStorage.setItem('lcl_sp_tab', name) } catch {}
+// Full-page Settings navigation (left rail): show ONE section; remembers last.
+function spNav(sec){
+  document.querySelectorAll('#sp .sp-sec').forEach(s => s.classList.toggle('on', s.dataset.sec === sec))
+  document.querySelectorAll('#sp .sp-nav-it').forEach(b => b.classList.toggle('on', b.dataset.sec === sec))
+  try { localStorage.setItem('lcl_sp_sec', sec) } catch {}
 }
+// Legacy alias (old two-tab layout callers).
+function spTab(name){ spNav(name === 'settings' ? 'defaults' : 'connection') }
 
 // Skills manager (independent of Settings; accessible without connection)
 async function openSkillsManager() {
