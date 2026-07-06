@@ -32,8 +32,6 @@ browser interface at `http://localhost:3000`.
   reviewer), manageable from the UI.
 - **Self-updating:** stable and experimental update channels with checksum
   verification, switchable in Settings.
-- **Flexible launch:** works served by the proxy at `localhost:3000` or opened
-  directly as a file — API calls find the local proxy either way.
 
 ---
 
