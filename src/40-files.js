@@ -768,6 +768,19 @@ function commitAttachments(files) {
   renderAttachTray()
 }
 
+// Collapsed state is a global preference (localStorage) so it sticks across
+// chats and reloads. Collapsed = one summary line; the token meter and the
+// over-budget "Embed all" action stay visible so warnings can't be hidden.
+function trayMin() { try { return localStorage.getItem('lcl_tray_min') === '1' } catch (e) { return false } }
+
+function toggleTrayMin(event) {
+  if (event && event.stopPropagation) event.stopPropagation()
+  const min = !trayMin()
+  try { localStorage.setItem('lcl_tray_min', min ? '1' : '0') } catch (e) {}
+  if (typeof lclCrumb === 'function') lclCrumb('attach_tray_min', { min: min })
+  renderAttachTray()
+}
+
 function renderAttachTray() {
   const el = document.getElementById('attach-tray')
   if (!el) return
@@ -776,23 +789,28 @@ function renderAttachTray() {
   if (!files.length) { el.className = 'hidden'; el.innerHTML = ''; return }
   const info = attachOversizeInfo(files, chat)
   const k = function (n) { return Math.round(n / 1000) + 'k' }
-  el.className = info.over ? 'over' : ''
-  const chips = files.map(function (a, i) {
+  const min = trayMin()
+  el.className = ((info.over ? 'over' : '') + (min ? ' min' : '')).trim()
+  const label = min
+    ? files.length + ' file' + (files.length > 1 ? 's' : '') + ' attached' + (info.over ? ' \u2014 too large to send' : '')
+    : (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message')
+  const chips = min ? '' : files.map(function (a, i) {
     return '<span class="at-chip">' + esc(a.name) +
       ' <span class="at-tok">~' + k(estTokens(a.textContent || '')) + '</span>' +
       '<span class="at-x" title="Remove from the working set" onclick="removeTrayFile(' + i + ', event)">\u2715</span></span>'
   }).join('')
   el.innerHTML =
     '<div class="at-head">' +
-      '<span>' + (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message') + '</span>' +
+      '<span class="at-lbl" title="' + (min ? 'Expand attached files' : 'Collapse attached files') + '" onclick="toggleTrayMin(event)">' + label + '</span>' +
       '<span style="flex:1"></span>' +
-      (files.length > 1 ? '<span class="at-clear" title="Remove all attached files" onclick="clearTrayFiles()">remove all</span>' : '') +
+      (!min && files.length > 1 ? '<span class="at-clear" title="Remove all attached files" onclick="clearTrayFiles()">remove all</span>' : '') +
       '<span class="at-meter">~' + k(info.est) + ' / ' + k(info.budget) + ' tokens</span>' +
       (info.over ? '<button class="btn-s at-embed" onclick="embedTrayFiles()">Embed all for RAG</button>' : '') +
+      '<span class="at-min" title="' + (min ? 'Expand attached files' : 'Collapse attached files') + '" onclick="toggleTrayMin(event)">' + (min ? '\u25b8' : '\u25be') + '</span>' +
     '</div>' +
-    '<div class="at-chips">' + chips +
+    (min ? '' : '<div class="at-chips">' + chips +
       '<span class="at-add" onclick="document.getElementById(&quot;file-in&quot;).click()">+ add files</span>' +
-    '</div>'
+    '</div>')
   if (info.over && typeof lclCrumb === 'function' && !el._overCrumbed) { el._overCrumbed = true; lclCrumb('attach_oversize_offered', { files: files.length, est: info.est, where: 'tray' }) }
   if (!info.over) el._overCrumbed = false
 }
