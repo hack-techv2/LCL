@@ -5427,13 +5427,23 @@ function countdownWait(bodyEl, waitMs, resetMs, signal, uiLabel) {
   })
 }
 
+// A split run is only a SUMMARY run when the user asked for one (or typed
+// nothing). Any other ask (find/search/extract/compare...) must ride through
+// the map-reduce, or big docs come back as generic summaries (7 Jul: 'search
+// the presenter's name' returned summaries because part prompts were fixed).
+function isSummariseAsk(instruction) {
+  const s = String(instruction || '').trim()
+  if (!s) return true
+  return /\b(summar|overview|tl;?dr|key\s+points|main\s+points)/i.test(s)
+}
+
 async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal) {
   const payload = { messages: [
-    { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' + (sysPrompt ? '\n\n' + sysPrompt : '') },
+    { role: 'system', content: (isSummariseAsk(instruction) ? 'You are summarising content for the user. Be faithful and concise.' : 'You are processing a document to answer the user\u2019s request. Be faithful and concise; use only the provided content.') + (sysPrompt ? '\n\n' + sysPrompt : '') },
     { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
   ] }
   const reqTok = Math.ceil(JSON.stringify(payload).length / 4)
-  const uiLabel = 'Summarising ' + (typeof esc === 'function' ? esc(label) : label)
+  const uiLabel = (isSummariseAsk(instruction) ? 'Summarising ' : 'Processing ') + (typeof esc === 'function' ? esc(label) : label)
   for (let attempt = 0; attempt < 4; attempt++) {
     // Proactive pacing: if this request cannot fit in what is left of the current
     // window, wait for the reset BEFORE firing instead of collecting a guaranteed 429.
@@ -5523,6 +5533,12 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   for (let i = 0; i < text.length; i += partLen) parts.push(text.slice(i, i + partLen))
   if (typeof lclCrumb === 'function') lclCrumb('map_reduce', { label: label, parts: parts.length, depth: depth })
   const partSummaries = []
+  const summaryAsk = isSummariseAsk(instruction)
+  // Map: mine each part for the USER\u2019S request; irrelevant parts say so in one
+  // line instead of padding the reduce with generic summary filler.
+  const partInstr = summaryAsk
+    ? 'Summarise this part of a document.'
+    : 'From this part of a document, extract everything relevant to the request below. Quote names, figures, and wording exactly. If nothing is relevant, reply exactly: Nothing relevant in this part.\n\nRequest: ' + instruction
   // Finished part-summaries stay VISIBLE (doneEl) while the next part streams into
   // its own area (liveEl) - previously each new part's placeholder wiped the summary
   // the user was reading. The final combine replaces everything with the full summary.
@@ -5535,15 +5551,19 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   }
   for (let p = 0; p < parts.length; p++) {
     if (signal && signal.aborted) return null
-    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' - summarising part ' + (p + 1) + ' of ' + parts.length + '..._')
-    const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], 'Summarise this part of a document.', liveEl, signal, depth + 1)
+    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' - ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '..._')
+    const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], partInstr, liveEl, signal, depth + 1)
     if (s == null) return null
     partSummaries.push('Part ' + (p + 1) + ': ' + s)
     if (doneEl) doneEl.innerHTML = fmt(partSummaries.join('\n\n'))
     if (liveEl) liveEl.innerHTML = ''
   }
-  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + ' part-summaries..._')
-  return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), 'Combine these part-summaries into one cohesive summary of the whole document.', liveEl || bodyEl, signal, depth + 1)
+  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + (summaryAsk ? ' part-summaries..._' : ' part-extracts..._'))
+  // Reduce: answer the ORIGINAL request from the extracts (or combine summaries).
+  const combineInstr = summaryAsk
+    ? 'Combine these part-summaries into one cohesive summary of the whole document.'
+    : 'Below are extracts from consecutive parts of one document. Using ONLY these extracts, answer the original request. Ignore parts that say nothing is relevant.\n\nOriginal request: ' + instruction
+  return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), combineInstr, liveEl || bodyEl, signal, depth + 1)
 }
 
 // Embedding-vs-summary contention gate: embeddings are the RAG prerequisite and
@@ -5560,7 +5580,7 @@ async function waitForEmbedsIdle(bodyEl, header, signal) {
   if (!embedsActive()) return
   if (typeof lclCrumb === 'function') lclCrumb('summary_wait_embed', {})
   while (embedsActive() && !(signal && signal.aborted)) {
-    if (bodyEl) bodyEl.innerHTML = fmt(header + '_Waiting for document embedding to finish before summarising…_')
+    if (bodyEl) bodyEl.innerHTML = fmt(header + '_Waiting for document embedding to finish before starting…_')
     await abortableSleep(1000, signal)
   }
 }
@@ -5572,16 +5592,18 @@ async function runSplitSummaries(chat, docs, instruction) {
   const rs = await resolveSystemPrompt(chat)
   const sys = rs && rs.sys
   if (typeof lclCrumb === 'function') lclCrumb('split_run', { docs: docs.length })
+  const summaryAsk = isSummariseAsk(instruction)
+  const kindWord = summaryAsk ? 'summary' : 'response'
   try {
     for (let i = 0; i < docs.length; i++) {
       if (signal.aborted) break
       if (chat && chat.id && !D.chats[chat.id]) break   // chat deleted mid-run - don't append into another chat
       const doc = docs[i]
-      setHealth('warn', 'Summarising ' + (i + 1) + '/' + docs.length)
-      const header = '**' + doc.name + '** - summary (' + (i + 1) + ' of ' + docs.length + ')\n\n'
+      setHealth('warn', (summaryAsk ? 'Summarising ' : 'Processing ') + (i + 1) + '/' + docs.length)
+      const header = '**' + doc.name + '** - ' + kindWord + ' (' + (i + 1) + ' of ' + docs.length + ')\n\n'
       const bubble = appendMsg('ai', '', null, [doc.name])
       const bodyEl = bubble.querySelector('.msg-body')
-      if (bodyEl) bodyEl.innerHTML = fmt(header + '_Summarising..._')
+      if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising..._' : '_Working..._'))
       await waitForEmbedsIdle(bodyEl, header, signal)
       let summary = null
       try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
@@ -5590,7 +5612,7 @@ async function runSplitSummaries(chat, docs, instruction) {
         if (typeof lclCrumb === 'function') lclCrumb('split_stopped', { at: i + 1, total: docs.length })
         break
       }
-      const finalText = header + (summary != null ? summary : '_Could not summarise this document (over the limit or an error). Try Specific search for it._')
+      const finalText = header + (summary != null ? summary : '_Could not ' + (summaryAsk ? 'summarise' : 'process') + ' this document (over the limit or an error). Try Specific search for it._')
       if (bodyEl) bodyEl.innerHTML = fmt(finalText)
       bubble.dataset.raw = finalText
       chat.messages.push({ role: 'assistant', content: finalText, ts: Date.now(), sources: [doc.name] })
