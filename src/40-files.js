@@ -610,12 +610,15 @@ function renderPreviewOversize() {
       (previewQueue.length > 1 ? ('these ' + previewQueue.length + ' files are') : 'this file is') + ' ~' + k(info.newEst) +
       ' tokens' + (info.histEst > 2000 ? ' (+ ~' + k(info.histEst) + ' already in this chat\u2019s history \u2014 earlier attachments are re-sent every turn)' : '') + ' \u2014 over the ~' + k(info.ceil) + ' per-request limit. Embedding stores them once and retrieves only the relevant parts per question. Or remove files until it fits.</div>'
     if (embedBtn) embedBtn.classList.remove('hidden')
-    if (confirmBtn) confirmBtn.textContent = 'Attach anyway'
+    if (confirmBtn) {
+      confirmBtn.textContent = 'Attach anyway'
+      confirmBtn.classList.toggle('hidden', info.est > info.ceil * 0.95)   // over the ABSOLUTE ceiling: can never send
+    }
     if (typeof lclCrumb === 'function' && !box._crumbed) { box._crumbed = true; lclCrumb('attach_oversize_offered', { files: previewQueue.length, est: info.est, where: 'preview' }) }
   } else {
     box.classList.add('hidden')
     if (embedBtn) embedBtn.classList.add('hidden')
-    if (confirmBtn) confirmBtn.innerHTML = 'Confirm &amp; attach'
+    if (confirmBtn) { confirmBtn.innerHTML = 'Confirm &amp; attach'; confirmBtn.classList.remove('hidden') }
   }
 }
 
@@ -701,11 +704,70 @@ async function confirmFilePreview() {
   else commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
+// Attachment tray (v0.67e "working set"): confirmed files live on the CHAT, not
+// in the composer or the message history. The tray above the composer shows the
+// current set with a live token meter; every send injects the CURRENT set once.
 function commitAttachments(files) {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat) return
+  if (!Array.isArray(chat.attachedFiles)) chat.attachedFiles = []
   for (const f of files) {
-    attachments.push({ name: f.name, textContent: f.extractedText, isText: true })
+    const rec = { name: f.name, size: f.size || (f.extractedText || '').length, textContent: f.extractedText }
+    const i = chat.attachedFiles.findIndex(function (x) { return x.name === f.name })
+    if (i >= 0) chat.attachedFiles[i] = rec; else chat.attachedFiles.push(rec)
   }
-  renderChips()
+  persist()
+  renderAttachTray()
+}
+
+function renderAttachTray() {
+  const el = document.getElementById('attach-tray')
+  if (!el) return
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  const files = (chat && chat.attachedFiles) || []
+  if (!files.length) { el.className = 'hidden'; el.innerHTML = ''; return }
+  const info = attachOversizeInfo(files, chat)
+  const k = function (n) { return Math.round(n / 1000) + 'k' }
+  el.className = info.over ? 'over' : ''
+  const chips = files.map(function (a, i) {
+    return '<span class="at-chip">' + esc(a.name) +
+      ' <span class="at-tok">~' + k(estTokens(a.textContent || '')) + '</span>' +
+      '<span class="at-x" title="Remove from the working set" onclick="removeTrayFile(' + i + ', event)">\u2715</span></span>'
+  }).join('')
+  el.innerHTML =
+    '<div class="at-head">' +
+      '<span>' + (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message') + '</span>' +
+      '<span style="flex:1"></span>' +
+      '<span class="at-meter">~' + k(info.est) + ' / ' + k(info.budget) + ' tokens</span>' +
+      (info.over ? '<button class="btn-s at-embed" onclick="embedTrayFiles()">Embed all for RAG</button>' : '') +
+    '</div>' +
+    '<div class="at-chips">' + chips +
+      '<span class="at-add" onclick="document.getElementById(&quot;file-in&quot;).click()">+ add files</span>' +
+    '</div>'
+  if (info.over && typeof lclCrumb === 'function' && !el._overCrumbed) { el._overCrumbed = true; lclCrumb('attach_oversize_offered', { files: files.length, est: info.est, where: 'tray' }) }
+  if (!info.over) el._overCrumbed = false
+}
+
+function removeTrayFile(i, event) {
+  if (event && event.stopPropagation) event.stopPropagation()
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat || !Array.isArray(chat.attachedFiles)) return
+  const f = chat.attachedFiles[i]
+  if (typeof lclCrumb === 'function') lclCrumb('attach_tray_remove', { file: f && f.name })
+  chat.attachedFiles.splice(i, 1)
+  persist()
+  renderAttachTray()
+}
+
+function embedTrayFiles() {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat || !Array.isArray(chat.attachedFiles) || !chat.attachedFiles.length) return
+  const files = chat.attachedFiles.map(function (a) { return { name: a.name, size: a.size || (a.textContent || '').length, extractedText: a.textContent } })
+  chat.attachedFiles = []
+  persist()
+  renderAttachTray()
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: files.length, where: 'tray' })
+  commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
 async function commitDocs(files) {
