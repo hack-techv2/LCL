@@ -110,3 +110,10 @@ T34: OPTIONS with `Origin: null` + PNA preflight → 204, ACAO null, x-lcl-demo 
 T35: internet origin gets NO ACAO. C19: `proxyUrl` maps /api paths to the proxy from
 file:// and foreign local origins, leaves served-by-proxy and non-API paths alone,
 honours the LCL_API_BASE override.
+
+### C20/C21 (6 Jul — attach fixes)
+
+C20: `buildContent` emits a single string with `<file name="...">` blocks (renderer's
+expandable-chip format; quotes in names sanitised). C21: `attachOversizeInfo` flags
+attachment sets that cannot fit the inline request budget (ceil - max_tokens - overhead).
+Preview rows/removal + the embed-instead offers are visual: see UI_CHECKS.
