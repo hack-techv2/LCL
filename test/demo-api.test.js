@@ -232,6 +232,18 @@ const CASES = [
     const usageOk = /"usage"/.test(r.body)
     check('T33 [[truncate]] finish_reason length', r.status === 200 && lenFin && doneOk && usageOk, 'len=' + lenFin + ' usage=' + usageOk)
   } },
+  { id: 'T34 CORS: file:// (Origin null) preflight allowed', tags: ['gate'], fn: async () => {
+    // The double-click-index.html workflow: file:// pages send Origin: null.
+    const r = await req({ method: 'OPTIONS', path: '/api/health', headers: { origin: 'null', 'access-control-request-private-network': 'true' } })
+    const acao = r.headers['access-control-allow-origin']
+    const hdrs = String(r.headers['access-control-allow-headers'] || '')
+    const pna = r.headers['access-control-allow-private-network']
+    check('T34 CORS: file:// (Origin null) preflight allowed', r.status === 204 && acao === 'null' && /x-lcl-demo/.test(hdrs) && pna === 'true', 'acao=' + acao + ' pna=' + pna)
+  } },
+  { id: 'T35 CORS: internet origin gets no grant', tags: ['gate'], fn: async () => {
+    const r = await req({ method: 'OPTIONS', path: '/api/health', headers: { origin: 'https://evil.example' } })
+    check('T35 CORS: internet origin gets no grant', r.status === 204 && !r.headers['access-control-allow-origin'], 'acao=' + (r.headers['access-control-allow-origin'] || 'none'))
+  } },
   { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
     const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
     const r1 = json((await g()).body)
