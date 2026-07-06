@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — File colour semantics: orange = embedded, blue = uploaded (alpha)
+
+Per CL: the two file populations now read at a glance. EMBEDDED files (permanent chat knowledge) take the orange TINT family — panel cards, type tags, count pill, and the source tags under replies (they cite embedded docs). UPLOADED working files (tray, preview rows, message chips) stay blue. Tints, not saturated orange, so buttons keep their action pop. Verified in both themes. Version stays v0.67d.
+
 ## 6 Jul 2026 — UI consistency pass + honest embedding states (alpha)
 
 Two batches, both demo-verified live before push. Version stays v0.67d.
