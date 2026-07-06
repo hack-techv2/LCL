@@ -26,10 +26,43 @@ function _httpInit(method, body, opts) {
   return init
 }
 
-function httpGet(path, opts)          { const dh = _demoHdr(); if (dh) { opts = Object.assign({}, opts || {}); opts.headers = Object.assign({}, opts.headers || {}, dh) } return fetch(path, opts) }
-function httpPost(path, body, opts)   { return fetch(path, _httpInit('POST', body, opts)) }
-function httpPut(path, body, opts)    { return fetch(path, _httpInit('PUT', body, opts)) }
-function httpDelete(path, opts)       { return fetch(path, _httpInit('DELETE', undefined, opts)) }
+// --- Proxy-origin shim (v0.67e): when index.html is opened from file:// or a
+// non-proxy origin (double-clicked, or a static dev server), relative /api and
+// /skills paths would miss the Node proxy entirely (file:///api/... -> CORS/404).
+// Rewrite them to the proxy origin. Override with window.LCL_API_BASE or
+// localStorage 'lcl_api_base'. Served-by-proxy pages keep relative paths.
+const LCL_PROXY_DEFAULT_ORIGIN = 'http://127.0.0.1:3000'
+const LCL_PROXY_PATH_RE = /^\/(?:api|skills)(?:\/|$)/
+
+function isNodeProxyOrigin(origin) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):3000$/i.test(String(origin || ''))
+}
+
+function lclProxyOrigin() {
+  let configured = ''
+  try { configured = String(window.LCL_API_BASE || localStorage.getItem('lcl_api_base') || '').trim() } catch (e) {}
+  configured = configured.replace(/\/+$/, '')
+  if (configured) return configured
+  const loc = (typeof location !== 'undefined') ? location : null
+  if (!loc) return ''
+  if (loc.protocol === 'file:' || !isNodeProxyOrigin(loc.origin)) return LCL_PROXY_DEFAULT_ORIGIN
+  return ''
+}
+
+function proxyUrl(path) {
+  const s = String(path || '')
+  if (/^https?:\/\//i.test(s)) return s
+  if (LCL_PROXY_PATH_RE.test(s)) {
+    const base = lclProxyOrigin()
+    if (base) return base + s
+  }
+  return s
+}
+
+function httpGet(path, opts)          { const dh = _demoHdr(); if (dh) { opts = Object.assign({}, opts || {}); opts.headers = Object.assign({}, opts.headers || {}, dh) } return fetch(proxyUrl(path), opts) }
+function httpPost(path, body, opts)   { return fetch(proxyUrl(path), _httpInit('POST', body, opts)) }
+function httpPut(path, body, opts)    { return fetch(proxyUrl(path), _httpInit('PUT', body, opts)) }
+function httpDelete(path, opts)       { return fetch(proxyUrl(path), _httpInit('DELETE', undefined, opts)) }
 
 // Consume an SSE Response body, invoking onData(payload) for each "data:" line
 // (payload is the text after "data:", trimmed; "[DONE]" is passed through for the
