@@ -111,6 +111,17 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   ticks (64/32768) 12px; Account → Disconnect reads at 13.5px; footer shows
   "Contributors · LCL · Melvin Yung · Ko Zheng Teng". Check both themes.
 
+- **U26 tray collapse** — open the seeded "GovTech maia - working files" chat (`#demo`):
+
+  tray shows 7 blue chips (chips area caps at 30vh and scrolls); ▾ chevron OR clicking
+  the header label collapses
+
+  to one "7 files attached" line with the token meter still visible; reload → stays
+
+  collapsed (`lcl_tray_min`); ▸ expands. With an over-budget set, the collapsed bar
+
+  stays amber with "too large to send" + "Embed all for RAG".
+
 ### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
 - Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
   after fixing `ragKeywordIndexCache` (see below).
