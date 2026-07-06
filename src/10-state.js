@@ -93,7 +93,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
         try { return typeof a === 'string' ? a : (a && a.message) || JSON.stringify(a) }
         catch { return String(a) }
       }).join(' ').slice(0, 2000)
-      fetch('/api/clientlog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: level, msg: msg }) }).catch(function () {})
+      fetch((typeof proxyUrl === 'function') ? proxyUrl('/api/clientlog') : '/api/clientlog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: level, msg: msg }) }).catch(function () {})
     } catch (e) {}
   }
   console.error = function () { const a = [].slice.call(arguments); _cerr.apply(console, a); ship('error', a) }
@@ -122,7 +122,7 @@ function lclCrumb(event, meta) {
       }
       if (parts.length) s += ' ' + parts.join(' ')
     }
-    fetch('/api/clientlog', {
+    fetch((typeof proxyUrl === 'function') ? proxyUrl('/api/clientlog') : '/api/clientlog', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level: 'info', msg: '[crumb] ' + s.slice(0, 500) })
