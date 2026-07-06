@@ -624,10 +624,18 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .fp-header{padding:12px 16px;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0}
 .fp-header-title{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:2px}
 .fp-header-sub{font-size:11px;color:var(--tx2);font-family:var(--mono)}
-.fp-tabs{display:flex;align-items:center;gap:0;border-bottom:1px solid var(--bdr);padding:0 14px;background:var(--bg3);flex-shrink:0;overflow-x:auto}
-.fp-tab{padding:8px 14px;font-size:12px;font-family:var(--mono);color:var(--tx2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .12s;margin-bottom:-1px}
-.fp-tab:hover{color:var(--tx)}
-.fp-tab.active{color:var(--ac);border-bottom-color:var(--ac)}
+.fp-tabs{display:flex;flex-direction:column;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0;max-height:190px;overflow-y:auto}
+.fp-row{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:11px;font-family:var(--mono);color:var(--tx2);cursor:pointer;border-left:3px solid transparent;transition:all .12s}
+.fp-row:hover{color:var(--tx);background:var(--bg2)}
+.fp-row.active{color:var(--ac);border-left-color:var(--ac);background:var(--bg2)}
+.fp-row-name{flex:1;overflow-wrap:anywhere}
+.fp-row-meta{font-size:10px;color:var(--tx3);white-space:nowrap}
+.fp-row-x{color:var(--tx3);cursor:pointer;padding:0 2px;flex-shrink:0}
+.fp-row-x:hover{color:#e05050}
+.fp-oversize{padding:8px 14px;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0}
+.fp-oversize.hidden{display:none}
+#fp-embed-btn.hidden{display:none}
+.fp-oversize-box{background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.6}
 .fp-body{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px 6px}
 .fp-label{font-size:11px;color:var(--tx3);font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
 .fp-label span{color:var(--ac)}
@@ -993,6 +1001,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           <div class="fp-header-sub">This text will be attached to your next message as context. Edit if needed, then click Confirm.</div>
         </div>
         <div class="fp-tabs" id="fp-tabs"></div>
+        <div class="fp-oversize hidden" id="fp-oversize"></div>
         <div class="fp-body">
           <div class="fp-label"><span id="fp-filename"></span><span id="fp-charcount"></span></div>
           <textarea class="fp-textarea" id="fp-textarea" spellcheck="false"></textarea>
@@ -1000,7 +1009,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <div class="fp-foot">
           <div class="fp-hint" id="fp-hint"></div>
           <button class="btn-s" onclick="cancelFilePreview()">Cancel</button>
-          <button class="btn-sv" onclick="confirmFilePreview()">Confirm &amp; attach</button>
+          <button class="btn-sv hidden" id="fp-embed-btn" onclick="confirmFilePreviewAsEmbed()">Embed for RAG instead</button>
+          <button class="btn-sv" id="fp-confirm-btn" onclick="confirmFilePreview()">Confirm &amp; attach</button>
         </div>
       </div>
 
@@ -3816,6 +3826,7 @@ async function queueFilesForPreview(files, target) {
 }
 
 function showFilePreview() {
+  const _ob = document.getElementById('fp-oversize'); if (_ob) _ob._crumbed = false
   document.getElementById('messages').style.display = 'none'
   document.getElementById('input-wrap').style.display = 'none'
   const panel = document.getElementById('file-preview')
@@ -3826,11 +3837,74 @@ function showFilePreview() {
 }
 
 function renderPreviewTabs() {
+  // One ROW per file (full name, char/token meta, per-file remove) - the old
+  // horizontally-scrolling tabs hid every file after the first with long names.
   const tabsEl = document.getElementById('fp-tabs')
-  tabsEl.innerHTML = previewQueue.map((f, i) => `
-    <div class="fp-tab ${i === previewTabIdx ? 'active' : ''}" onclick="selectPreviewTab(${i})">
-      ${esc(f.name)}
-    </div>`).join('')
+  const over = (typeof attachOversizeInfo === 'function') ? attachOversizeInfo(previewQueue).over : false
+  tabsEl.innerHTML = previewQueue.map((f, i) => {
+    const meta = over
+      ? '~' + Math.round(estTokens(f.extractedText || '') / 1000) + 'k tok'
+      : (f.extractedText || '').length.toLocaleString() + ' chars'
+    return `
+    <div class="fp-row ${i === previewTabIdx ? 'active' : ''}" onclick="selectPreviewTab(${i})">
+      <span class="fp-row-name">${esc(f.name)}</span>
+      <span class="fp-row-meta">${meta}</span>
+      <span class="fp-row-x" title="Remove this file" onclick="removePreviewFile(${i}, event)">\u2715</span>
+    </div>`
+  }).join('')
+  renderPreviewOversize()
+}
+
+// Remove ONE file from the preview queue (the row's remove button); empty queue = cancel.
+function removePreviewFile(i, event) {
+  if (event) event.stopPropagation()
+  if (typeof lclCrumb === 'function') lclCrumb('attach_preview_remove', { file: (previewQueue[i] || {}).name })
+  previewQueue.splice(i, 1)
+  if (!previewQueue.length) { cancelFilePreview(); return }
+  if (i < previewTabIdx) previewTabIdx--
+  if (previewTabIdx >= previewQueue.length) previewTabIdx = previewQueue.length - 1
+  selectPreviewTab(previewTabIdx)
+  updateFpHint()
+}
+
+// Oversize note + footer buttons: when the extracted text cannot fit inline,
+// offer "Embed for RAG instead" and relabel Confirm to "Attach anyway".
+function renderPreviewOversize() {
+  const box = document.getElementById('fp-oversize')
+  const embedBtn = document.getElementById('fp-embed-btn')
+  const confirmBtn = document.getElementById('fp-confirm-btn')
+  if (!box) return
+  const info = attachOversizeInfo(previewQueue)
+  const k = n => Math.round(n / 1000) + 'k'
+  if (info.over && previewQueue.length) {
+    box.classList.remove('hidden')
+    box.innerHTML = '<div class="fp-oversize-box"><strong style="color:var(--pin)">Too large to attach inline:</strong> ' +
+      (previewQueue.length > 1 ? ('these ' + previewQueue.length + ' files are') : 'this file is') + ' ~' + k(info.newEst) +
+      ' tokens' + (info.histEst > 2000 ? ' (+ ~' + k(info.histEst) + ' already in this chat\u2019s history \u2014 earlier attachments are re-sent every turn)' : '') + ' \u2014 over the ~' + k(info.ceil) + ' per-request limit. Embedding stores them once and retrieves only the relevant parts per question. Or remove files until it fits.</div>'
+    if (embedBtn) embedBtn.classList.remove('hidden')
+    if (confirmBtn) confirmBtn.textContent = 'Attach anyway'
+    if (typeof lclCrumb === 'function' && !box._crumbed) { box._crumbed = true; lclCrumb('attach_oversize_offered', { files: previewQueue.length, est: info.est, where: 'preview' }) }
+  } else {
+    box.classList.add('hidden')
+    if (embedBtn) embedBtn.classList.add('hidden')
+    if (confirmBtn) confirmBtn.innerHTML = 'Confirm &amp; attach'
+  }
+}
+
+// "Embed for RAG instead": reroute the already-extracted preview files through
+// the embed flow (no re-extraction) - RAG budgets them properly per question.
+async function confirmFilePreviewAsEmbed() {
+  const ta = document.getElementById('fp-textarea')
+  if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
+  const files = previewQueue.slice()
+  previewQueue = []
+  previewTarget = null
+  document.getElementById('file-preview').classList.add('hidden')
+  document.getElementById('messages').style.display = ''
+  document.getElementById('input-wrap').style.display = ''
+  document.getElementById('file-in').value = ''
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: files.length, where: 'preview' })
+  commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
 function selectPreviewTab(i) {
@@ -3850,9 +3924,11 @@ function updateFpHint() {
   const hint  = document.getElementById('fp-hint')
   if (!hint) return
   const f = previewQueue[previewTabIdx]
+  const info = (typeof attachOversizeInfo === 'function') ? attachOversizeInfo(previewQueue) : { over: false }
   let text = total > 1
-    ? `File ${previewTabIdx + 1} of ${total} — review each tab before confirming`
+    ? `File ${previewTabIdx + 1} of ${total} — review each row before confirming`
     : 'Review and edit the text above if needed'
+  if (info.over) text += ' · Total ~' + Math.round(info.est / 1000) + 'k tokens — limit ~' + Math.round(info.ceil / 1000) + 'k'
   if (f?.scanWarning) text += ' · Warning: ' + f.scanWarning
   if (f?.parseWarning) text += ' · Note: ' + f.parseWarning
   hint.textContent = text
@@ -4257,12 +4333,60 @@ function renderSkillChip() {
 // text string. With attachments, return an array of text blocks: the typed
 // message first, then each attached file's extracted text labelled by name.
 function buildContent(text) {
+  // Single string with <file name="...">...</file> blocks - the SAME format the
+  // renderer's expandable-chip parser and the demo seeds use (previously this
+  // emitted "--- name ---" content-block arrays that nothing else understood,
+  // so sent-message chips were never expandable).
   if (!attachments.length) return text
-  const blocks = [{ type: 'text', text }]
+  let out = text
   for (const a of attachments) {
-    blocks.push({ type: 'text', text: '\n\n--- ' + a.name + ' ---\n' + (a.textContent || '') })
+    const safeName = String(a.name || 'file').replace(/"/g, "'")
+    out += '\n\n<file name="' + safeName + '">\n' + (a.textContent || '') + '\n</file>'
   }
-  return blocks
+  return out
+}
+
+// Shared attach-budget check (preview panel + send guard): can the extracted
+// attachment text fit an inline request, leaving room for the reply + overhead?
+function attachOversizeInfo(queue, chat) {
+  const items = queue || []
+  const est = items.reduce(function (n, f) { return n + estTokens((f && (f.extractedText != null ? f.extractedText : f.textContent)) || '') }, 0)
+  // Attachments RIDE IN THE HISTORY: every prior message (incl. its inline file
+  // text) is re-sent each turn (6 Jul log: batched attaches climbed 39k -> 386k).
+  // Count the chat history so batch N is warned about batches 1..N-1 too.
+  const c = chat || ((typeof curChat === 'function') ? curChat() : null)
+  const hist = c && Array.isArray(c.messages)
+    ? estTokens(c.messages.map(function (m) { return typeof m.content === 'string' ? m.content : '' }).join('\n'))
+    : 0
+  const ctx = (typeof getModelContext === 'function' && creds && getModelContext(creds.model)) || 0
+  const ceil = Math.min(ctx || Infinity, 200000)
+  const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
+  const budget = Math.max(20000, ceil - reserve - 4000)
+  return { est: est + hist, newEst: est, histEst: hist, ceil: ceil, budget: budget, over: (est + hist) > budget }
+}
+
+// Send-time backstop for oversized ATTACHMENTS (docs get offerDocSplit; before
+// this, attachments got useless "switch Search mode" advice - 6 Jul log).
+function offerAttachEmbed(atts, est, ceil) {
+  const k = function (n) { return Math.round(n / 1000) + 'k' }
+  const bubble = appendMsg('ai', '', null, null)
+  const bodyEl = bubble.querySelector('.msg-body')
+  const acts = bubble.querySelector('.msg-acts'); if (acts) acts.style.display = 'none'
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_offered', { files: atts.length, est: est, where: 'send' })
+  bodyEl.innerHTML = statusBox('warn', 'Attached files are too large to send inline',
+    'Your ' + atts.length + ' attached file' + (atts.length > 1 ? 's total' : ' is') + ' ~' + k(est) +
+    ' tokens — over the ~' + k(ceil) + ' per-request limit. Embed them instead: files are stored once and only the relevant parts are retrieved for each question.', {})
+  bodyEl.appendChild(mkEl('div', { style: 'margin-top:10px;display:flex;gap:8px' }, [
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () {
+      try { bubble.remove() } catch (e) {}
+      if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: atts.length, where: 'send' })
+      const files = atts.map(function (a) { return { name: a.name, size: (a.textContent || '').length, extractedText: a.textContent } })
+      attachments = []
+      renderChips()
+      commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
+    } }, 'Embed attached files instead'),
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Keep as attachments')
+  ]))
 }
 
 // Shared by send() and regenerateLast(): builds the chat API payload for
@@ -4381,6 +4505,7 @@ async function send() {
   }
 
   const sentFileNames = attachments.map(a=>a.name)
+  const sentAttachments = attachments.slice()
   const content = buildContent(text)
   chat.messages.push({role:'user',content,ts:Date.now(),fileNames:sentFileNames})
   chat.updatedAt = Date.now()
@@ -4411,6 +4536,20 @@ async function send() {
   const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const _ceil = Math.min(_ctx || Infinity, _rateCap)
   if (_estTok > _ceil) {
+    if (sentAttachments.length) {
+      // Attachments (not docs) blew the budget: undo the send, restore the
+      // composer + chips so nothing is lost, and offer to embed instead.
+      chat.messages.pop()
+      chat.updatedAt = Date.now()
+      renderMessages()
+      attachments = sentAttachments
+      renderChips()
+      input.value = text; autoResize(input)
+      offerAttachEmbed(sentAttachments, _estTok, _ceil)
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
     const _ready = ((typeof getRagMemoryDocs === 'function' ? getRagMemoryDocs(chat) : (chat.docs || [])) || []).filter(function (dd) { return dd && dd.status === 'ready' && dd.content })
     if (_ready.length && typeof offerDocSplit === 'function') {
       if (typeof lclCrumb === 'function') lclCrumb('split_offered', { docs: _ready.length, est: _estTok })
