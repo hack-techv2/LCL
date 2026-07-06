@@ -159,3 +159,6 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
 - [ ] Multi-file attach (PDFs): preview panel opens INSTANTLY with "extracting…"
       rows that fill in one by one; Confirm blocked until done; cancel mid-extraction
       is clean. Tray "remove all" link → confirm dialog → tray cleared.
+- [ ] Embed panel: one-line header (count pill, remove all, + upload), search-mode
+      caption switches with selection, blue zebra file rows with status badges,
+      footer hint + "about RAG" popover. Remove all → confirm → panel empties.
