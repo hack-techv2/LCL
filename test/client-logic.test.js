@@ -266,6 +266,27 @@ const CASES = [
     check('C18 truncation note: Continue button + continuation count', ok, 'first=' + /token limit/.test(first) + ' second=' + /2 continuations/.test(second))
   } },
 
+  { id: 'C19 proxyUrl shim: file:// and foreign origins hit the proxy', fn: async () => {
+    const { ctx, sb, get } = mkCtx([])
+    const pu = get('proxyUrl')
+    sb.location = { protocol: 'file:', origin: 'null' }
+    const fromFile = pu('/api/chat')
+    sb.location = { protocol: 'http:', origin: 'http://localhost:5500' }
+    const fromDev = pu('/api/embed-batch')
+    sb.location = { protocol: 'http:', origin: 'http://127.0.0.1:3000' }
+    const served = pu('/api/chat')
+    const nonApi = pu('/index.html')
+    sb.window = { LCL_API_BASE: 'http://127.0.0.1:4000' }
+    sb.location = { protocol: 'file:', origin: 'null' }
+    const overridden = pu('/api/chat')
+    const ok = fromFile === 'http://127.0.0.1:3000/api/chat'
+      && fromDev === 'http://127.0.0.1:3000/api/embed-batch'
+      && served === '/api/chat' && nonApi === '/index.html'
+      && overridden === 'http://127.0.0.1:4000/api/chat'
+    check('C19 proxyUrl shim: file:// and foreign origins hit the proxy', ok,
+      'file=' + fromFile + ' dev=' + fromDev + ' served=' + served + ' override=' + overridden)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
