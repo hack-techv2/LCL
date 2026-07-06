@@ -287,6 +287,31 @@ const CASES = [
       'file=' + fromFile + ' dev=' + fromDev + ' served=' + served + ' override=' + overridden)
   } },
 
+  { id: 'C20 buildContent: <file> blocks the renderer can expand', fn: async () => {
+    const { ctx, get } = mkCtx([])
+    vm.runInContext('attachments = [{ name: \'report "final".txt\', textContent: \'AAA\' }, { name: \'notes.txt\', textContent: \'BBB\' }]', ctx)
+    const out = get('buildContent')('compare these')
+    const blockRe = /<file name="([^"]*)">([\s\S]*?)<\/file>/g
+    const map = {}
+    let m; while ((m = blockRe.exec(out)) !== null) map[m[1]] = m[2].trim()
+    const names = Object.keys(map)
+    const ok = typeof out === 'string' && names.length === 2 && map["report 'final'.txt"] === 'AAA' && map['notes.txt'] === 'BBB' && out.startsWith('compare these')
+    check('C20 buildContent: <file> blocks the renderer can expand', ok, 'names=' + JSON.stringify(names))
+  } },
+
+  { id: 'C21 attachOversizeInfo: budget math both sides', fn: async () => {
+    const { get } = mkCtx([])
+    const info = get('attachOversizeInfo')
+    const noChat = { messages: [] }
+    const small = info([{ extractedText: 'x'.repeat(40000) }], noChat)            // ~10k tok
+    const big   = info([{ extractedText: 'x'.repeat(500000) }, { extractedText: 'x'.repeat(460000) }], noChat)  // ~240k tok
+    // History-aware: a small new batch must still warn when EARLIER batches bloat the chat.
+    const heavyChat = { messages: [{ role: 'user', content: 'y'.repeat(700000) }] }   // ~175k tok history
+    const stacked = info([{ extractedText: 'x'.repeat(80000) }], heavyChat)            // +20k new
+    const ok = small.over === false && big.over === true && big.ceil === 200000 && big.newEst === 240000 && stacked.over === true && stacked.histEst > 170000
+    check('C21 attachOversizeInfo: budget math both sides', ok, 'small=' + small.est + '/' + small.over + ' big=' + big.est + '/' + big.over)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
