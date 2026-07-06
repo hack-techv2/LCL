@@ -102,12 +102,60 @@ function renderSkillChip() {
 // text string. With attachments, return an array of text blocks: the typed
 // message first, then each attached file's extracted text labelled by name.
 function buildContent(text) {
+  // Single string with <file name="...">...</file> blocks - the SAME format the
+  // renderer's expandable-chip parser and the demo seeds use (previously this
+  // emitted "--- name ---" content-block arrays that nothing else understood,
+  // so sent-message chips were never expandable).
   if (!attachments.length) return text
-  const blocks = [{ type: 'text', text }]
+  let out = text
   for (const a of attachments) {
-    blocks.push({ type: 'text', text: '\n\n--- ' + a.name + ' ---\n' + (a.textContent || '') })
+    const safeName = String(a.name || 'file').replace(/"/g, "'")
+    out += '\n\n<file name="' + safeName + '">\n' + (a.textContent || '') + '\n</file>'
   }
-  return blocks
+  return out
+}
+
+// Shared attach-budget check (preview panel + send guard): can the extracted
+// attachment text fit an inline request, leaving room for the reply + overhead?
+function attachOversizeInfo(queue, chat) {
+  const items = queue || []
+  const est = items.reduce(function (n, f) { return n + estTokens((f && (f.extractedText != null ? f.extractedText : f.textContent)) || '') }, 0)
+  // Attachments RIDE IN THE HISTORY: every prior message (incl. its inline file
+  // text) is re-sent each turn (6 Jul log: batched attaches climbed 39k -> 386k).
+  // Count the chat history so batch N is warned about batches 1..N-1 too.
+  const c = chat || ((typeof curChat === 'function') ? curChat() : null)
+  const hist = c && Array.isArray(c.messages)
+    ? estTokens(c.messages.map(function (m) { return typeof m.content === 'string' ? m.content : '' }).join('\n'))
+    : 0
+  const ctx = (typeof getModelContext === 'function' && creds && getModelContext(creds.model)) || 0
+  const ceil = Math.min(ctx || Infinity, 200000)
+  const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
+  const budget = Math.max(20000, ceil - reserve - 4000)
+  return { est: est + hist, newEst: est, histEst: hist, ceil: ceil, budget: budget, over: (est + hist) > budget }
+}
+
+// Send-time backstop for oversized ATTACHMENTS (docs get offerDocSplit; before
+// this, attachments got useless "switch Search mode" advice - 6 Jul log).
+function offerAttachEmbed(atts, est, ceil) {
+  const k = function (n) { return Math.round(n / 1000) + 'k' }
+  const bubble = appendMsg('ai', '', null, null)
+  const bodyEl = bubble.querySelector('.msg-body')
+  const acts = bubble.querySelector('.msg-acts'); if (acts) acts.style.display = 'none'
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_offered', { files: atts.length, est: est, where: 'send' })
+  bodyEl.innerHTML = statusBox('warn', 'Attached files are too large to send inline',
+    'Your ' + atts.length + ' attached file' + (atts.length > 1 ? 's total' : ' is') + ' ~' + k(est) +
+    ' tokens — over the ~' + k(ceil) + ' per-request limit. Embed them instead: files are stored once and only the relevant parts are retrieved for each question.', {})
+  bodyEl.appendChild(mkEl('div', { style: 'margin-top:10px;display:flex;gap:8px' }, [
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () {
+      try { bubble.remove() } catch (e) {}
+      if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: atts.length, where: 'send' })
+      const files = atts.map(function (a) { return { name: a.name, size: (a.textContent || '').length, extractedText: a.textContent } })
+      attachments = []
+      renderChips()
+      commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
+    } }, 'Embed attached files instead'),
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Keep as attachments')
+  ]))
 }
 
 // Shared by send() and regenerateLast(): builds the chat API payload for
@@ -226,6 +274,7 @@ async function send() {
   }
 
   const sentFileNames = attachments.map(a=>a.name)
+  const sentAttachments = attachments.slice()
   const content = buildContent(text)
   chat.messages.push({role:'user',content,ts:Date.now(),fileNames:sentFileNames})
   chat.updatedAt = Date.now()
@@ -256,6 +305,20 @@ async function send() {
   const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const _ceil = Math.min(_ctx || Infinity, _rateCap)
   if (_estTok > _ceil) {
+    if (sentAttachments.length) {
+      // Attachments (not docs) blew the budget: undo the send, restore the
+      // composer + chips so nothing is lost, and offer to embed instead.
+      chat.messages.pop()
+      chat.updatedAt = Date.now()
+      renderMessages()
+      attachments = sentAttachments
+      renderChips()
+      input.value = text; autoResize(input)
+      offerAttachEmbed(sentAttachments, _estTok, _ceil)
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
     const _ready = ((typeof getRagMemoryDocs === 'function' ? getRagMemoryDocs(chat) : (chat.docs || [])) || []).filter(function (dd) { return dd && dd.status === 'ready' && dd.content })
     if (_ready.length && typeof offerDocSplit === 'function') {
       if (typeof lclCrumb === 'function') lclCrumb('split_offered', { docs: _ready.length, est: _estTok })
