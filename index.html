@@ -485,24 +485,24 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:3px;background-clip:padding-box}
 .sp-box::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
 /* (bottom-fade hint removed - tabbed settings fits without scrolling) */
-.sp-title{font-size:17px;font-weight:600;margin-bottom:22px;letter-spacing:-.2px}
-.sp-sec{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:14px 16px;margin-bottom:14px}
+.sp-title{font-size:19px;font-weight:600;margin-bottom:22px;letter-spacing:-.2px}
+.sp-sec{background:var(--bg2);border:1px solid var(--bdr2);border-radius:11px;padding:14px 16px;margin-bottom:14px}
 .sp-sec .upd-card{background:transparent;border:none;padding:0}
-.sp-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:10px}
+.sp-lbl{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx);margin-bottom:10px}
 .sp-grid{display:grid;grid-template-columns:1fr;gap:16px}
 .sf{margin-bottom:12px}
-.sf label{display:block;font-size:11px;font-weight:500;color:var(--tx2);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
+.sf label{display:block;font-size:12.5px;font-weight:500;color:var(--tx);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
 .tip{font-size:10px;color:var(--tx3);cursor:help;font-style:normal;text-transform:none;letter-spacing:0;vertical-align:middle;opacity:.7}
 .tip:hover{opacity:1}
-.sf input:not([type=range]):not(.sf-num),.sf textarea{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;transition:border-color .15s,box-shadow .15s}
+.sf input:not([type=range]):not(.sf-num),.sf textarea{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
 .sf input:not([type=range]):not(.sf-num):focus,.sf textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sf textarea{resize:vertical;min-height:72px;line-height:1.5}
 .sf-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .sf-head label{margin-bottom:0}
-.sf-num{width:74px;height:26px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bdr);border-radius:999px;padding:0 12px;color:var(--ac);font-family:var(--mono);font-size:12px;text-align:right;outline:none;-moz-appearance:textfield;appearance:textfield}
+.sf-num{width:86px;height:30px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--bdr);border-radius:999px;padding:0 14px;color:var(--ac);font-family:var(--mono);font-size:14px;text-align:right;outline:none;-moz-appearance:textfield;appearance:textfield}
 .sf-num::-webkit-outer-spin-button,.sf-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .sf-num:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
-.sl-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:6px}
+.sl-ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--tx2);margin-top:6px}
 .sl{display:flex;align-items:center;gap:10px}
 .sl span{font-family:var(--mono);font-size:12px;color:var(--ac);min-width:38px;text-align:right}
 /* Custom slider: explicit gradient fill driven by --fill so the thumb sits
@@ -700,7 +700,7 @@ body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3
    left edge so it extends rightward into #main, never clipped over the sidebar */
 .sb-toggle[data-tip-bottom]:hover::after{left:0;right:auto;transform:none}
 .sb-toggle[data-tip-bottom]:hover::before{left:10px;right:auto;transform:none}
-select.model-sel{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;cursor:pointer;margin-bottom:6px}
+select.model-sel{width:100%;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r-input);padding:9px 12px;color:var(--tx);font-family:var(--mono);font-size:13px;outline:none;cursor:pointer;margin-bottom:6px}
 select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
 .sp-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:5}
 .sp-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
@@ -708,8 +708,20 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .sp-tab{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--tx3);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 14px;cursor:pointer;transition:color .12s}
 .sp-tab:hover{color:var(--tx2)}
 .sp-tab.on{color:var(--tx);border-bottom-color:var(--ac)}
-.sp-pane{display:none}
-.sp-pane.on{display:block}
+#sp .sp-pane{display:contents}
+#sp .sp-box{width:min(980px,95vw);height:min(700px,92vh);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;padding:22px 26px}
+.sp-cols{display:flex;flex:1;min-height:0;margin-top:2px}
+.sp-nav{width:168px;flex-shrink:0;border-right:1px solid var(--bdr);padding-right:12px;margin-right:20px;overflow-y:auto;scrollbar-width:thin}
+.sp-nav-lbl{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx2);padding:12px 8px 5px;margin:0 0 5px;border-bottom:1px solid var(--bdr);cursor:default;user-select:none}
+.sp-nav-it{display:block;width:100%;text-align:left;font-family:var(--sans);font-size:13.5px;color:var(--tx);background:none;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;margin-bottom:1px;transition:all .12s}
+.sp-nav-it:hover{background:var(--bg3);color:var(--tx)}
+.sp-nav-it.on{background:var(--acbg);color:var(--ac-tx);font-weight:500}
+.sp-main{flex:1;min-width:0;overflow-y:auto;display:flex;flex-direction:column;scrollbar-width:thin;padding-right:4px}
+#sp .sp-sec{display:none}
+#sp .sp-sec.on{display:block}
+#sp .sp-foot{margin-top:auto;padding-top:14px}
+.sp-cap{font-size:13px;color:var(--tx2);line-height:1.55;margin:-4px 0 12px}
+.sf-cap{font-size:12.5px;color:var(--tx2);line-height:1.5;margin:5px 0 2px}
 .seg-cls{display:flex;gap:6px}
 .seg-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center;font-size:13px;font-weight:600;padding:8px 6px;border-radius:8px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--tx3);cursor:pointer;transition:all .12s;font-family:var(--sans)}
 .seg-code{font-size:13px;font-weight:600}
@@ -721,7 +733,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 [data-theme="light"] .seg-btn.on-cce{background:rgba(240,165,0,.20);border-color:rgba(200,130,0,.75);color:#7a4a00}
 [data-theme="light"] .seg-btn.on-rsn{background:rgba(56,130,200,.16);border-color:rgba(40,110,190,.7);color:#1b4d80}
 .seg-btn.on-cce .seg-full,.seg-btn.on-rsn .seg-full{opacity:1}
-.sp-contrib{font-size:11px;color:var(--tx3);margin-right:auto}
+.sp-contrib{font-size:12px;color:var(--tx2);margin-right:auto}
+#sp .sp-sec .btn-s{font-size:13.5px;padding:9px 16px}
 .upd-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:13px}
 .upd-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
@@ -797,9 +810,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 /* 'RAG' term in the embed-panel description — hover for a plain-English tooltip. */
 .rag-term{border-bottom:1px dotted currentColor;cursor:pointer}
 #rag-info.hidden{display:none}
-.rag-info{position:absolute;right:calc(100% + 8px);top:52px;width:250px;z-index:60;margin:0;padding:11px 13px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:11px;line-height:1.5;color:var(--tx2)}
+.rag-info{position:absolute;right:calc(100% + 8px);top:52px;width:300px;z-index:60;margin:0;padding:13px 15px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12.5px;line-height:1.6;color:var(--tx2)}
 .rag-info::after{content:'';position:absolute;right:-6px;top:16px;width:10px;height:10px;background:var(--bg3);border-right:1px solid var(--bdr);border-top:1px solid var(--bdr);transform:rotate(45deg)}
-.rag-info-hd{display:flex;justify-content:space-between;align-items:center;font-weight:500;color:var(--tx);margin-bottom:6px}
+.rag-info-hd{display:flex;justify-content:space-between;align-items:center;font-weight:500;font-size:13px;color:var(--tx);margin-bottom:6px}
 .rag-info-x{background:none;border:none;color:var(--tx3);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
 .rag-info p{margin:6px 0}
 .rag-info ul{margin:6px 0;padding-left:16px}
@@ -848,52 +861,72 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
   <div class="sp-box">
     <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
-    <div class="sp-tabs"><button type="button" class="sp-tab on" data-tab="models" onclick="spTab('models')">Models</button><button type="button" class="sp-tab" data-tab="settings" onclick="spTab('settings')">Settings</button></div>
-    <div class="sp-pane on" data-pane="models"><div class="sp-sec">
+    <div class="sp-cols">
+      <nav class="sp-nav">
+        <div class="sp-nav-lbl">Model</div>
+        <button type="button" class="sp-nav-it on" data-sec="connection" onclick="spNav('connection')">Connection</button>
+        <button type="button" class="sp-nav-it" data-sec="embedding" onclick="spNav('embedding')">Embedding</button>
+        <button type="button" class="sp-nav-it" data-sec="rag" onclick="spNav('rag')">RAG &amp; files</button>
+        <button type="button" class="sp-nav-it" data-sec="defaults" onclick="spNav('defaults')">Defaults</button>
+        <div class="sp-nav-lbl">System</div>
+        <button type="button" class="sp-nav-it" data-sec="updates" onclick="spNav('updates')">Updates</button>
+        <button type="button" class="sp-nav-it" data-sec="account" onclick="spNav('account')">Account</button>
+      </nav>
+      <div class="sp-main">
+    <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
       <div class="sp-lbl">Connection</div>
+      <div class="sp-cap">Your GovTech Models gateway credentials and the chat model LCL uses.</div>
       <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
       <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
+    <div class="sp-sec" data-sec="embedding">
+      <div class="sp-lbl">Embedding</div>
+      <div class="sp-cap">Converts uploaded files into vectors for RAG search. Leave a field blank to keep the current value.</div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
       <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
+    <div class="sp-sec" data-sec="rag">
+      <div class="sp-lbl">RAG &amp; files</div>
+      <div class="sp-cap">How uploaded files are split, embedded, and searched when you chat.</div>
       <div class="sp-grid">
         <div class="sf">
-          <div class="sf-head"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
+          <div class="sf-head"><label>Chunk Size (chars)</label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
           <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="onRangeIn('s-chunk-v',this)"></div>
           <div class="sl-ticks"><span>200</span><span>2000</span></div>
+          <div class="sf-cap">Smaller (400–600) = precise answers; larger (1000–1500) = more context. 800 suits most documents.</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sf-head"><label>Top-K Chunks</label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
           <div class="sl"><input type="range" min="3" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
           <div class="sl-ticks"><span>1</span><span>10</span></div>
+          <div class="sf-cap">Passages retrieved per question. 5 balances detail and token use; raise to 8–10 for broad research.</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Warn above (tokens) <span class="tip" title="Show a confirm before embedding a document estimated to use more than this many tokens of the per-minute budget. Blank or auto uses ~10% of the live limit.">ⓘ</span></label></div>
+          <div class="sf-head"><label>Warn above (tokens)</label></div>
           <input type="text" id="s-embwarn" class="sf-num" placeholder="auto" style="width:100%">
+          <div class="sf-cap">Confirm before embedding a file estimated above this many tokens. Blank = auto (~10% of the live limit).</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Block above (tokens) <span class="tip" title="Hard cap: the server refuses an embed estimated above this. Blank or auto uses ~50% of the live limit.">ⓘ</span></label></div>
+          <div class="sf-head"><label>Block above (tokens)</label></div>
           <input type="text" id="s-embmax" class="sf-num" placeholder="auto" style="width:100%">
+          <div class="sf-cap">Hard cap — the server refuses embeds estimated above this. Blank = auto (~50% of the live limit).</div>
         </div>
       </div>
     </div>
     </div>
-    <div class="sp-pane" data-pane="settings"><div class="sp-sec">
+    <div class="sp-pane" data-pane="settings"><div class="sp-sec" data-sec="defaults">
       <div class="sp-lbl">Defaults</div>
+      <div class="sp-cap">Applied to every message in every chat.</div>
       <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
       <div class="sf">
-        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sf-head"><label>Max Tokens</label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
         <div class="sl-ticks"><span>64</span><span>32768</span></div>
+        <div class="sf-cap">Maximum reply length (1 token ≈ 4 characters). 8192 suits most tasks — raise it only if replies get cut off.</div>
       </div>
     </div>
-    <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
+    <div class="sp-sec" data-sec="updates"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec" data-sec="account">
       <div class="sp-lbl">Account</div>
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
@@ -905,9 +938,11 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     </div>
     </div>
     <div class="sp-foot">
-      <div class="sp-contrib">Contributors &middot; Melvin Yung &middot; Ko Zheng Teng</div>
+      <div class="sp-contrib">Contributors &middot; LCL &middot; Melvin Yung &middot; Ko Zheng Teng</div>
       <button class="btn-s" onclick="closeSP()">Cancel</button>
       <button class="btn-sv" onclick="saveSP()">Save</button>
+    </div>
+      </div>
     </div>
   </div>
 </div>
@@ -6618,17 +6653,19 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
   document.getElementById('sp').classList.remove('hidden')
-  let _spTab = 'models'; try { _spTab = localStorage.getItem('lcl_sp_tab') || 'models' } catch {}
-  if (typeof spTab === 'function') spTab(['models','settings'].includes(_spTab) ? _spTab : 'models')
+  let _spSec = 'connection'; try { _spSec = localStorage.getItem('lcl_sp_sec') || 'connection' } catch {}
+  spNav(document.querySelector('#sp .sp-sec[data-sec="' + _spSec + '"]') ? _spSec : 'connection')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
 }
 
-// Switch the Settings panel tab (Model / Embed / Settings); remembers last choice.
-function spTab(name){
-  document.querySelectorAll('#sp .sp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name))
-  document.querySelectorAll('#sp .sp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name))
-  try { localStorage.setItem('lcl_sp_tab', name) } catch {}
+// Full-page Settings navigation (left rail): show ONE section; remembers last.
+function spNav(sec){
+  document.querySelectorAll('#sp .sp-sec').forEach(s => s.classList.toggle('on', s.dataset.sec === sec))
+  document.querySelectorAll('#sp .sp-nav-it').forEach(b => b.classList.toggle('on', b.dataset.sec === sec))
+  try { localStorage.setItem('lcl_sp_sec', sec) } catch {}
 }
+// Legacy alias (old two-tab layout callers).
+function spTab(name){ spNav(name === 'settings' ? 'defaults' : 'connection') }
 
 // Skills manager (independent of Settings; accessible without connection)
 async function openSkillsManager() {
