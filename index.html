@@ -625,21 +625,41 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .fp-header-title{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:2px}
 .fp-header-sub{font-size:11px;color:var(--tx2);font-family:var(--mono)}
 .fp-tabs{display:flex;flex-direction:column;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0;max-height:190px;overflow-y:auto}
-.fp-row{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:11px;font-family:var(--mono);color:var(--tx2);cursor:pointer;border-left:3px solid transparent;transition:all .12s}
-.fp-row:hover{color:var(--tx);background:var(--bg2)}
-.fp-row.active{color:var(--ac);border-left-color:var(--ac);background:var(--bg2)}
+.fp-row{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:11.5px;font-family:var(--mono);color:var(--tx);cursor:pointer;border-left:3px solid transparent;transition:all .12s}
+.fp-row:nth-child(even){background:var(--bg3)}
+.fp-row:hover{background:var(--bg2)}
+.fp-row.active{color:var(--info);border-left-color:var(--info);background:var(--infobg);font-weight:600}
 .fp-row-name{flex:1;overflow-wrap:anywhere}
-.fp-row-meta{font-size:10px;color:var(--tx3);white-space:nowrap}
+.fp-row-meta{font-size:10px;color:var(--tx2);white-space:nowrap}
 .fp-row-x{color:var(--tx3);cursor:pointer;padding:0 2px;flex-shrink:0}
 .fp-row-x:hover{color:#e05050}
 .fp-oversize{padding:8px 14px;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0}
 .fp-oversize.hidden{display:none}
 #fp-embed-btn.hidden{display:none}
+#fp-confirm-btn.hidden{display:none}
+
+/* Attachment tray - the chat's working set of attached files (v0.67e) */
+#attach-tray{margin:0 0 8px;background:var(--infobg);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);border-radius:10px;padding:8px 12px}
+#attach-tray.hidden{display:none}
+#attach-tray.over{background:var(--pinbg);border-color:rgba(240,165,0,.45)}
+.at-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;font-weight:600;color:var(--info)}
+#attach-tray.over .at-head{color:var(--pin)}
+.at-meter{font-family:var(--mono);font-size:10px;font-weight:400;background:var(--bg2);border-radius:999px;padding:2px 10px;color:var(--info)}
+#attach-tray.over .at-meter{color:var(--pin);font-weight:600}
+.at-chips{display:flex;flex-wrap:wrap;gap:6px}
+.at-chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--info);background:var(--bg2);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);border-radius:999px;padding:3px 10px}
+#attach-tray.over .at-chip{color:var(--pin);border-color:rgba(240,165,0,.45)}
+.at-tok{opacity:.65}
+.at-x{cursor:pointer;font-weight:600;padding:0 2px}
+.at-x:hover{color:#e05050}
+.at-add{display:inline-flex;align-items:center;font-size:11px;color:var(--info);border:1px dashed color-mix(in srgb, var(--info) 50%, transparent);border-radius:999px;padding:3px 10px;cursor:pointer}
+.at-embed{font-size:11px;padding:3px 12px}
 .fp-oversize-box{background:var(--pinbg);border:1px solid rgba(240,165,0,.35);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--tx2);line-height:1.6}
 .fp-body{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px 6px}
-.fp-label{font-size:11px;color:var(--tx3);font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.fp-label{font-size:11px;color:var(--info);font-weight:600;font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+#fp-charcount{font-weight:400;color:var(--tx2);background:var(--bg3);border:1px solid var(--bdr2);border-radius:999px;padding:1px 9px;font-size:10px}
 .fp-label span{color:var(--ac)}
-.fp-textarea{flex:1;width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);padding:10px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;line-height:1.6;resize:none;outline:none;overflow-y:auto}
+.fp-textarea{flex:1;width:100%;background:var(--bg3);border:1px solid var(--bdr2);border-radius:var(--r);padding:10px 12px;color:var(--tx);font-family:var(--mono);font-size:12px;line-height:1.75;resize:none;outline:none;overflow-y:auto}
 .fp-textarea:focus{border-color:var(--ac)}
 .fp-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--bdr);flex-shrink:0;background:var(--bg3)}
 .fp-hint{font-size:11px;color:var(--tx3);font-family:var(--mono);flex:1}
@@ -1015,6 +1035,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       </div>
 
       <div id="input-wrap">
+        <div id="attach-tray" class="hidden"></div>
         <div class="input-inner">
           <div class="skill-chip" id="skill-chip"></div>
           <div class="chips" id="chips"></div>
@@ -3882,12 +3903,15 @@ function renderPreviewOversize() {
       (previewQueue.length > 1 ? ('these ' + previewQueue.length + ' files are') : 'this file is') + ' ~' + k(info.newEst) +
       ' tokens' + (info.histEst > 2000 ? ' (+ ~' + k(info.histEst) + ' already in this chat\u2019s history \u2014 earlier attachments are re-sent every turn)' : '') + ' \u2014 over the ~' + k(info.ceil) + ' per-request limit. Embedding stores them once and retrieves only the relevant parts per question. Or remove files until it fits.</div>'
     if (embedBtn) embedBtn.classList.remove('hidden')
-    if (confirmBtn) confirmBtn.textContent = 'Attach anyway'
+    if (confirmBtn) {
+      confirmBtn.textContent = 'Attach anyway'
+      confirmBtn.classList.toggle('hidden', info.est > info.ceil * 0.95)   // over the ABSOLUTE ceiling: can never send
+    }
     if (typeof lclCrumb === 'function' && !box._crumbed) { box._crumbed = true; lclCrumb('attach_oversize_offered', { files: previewQueue.length, est: info.est, where: 'preview' }) }
   } else {
     box.classList.add('hidden')
     if (embedBtn) embedBtn.classList.add('hidden')
-    if (confirmBtn) confirmBtn.innerHTML = 'Confirm &amp; attach'
+    if (confirmBtn) { confirmBtn.innerHTML = 'Confirm &amp; attach'; confirmBtn.classList.remove('hidden') }
   }
 }
 
@@ -3973,11 +3997,70 @@ async function confirmFilePreview() {
   else commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
+// Attachment tray (v0.67e "working set"): confirmed files live on the CHAT, not
+// in the composer or the message history. The tray above the composer shows the
+// current set with a live token meter; every send injects the CURRENT set once.
 function commitAttachments(files) {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat) return
+  if (!Array.isArray(chat.attachedFiles)) chat.attachedFiles = []
   for (const f of files) {
-    attachments.push({ name: f.name, textContent: f.extractedText, isText: true })
+    const rec = { name: f.name, size: f.size || (f.extractedText || '').length, textContent: f.extractedText }
+    const i = chat.attachedFiles.findIndex(function (x) { return x.name === f.name })
+    if (i >= 0) chat.attachedFiles[i] = rec; else chat.attachedFiles.push(rec)
   }
-  renderChips()
+  persist()
+  renderAttachTray()
+}
+
+function renderAttachTray() {
+  const el = document.getElementById('attach-tray')
+  if (!el) return
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  const files = (chat && chat.attachedFiles) || []
+  if (!files.length) { el.className = 'hidden'; el.innerHTML = ''; return }
+  const info = attachOversizeInfo(files, chat)
+  const k = function (n) { return Math.round(n / 1000) + 'k' }
+  el.className = info.over ? 'over' : ''
+  const chips = files.map(function (a, i) {
+    return '<span class="at-chip">' + esc(a.name) +
+      ' <span class="at-tok">~' + k(estTokens(a.textContent || '')) + '</span>' +
+      '<span class="at-x" title="Remove from the working set" onclick="removeTrayFile(' + i + ', event)">\u2715</span></span>'
+  }).join('')
+  el.innerHTML =
+    '<div class="at-head">' +
+      '<span>' + (info.over ? 'Attached files \u2014 too large to send' : 'Attached files \u2014 sent with every message') + '</span>' +
+      '<span style="flex:1"></span>' +
+      '<span class="at-meter">~' + k(info.est) + ' / ' + k(info.budget) + ' tokens</span>' +
+      (info.over ? '<button class="btn-s at-embed" onclick="embedTrayFiles()">Embed all for RAG</button>' : '') +
+    '</div>' +
+    '<div class="at-chips">' + chips +
+      '<span class="at-add" onclick="document.getElementById(&quot;file-in&quot;).click()">+ add files</span>' +
+    '</div>'
+  if (info.over && typeof lclCrumb === 'function' && !el._overCrumbed) { el._overCrumbed = true; lclCrumb('attach_oversize_offered', { files: files.length, est: info.est, where: 'tray' }) }
+  if (!info.over) el._overCrumbed = false
+}
+
+function removeTrayFile(i, event) {
+  if (event && event.stopPropagation) event.stopPropagation()
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat || !Array.isArray(chat.attachedFiles)) return
+  const f = chat.attachedFiles[i]
+  if (typeof lclCrumb === 'function') lclCrumb('attach_tray_remove', { file: f && f.name })
+  chat.attachedFiles.splice(i, 1)
+  persist()
+  renderAttachTray()
+}
+
+function embedTrayFiles() {
+  const chat = (typeof curChat === 'function') ? curChat() : null
+  if (!chat || !Array.isArray(chat.attachedFiles) || !chat.attachedFiles.length) return
+  const files = chat.attachedFiles.map(function (a) { return { name: a.name, size: a.size || (a.textContent || '').length, extractedText: a.textContent } })
+  chat.attachedFiles = []
+  persist()
+  renderAttachTray()
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: files.length, where: 'tray' })
+  commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
 async function commitDocs(files) {
@@ -4365,6 +4448,17 @@ function attachOversizeInfo(queue, chat) {
   return { est: est + hist, newEst: est, histEst: hist, ceil: ceil, budget: budget, over: (est + hist) > budget }
 }
 
+// Working-set tray -> payload: the chat's CURRENT attached files are injected
+// ONCE per request into the system context, never baked into message history.
+// Removing a file from the tray immediately shrinks every future send.
+function trayContextBlock(chat) {
+  const files = ((chat && chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
+  if (!files.length) return ''
+  return files.map(function (a) {
+    return '<file name="' + String(a.name || 'file').replace(/"/g, "'") + '">\n' + a.textContent + '\n</file>'
+  }).join('\n\n')
+}
+
 // Send-time backstop for oversized ATTACHMENTS (docs get offerDocSplit; before
 // this, attachments got useless "switch Search mode" advice - 6 Jul log).
 function offerAttachEmbed(atts, est, ceil) {
@@ -4380,12 +4474,14 @@ function offerAttachEmbed(atts, est, ceil) {
     mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () {
       try { bubble.remove() } catch (e) {}
       if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: atts.length, where: 'send' })
+      const _c = (typeof curChat === 'function') ? curChat() : null
+      if (_c && Array.isArray(_c.attachedFiles) && _c.attachedFiles.length && typeof embedTrayFiles === 'function') { embedTrayFiles(); return }
       const files = atts.map(function (a) { return { name: a.name, size: (a.textContent || '').length, extractedText: a.textContent } })
       attachments = []
       renderChips()
       commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
     } }, 'Embed attached files instead'),
-    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Keep as attachments')
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Dismiss')
   ]))
 }
 
@@ -4465,6 +4561,10 @@ async function buildPayload(chat, queryText) {
     }).join('\n\n')
     sys = 'Use the following document excerpts to answer. If the answer is not in them, say so. Prefer cited excerpts over general knowledge, and mention when the provided excerpts are insufficient.\n\n'+ctx+(sys?'\n\n'+sys:'')
   }
+  const _att = trayContextBlock(chat)
+  if (_att) {
+    sys = 'The user has ATTACHED these working files (their current set - it can change between turns). Use them to answer:\n\n' + _att + (sys ? '\n\n' + sys : '')
+  }
   const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
   const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
   return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
@@ -4504,8 +4604,21 @@ async function send() {
     chat.title = text.slice(0,42)+(text.length>42?'...':'')
   }
 
-  const sentFileNames = attachments.map(a=>a.name)
-  const sentAttachments = attachments.slice()
+  const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
+  const sentFileNames = trayFiles.length ? trayFiles.map(function (a) { return a.name }) : attachments.map(a=>a.name)
+  const sentAttachments = attachments.slice()   // legacy pre-tray composer chips
+  // Tray gate: an over-budget working set never leaves the client - the tray
+  // meter is already amber with an "Embed all for RAG" button at this point.
+  if (trayFiles.length) {
+    const _ti = attachOversizeInfo(trayFiles, chat)
+    if (_ti.over) {
+      if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_blocked', { files: trayFiles.length, est: _ti.est, where: 'tray' })
+      toast('Attached files are ~' + Math.round(_ti.est / 1000) + 'k tokens — over the send limit. Remove some from the tray or use Embed all for RAG.', 'err')
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
+  }
   const content = buildContent(text)
   chat.messages.push({role:'user',content,ts:Date.now(),fileNames:sentFileNames})
   chat.updatedAt = Date.now()
@@ -4536,16 +4649,15 @@ async function send() {
   const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
   const _ceil = Math.min(_ctx || Infinity, _rateCap)
   if (_estTok > _ceil) {
-    if (sentAttachments.length) {
+    if (trayFiles.length || sentAttachments.length) {
       // Attachments (not docs) blew the budget: undo the send, restore the
-      // composer + chips so nothing is lost, and offer to embed instead.
+      // composer so nothing is lost, and offer to embed instead.
       chat.messages.pop()
       chat.updatedAt = Date.now()
       renderMessages()
-      attachments = sentAttachments
-      renderChips()
+      if (sentAttachments.length) { attachments = sentAttachments; renderChips() }
       input.value = text; autoResize(input)
-      offerAttachEmbed(sentAttachments, _estTok, _ceil)
+      offerAttachEmbed((trayFiles.length ? trayFiles : sentAttachments).slice(), _estTok, _ceil)
       busy = false
       if (typeof updateSendBtn === 'function') updateSendBtn()
       return
@@ -4630,7 +4742,15 @@ async function runStream(chat, payload, ragSources) {
       // A 429 that reports a FULL remaining budget means the request itself is
       // bigger than the token cap — waiting can't help, so don't auto-retry (this
       // was the infinite "retry in 60s" loop on oversized whole-doc turns).
-      if (r.kind === 'ratelimit' && Math.ceil(JSON.stringify(payload).length / 4) > (r.limit429 || 200000)) {
+      const _est429 = Math.ceil(JSON.stringify(payload).length / 4)
+      const _tooBig429 = _est429 > (r.limit429 || 200000) ||
+        (r.remaining429 != null && r.remaining429 >= (r.limit429 || 200000) * 0.95)   // near-FULL window still rejected: waiting can NEVER help (6 Jul retry loop)
+      if (r.kind === 'ratelimit' && _tooBig429) {
+        if ((chat.attachedFiles || []).length && typeof offerAttachEmbed === 'function') {
+          offerAttachEmbed(chat.attachedFiles.slice(), _est429, r.limit429 || 200000)
+          setHealth('err', 'Request too large')
+          return
+        }
         const note = 'Error 429: this request is larger than the model\u2019s token limit, so waiting won\u2019t help. Reduce the documents in context (switch Search mode to Auto or Specific, or ask about fewer files) and try again.'
         chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
         appendMsg('ai', note, null, ragSources, null, true)
@@ -5759,6 +5879,7 @@ function renderMessages() {
     }
     el.innerHTML = ''
     el.appendChild(empty)
+    if (typeof renderAttachTray === 'function') renderAttachTray()
     return
   }
 
@@ -5776,6 +5897,7 @@ function renderMessages() {
   el.appendChild(inner)
   el.scrollTop = el.scrollHeight
   refreshTailActions()
+  if (typeof renderAttachTray === 'function') renderAttachTray()
 }
 
 function appendMsg(role, text, date, sources, fileNames, errored) {
