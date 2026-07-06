@@ -156,3 +156,6 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
       per-file ~tok + ✕, "+ add files", live meter; survives sends and reloads; user
       messages carry name-tags only. Oversize → amber + "Embed all for RAG", send
       blocked with toast; preview hides "Attach anyway" when hopeless (reactive).
+- [ ] Multi-file attach (PDFs): preview panel opens INSTANTLY with "extracting…"
+      rows that fill in one by one; Confirm blocked until done; cancel mid-extraction
+      is clean. Tray "remove all" link → confirm dialog → tray cleared.
