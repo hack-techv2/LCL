@@ -144,3 +144,11 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
       click Continue → text appends in the SAME bubble, box clears (or shows
       "Still over the limit after N continuations" if capped again). Box survives
       a reload. Regenerate remains available next to it.
+- [ ] Double-click `index.html` (Node running): app loads from `file://`, Connect
+      and chat work, `#demo` works. Stop Node → calls fail cleanly (no silent hang).
+- [ ] Attach 4+ long-named files: preview shows ONE ROW PER FILE (full names), ✕
+      removes a single file, click row switches the editor. Oversize set shows the
+      amber note + per-row ~token meta + "Embed for RAG instead" (Confirm becomes
+      "Attach anyway"). Send-time backstop: oversized attachments restore the
+      composer and offer "Embed attached files instead". Sent chips now expand
+      on click to show each file's text.
