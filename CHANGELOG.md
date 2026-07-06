@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — Embed panel streamlined + remove all (alpha)
+
+Per CL's mockup approval. Version stays v0.67d.
+
+- **One-line header**: title + count pill (hover = files · total size) + **remove all** (confirm → clears this chat's docs, cancels in-flight embeds, GCs orphaned vectors — shared docs keep theirs) + compact "+" upload. The intro paragraph and the big upload button are gone; a one-line footer hint ("Drop files anywhere… · about RAG") keeps the RAG explainer popover reachable.
+- **Search-mode caption**: an always-visible line under Auto/Specific/Whole describing the ACTIVE mode, updating on click — more discoverable than the removed intro text; hover tooltips keep the long form.
+- **Blue file rows**: doc cards became compact zebra rows — blue name + type tag (consistent with tray/preview/source chips), green `ready`, red `error`+Retry, embedding shows a percent label.
+- Crumb `docs_remove_all`; test C26 (clear + embed-cancel + declined-confirm). Suites 35/35 + 26/26. Verified live in #demo incl. the remove-all dialog flow.
+
 ## 6 Jul 2026 — Tray "remove all" + progressive extraction preview (alpha)
 
 Two follow-ups from CL. Version stays v0.67d.
