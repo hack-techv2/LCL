@@ -103,3 +103,10 @@ above the composer. Harness has a per-case 20s watchdog + synchronous output.
 T33: `[[truncate]]` demo marker → stream ends `finish_reason:"length"` + usage.
 C17: `streamChatOnce` surfaces `finish` ('length' vs 'stop'). C18: `attachMsgFlags`
 renders the Continue box from persisted flags, with the continuation-count variant.
+
+### T34/T35 + C19 (6 Jul — file:// proxy-origin shim)
+
+T34: OPTIONS with `Origin: null` + PNA preflight → 204, ACAO null, x-lcl-demo allowed.
+T35: internet origin gets NO ACAO. C19: `proxyUrl` maps /api paths to the proxy from
+file:// and foreign local origins, leaves served-by-proxy and non-API paths alone,
+honours the LCL_API_BASE override.
