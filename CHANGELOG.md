@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 6 Jul 2026 — Tray "remove all" + progressive extraction preview (alpha)
+
+Two follow-ups from CL. Version stays v0.67d.
+
+- **"remove all"** link in the tray header (shows with 2+ files): confirm dialog, then clears the chat's working set (`attach_tray_clear` crumb).
+- **No more frozen gap on multi-file upload**: `queueFilesForPreview` extracted every file BEFORE showing anything — an 8-PDF/21MB batch meant seconds of blank UI after the toast faded (21:23 log). The attach preview now opens IMMEDIATELY with placeholder rows ("extracting…") that fill in per file; health pill shows "Extracting n/N"; failed files drop their row with a toast; Confirm/Embed are blocked until extraction finishes; cancelling mid-extraction aborts the in-flight work (generation counter).
+- Test C25 (remove-all incl. declined-confirm path); suites 35/35 + 25/25. Verified live in #demo: 3×700KB batch panel appears instantly; remove-all → confirm → tray cleared. (Log note: the squid 503 HTML + inactivity timeouts at the end of CL's log are Zscaler/network flakiness — the transient auto-retry handled them as designed.)
+
 ## 6 Jul 2026 — Attachment tray: attachments become a per-chat WORKING SET (alpha)
 
 CL's design: attached files should live visibly at the bottom, removable and swappable — "old data that is viewed, then discarded". Replaces the bake-into-history model whose accumulation permanently bloated chats (39k→386k est climb in the 6 Jul log). Version stays v0.67d.
