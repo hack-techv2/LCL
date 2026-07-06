@@ -350,7 +350,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 /* Doc panel */
 #doc-panel{width:272px;border-left:1px solid var(--bdr);background:var(--bg2);display:flex;flex-direction:column;flex-shrink:0;position:relative}
 #doc-panel.hidden{display:none}
-.dp-hd{padding:11px 12px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.dp-hd{padding:11px 12px 4px;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .dp-title{font-size:13px;font-weight:500}
 .dp-close{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx3);font-size:13px;transition:all .12s;background:none;border:none}
 .dp-close:hover{background:var(--bg3);color:var(--tx)}
@@ -358,15 +358,13 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .dp-body::-webkit-scrollbar{width:3px}
 .dp-body::-webkit-scrollbar-thumb{background:var(--ac);border-radius:2px}
 .dp-body::-webkit-scrollbar-thumb:hover{background:var(--ac2)}
-.doc-card{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border-radius:var(--r);border:1px solid transparent;background:transparent;margin-bottom:2px;transition:border-color .12s}
-.doc-card:nth-child(even){background:var(--bg3)}
-.doc-card:hover{border-color:var(--bdr2)}
-.doc-card:hover{border-color:var(--bdr2)}
+.doc-card{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg2);margin-bottom:5px;transition:border-color .12s}
+.doc-card:hover{background:var(--bg3);border-color:var(--bdr2)}
 .doc-ext{min-width:30px;height:18px;padding:0 4px;border-radius:4px;background:var(--infobg);border:1px solid color-mix(in srgb, var(--info) 35%, transparent);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;flex-shrink:0;color:var(--info);font-family:var(--mono);margin-top:1px}
 .doc-inf{flex:1;min-width:0}
 .doc-name{font-size:11.5px;font-weight:500;color:var(--info);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .doc-sz{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:2px}
-.doc-st{font-size:10px;font-family:var(--mono);margin-top:3px;display:inline-block;padding:2px 7px;border-radius:8px}
+.doc-st{font-size:10px;font-family:var(--mono);margin-top:3px;display:inline-block;padding:2px 8px;border-radius:999px}
 .doc-st.ready{background:rgba(99,153,34,.14);color:#3B6D11}
 .doc-st.pending{background:rgba(255,200,0,.1);color:var(--pin-tx)}
 .doc-st.error{background:var(--redbg);color:var(--red)}
@@ -490,7 +488,7 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .sp-title{font-size:17px;font-weight:600;margin-bottom:22px;letter-spacing:-.2px}
 .sp-sec{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:14px 16px;margin-bottom:14px}
 .sp-sec .upd-card{background:transparent;border:none;padding:0}
-.sp-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);margin-bottom:10px}
+.sp-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:10px}
 .sp-grid{display:grid;grid-template-columns:1fr;gap:16px}
 .sf{margin-bottom:12px}
 .sf label{display:block;font-size:11px;font-weight:500;color:var(--tx2);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
@@ -624,7 +622,7 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 #file-preview{background:var(--bg2);display:flex;flex-direction:column;flex:1;overflow:hidden}
 #file-preview.hidden{display:none}
 .fp-header{padding:12px 16px;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0}
-.fp-header-title{font-size:13px;font-weight:600;color:var(--tx);margin-bottom:2px}
+.fp-header-title{font-size:13px;font-weight:500;color:var(--tx);margin-bottom:2px}
 .fp-header-sub{font-size:11px;color:var(--tx2);font-family:var(--mono)}
 .fp-tabs{display:flex;flex-direction:column;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0;max-height:190px;overflow-y:auto}
 .fp-row{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:11.5px;font-family:var(--mono);color:var(--tx);cursor:pointer;border-left:3px solid transparent;transition:all .12s}
@@ -776,7 +774,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .upd-exp{font-size:11px;font-weight:600;color:#fff;background:var(--ac);padding:2px 8px;border-radius:5px}
 
 /* Shared RAG memory toggle (v0.67e item 3) */
-.dp-options{margin:0 10px 8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bdr);border-radius:var(--r);display:flex;flex-direction:column;gap:6px}
+.dp-options{margin:0;padding:2px 12px 0;background:transparent;border:none;display:flex;flex-direction:column;gap:6px}
 .dp-check{display:flex;align-items:flex-start;gap:8px;color:var(--tx2);font-size:12px;line-height:1.4;cursor:pointer}
 .dp-check input{margin-top:2px;accent-color:var(--ac)}
 .dp-check small{display:block;color:var(--tx3);font-size:10px;line-height:1.35;margin-top:2px}
@@ -785,8 +783,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
    every file pending at once. The one currently embedding stays full-opacity. */
 .doc-card.doc-pending{opacity:.55}
 [data-theme="light"] .doc-card.doc-pending{opacity:1}
-[data-theme="light"] .doc-card{border-color:#b6bfce}
-[data-theme="light"] .doc-ext{background:#cdd4e2;color:#1c2540}
+
+
 [data-theme="light"] .doc-sz,[data-theme="light"] .doc-prog-cnt{color:#33405d}
 [data-theme="light"] .doc-prog-track{background:#c3cad8}
 [data-theme="light"] .doc-st.pending{background:#f4e0b6;color:#6f4a00}
@@ -809,7 +807,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .rag-info b{color:var(--tx);font-weight:500}
 
 /* Embed 'Search mode' segmented control (Auto / Specific / Whole doc). */
-.dp-search-label{font-size:11px;font-weight:500;color:var(--tx2);margin-bottom:2px}
+.dp-search-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:2px;display:flex;align-items:center;gap:8px}
+.dp-search-label .dp-scope{margin:0 0 0 auto;font-size:11px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--tx2);align-items:center}
+.dp-files-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding:10px 12px 0}
 .dp-seg{display:flex;border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
 .dp-seg-btn{flex:1;padding:6px 4px;font-size:11px;background:transparent;color:var(--tx2);border:none;border-left:1px solid var(--bdr);cursor:pointer}
 .dp-seg-btn:first-child{border-left:none}
@@ -1097,18 +1097,20 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       </div>
 
       <div class="dp-options">
-        <div class="dp-search-label">Search mode</div>
+        <div class="dp-search-label">Search mode
+          <label class="dp-check dp-scope" title="Also search files you embedded in your other chats">
+            <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
+            <span>+ other chats</span>
+          </label>
+        </div>
         <div class="dp-seg" id="dp-search-mode">
           <button type="button" class="dp-seg-btn" data-mode="auto" onclick="setSearchMode('auto')" title="Sends the whole document when it fits the model, otherwise searches for the most relevant passages.">Auto</button>
           <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
           <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
         </div>
         <div class="dp-mode-cap" id="dp-mode-cap"></div>
-        <label class="dp-check dp-scope">
-          <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
-          <span>Also search other chats' embedded files</span>
-        </label>
       </div>
+      <div class="dp-files-lbl">Files</div>
       <div class="dp-body" id="dp-body"></div>
       <div class="dp-foot">Drop files anywhere (Shift+drop) or use + · text is extracted and embedded locally · <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">about RAG</span></div>
     </div>
@@ -3848,7 +3850,12 @@ async function queueFilesForPreview(files, target) {
       }
     }
   }
-  if (typeof setHealth === 'function') setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+  // Attach: back to ok. Docs: hand off to the embed flow without flashing green
+  // ("Extracting 5/5" -> ok -> "Embedding" read as "done, usable" - it is not).
+  if (typeof setHealth === 'function') {
+    if (progressive) setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    else setHealth('warn', 'Preparing to embed…')
+  }
   if (progressive && !previewQueue.length) { cancelFilePreview(); return }
   if (!previewQueue.length) return
 
@@ -4697,6 +4704,13 @@ async function send() {
   const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
   const sentFileNames = trayFiles.length ? trayFiles.map(function (a) { return a.name }) : attachments.map(a=>a.name)
   const sentAttachments = attachments.slice()   // legacy pre-tray composer chips
+  // Honesty: docs still embedding are NOT in this answer (buildPayload only uses
+  // status === 'ready'). Say so instead of silently answering without them.
+  const _stillEmbedding = ((chat.docs || []).filter(function (d) { return d && (d.status === 'embedding' || d.status === 'pending') })).length
+  if (_stillEmbedding) {
+    if (typeof lclCrumb === 'function') lclCrumb('send_during_embed', { pending: _stillEmbedding })
+    toast(_stillEmbedding + ' file' + (_stillEmbedding > 1 ? 's are' : ' is') + ' still embedding — this answer won’t use ' + (_stillEmbedding > 1 ? 'them' : 'it') + ' yet', 'info')
+  }
   // Tray gate: an over-budget working set never leaves the client - the tray
   // meter is already amber with an "Embed all for RAG" button at this point.
   if (trayFiles.length) {
@@ -6151,11 +6165,14 @@ function renderDocPanel() {
   // Always-visible caption: teaches the ACTIVE mode at the moment of choice
   // (hover tooltips keep the long form; the old intro paragraph is gone).
   const _capEl = document.getElementById('dp-mode-cap')
-  if (_capEl) _capEl.textContent = _mode === 'specific'
-    ? 'Always searches for relevant passages only — best for many or large files.'
-    : _mode === 'whole'
-      ? 'Sends full documents when they fit the window — best for summaries and reviews.'
-      : 'Finds the most relevant passages; small files are sent whole.'
+  if (_capEl) {
+    const _past = (typeof chatUsesPastEmbeddings === 'function') && chatUsesPastEmbeddings(chat)
+    _capEl.textContent = (_mode === 'specific'
+      ? 'Always searches for relevant passages only — best for many or large files.'
+      : _mode === 'whole'
+        ? 'Sends full documents when they fit the window — best for summaries and reviews.'
+        : 'Finds the most relevant passages; small files are sent whole.') + (_past ? ' Includes other chats’ files.' : '')
+  }
   const docs = chat?.docs||[]
   const _cnt = document.getElementById('dp-count')
   if (_cnt) {
@@ -6202,7 +6219,7 @@ function renderDocPanel() {
       ]))
     } else {
       const stCls   = status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'pending'
-      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status) ]
+      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status === 'pending' ? 'waiting to embed…' : status) ]
       if (status === 'error') {
         stKids.push(mkEl('button',
           { class: 'doc-retry', title: d.error || 'Retry embedding', onclick: (e) => retryEmbed(d.id, e) },
