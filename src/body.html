@@ -253,14 +253,18 @@
     <!-- Doc panel -->
     <div id="doc-panel" class="hidden">
       <div class="dp-hd">
-        <div class="dp-title">Chat Embeddings</div>
+        <div class="dp-title">Embedded files</div>
+        <span class="dp-count" id="dp-count"></span>
+        <span style="flex:1"></span>
+        <span class="at-clear hidden" id="dp-clear" onclick="removeAllDocs()" title="Remove all embedded files from this chat and prune their vectors">remove all</span>
+        <label class="dp-upload-sm" title="Upload files to embed as RAG context for this chat">+
+          <input type="file" id="doc-file-in" style="display:none" multiple onchange="uploadDocs(this.files)">
+        </label>
         <button class="dp-close" onclick="toggleDP()" title="Close panel">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
         </button>
       </div>
-      <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">RAG</span>. Text is extracted and embedded locally — the AI will search them when you chat.
-      </div>
+
       <div id="rag-info" class="rag-info hidden">
         <div class="rag-info-hd"><span>RAG — retrieval-augmented generation</span><button type="button" class="rag-info-x" onclick="toggleRagInfo(event)" title="Close">&times;</button></div>
         <p>The AI answers using your uploaded files, not just its general knowledge. How much of a file it draws on is set by <b>Search mode</b>:</p>
@@ -271,13 +275,7 @@
         </ul>
         <p><b>Also search other chats' embedded files</b> widens the search to files you embedded in your other chats.</p>
       </div>
-      <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
-        + Upload file
-        <!-- No accept allowlist: dedicated extractors for pdf/docx/pptx/xlsx;
-             everything else is read as text (rejected if it sniffs as binary). -->
-        <input type="file" id="doc-file-in" style="display:none" multiple
-          onchange="uploadDocs(this.files)">
-      </label>
+
       <div class="dp-options">
         <div class="dp-search-label">Search mode</div>
         <div class="dp-seg" id="dp-search-mode">
@@ -285,12 +283,14 @@
           <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
           <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
         </div>
+        <div class="dp-mode-cap" id="dp-mode-cap"></div>
         <label class="dp-check dp-scope">
           <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
           <span>Also search other chats' embedded files</span>
         </label>
       </div>
       <div class="dp-body" id="dp-body"></div>
+      <div class="dp-foot">Drop files anywhere (Shift+drop) or use + · text is extracted and embedded locally · <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">about RAG</span></div>
     </div>
   </div>
 
