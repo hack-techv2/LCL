@@ -117,3 +117,9 @@ C20: `buildContent` emits a single string with `<file name="...">` blocks (rende
 expandable-chip format; quotes in names sanitised). C21: `attachOversizeInfo` flags
 attachment sets that cannot fit the inline request budget (ceil - max_tokens - overhead).
 Preview rows/removal + the embed-instead offers are visual: see UI_CHECKS.
+
+### C22–C24 (6 Jul — attachment tray)
+
+C22 `trayContextBlock` builds the per-request working-set block (quote-safe, empty-safe).
+C23 near-full-window 429 in `runStream` → embed offer, NO retry loop. C24 tray remove +
+embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
