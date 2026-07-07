@@ -247,7 +247,7 @@ const CASES = [
   { id: 'T36 endpoint: default + URL presets', tags: ['gate'], fn: async () => {
     const r = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
     const ok = r.active && r.active.modelUrl === "https://api.ai.tech.gov.sg/platform/models/chat/completions" && r.active.embedUrl === "https://api.ai.tech.gov.sg/platform/models/embeddings" && r.isDefault === true &&
-      Array.isArray(r.presets) && r.presets.length === 3 && r.presets[1].name === 'Kepler' && r.presets[1].modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completion' && r.presets[1].embedUrl === 'https://nc3.gov.sg/kepler/v1/embeddings' && r.presets[2].modelUrl === "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion"
+      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].name === 'NC3 (Dev)' && r.presets[1].modelUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion' && r.presets[1].embedUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
     check('T36 endpoint: default + URL presets', ok, 'active=' + (r.active && r.active.modelUrl) + ' presets=' + (r.presets && r.presets.length))
   } },
   { id: 'T37 endpoint: set kepler URL, persists, reset clears', tags: ['gate'], fn: async () => {
