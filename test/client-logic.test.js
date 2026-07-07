@@ -502,7 +502,7 @@ const CASES = [
       toast: () => {}, creds: null
     })
     vm.runInContext(m[0], ctx)
-    const PA2 = "https://api.ai.tech.gov.sg/platform/models/chat/completions", NC2 = "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", PAE2 = "https://api.ai.tech.gov.sg/platform/models/embeddings"
+    const PA2 = "https://api.ai.tech.gov.sg/platform/models/chat/completions", NC2 = "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", PAE2 = "https://api.ai.tech.gov.sg/platform/models/embeddings"
     vm.runInContext('lclEndpoint = { active: { name: "NC3 Dev", modelUrl: ' + JSON.stringify(NC2) + ', embedUrl: "" }, isDefault: false, presets: [{ name: "PlatformAI", modelUrl: ' + JSON.stringify(PA2) + ', embedUrl: ' + JSON.stringify(PAE2) + ' }, { name: "NC3 Dev", modelUrl: ' + JSON.stringify(NC2) + ', embedUrl: "" }] }', ctx)
     const badge = vm.runInContext('endpointBadge()', ctx)
     vm.runInContext('renderEndpointSection()', ctx)
@@ -512,11 +512,11 @@ const CASES = [
     vm.runInContext('endpointSelChanged()', ctx)
     const customShown = els['s-ep-custom'].classes.hidden === false && els['s-ep-summary'].classes.hidden === true
     els['s-ep-name'].value = 'My Gateway'
-    els['s-ep-url'].value = 'http://dev-gw.csa.gov.sg/v1/chat/completions'
+    els['s-ep-url'].value = 'https://dev-gw.csa.gov.sg/v1/chat/completions'
     els['s-ep-emb'].value = ''
     els['s-ep-model'].value = ''
     await vm.runInContext('saveEndpointFromSP()', ctx)
-    const postOk = posts.length === 1 && posts[0].u === '/api/endpoint' && posts[0].b.modelUrl === 'http://dev-gw.csa.gov.sg/v1/chat/completions' && posts[0].b.name === 'My Gateway' && posts[0].b.embedUrl === '' && posts[0].b.model === ''
+    const postOk = posts.length === 1 && posts[0].u === '/api/endpoint' && posts[0].b.modelUrl === 'https://dev-gw.csa.gov.sg/v1/chat/completions' && posts[0].b.name === 'My Gateway' && posts[0].b.embedUrl === '' && posts[0].b.model === ''
     const badgeAfter = vm.runInContext('endpointBadge()', ctx)
     vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", modelUrl: ' + JSON.stringify(PA2) + ' }, isDefault: true, presets: [] }', ctx)
     const noBadge = vm.runInContext('endpointBadge()', ctx) === ''
