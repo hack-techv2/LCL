@@ -62,7 +62,7 @@ const API_HOST = 'api.ai.tech.gov.sg'   // default upstream (PlatformAI)
 // can never be steered to an arbitrary internet host (the repo is public).
 const ENDPOINT_PRESETS = [
   { name: 'PlatformAI', modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions', embedUrl: 'https://api.ai.tech.gov.sg/platform/models/embeddings', model: '' },
-  { name: 'NC3 Dev',    modelUrl: 'http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: '', model: '' }
+  { name: 'NC3 Dev',    modelUrl: 'http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: 'http://dev-nc3.csa.gov.sg/kepler/v1/embeddings', model: '' }
 ]
 function validEndpointUrl(u, allowEmpty) {
   if (u == null || String(u).trim() === '') return !!allowEmpty
