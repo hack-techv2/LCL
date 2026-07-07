@@ -558,6 +558,48 @@ const CASES = [
     const noteOk = gwbTitle.textContent === 'Embedding via PlatformAI' && gwbUrl.textContent === 'pe' && banner.className === ''
     check('C31 gateway switch: per-gateway key vault + endpoint POST', gw0 === 'PlatformAI' && gw1 === 'Kepler' && vault1 && cleared && post1 && restored && vault2 && gw2 === 'PlatformAI' && noteOk, 'gw=' + gw0 + '>' + gw1 + '>' + gw2 + ' vault=' + vault1 + '/' + vault2 + ' cleared=' + cleared + ' restored=' + restored + ' post=' + post1)
   } },
+  { id: 'C32 per-endpoint key pairs: devVault separate from gwVault', fn: async () => {
+    const S = src('80-ui.js')
+    const mE = S.match(/\/\/ === endpoint-dev ===([\s\S]*?)\/\/ === end endpoint-dev ===/)
+    const mG = S.match(/\/\/ === gateway ===([\s\S]*?)\/\/ === end gateway ===/)
+    if (!mE || !mG) return check('C32 per-endpoint key pairs', false, 'markers not found')
+    const els = {}
+    const el = id => els[id] || (els[id] = { value: '', innerHTML: '', options: [1], classes: {}, className: '', classList: { toggle: (c2, v2) => { els[id].classes[c2] = v2 } }, querySelector: () => null })
+    const posts = []
+    const PA4 = 'https://api.ai.tech.gov.sg/platform/models/chat/completions'
+    const NC4 = 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion'
+    const ctx = vm.createContext({
+      document: { getElementById: id => el(id), querySelectorAll: () => [], querySelector: () => null },
+      setTimeout: () => 0, console, URL,
+      httpPost: async (u2, b) => { posts.push({ u: u2, b }); return { ok: true, json: async () => ({ ok: true, active: { name: b.name, modelUrl: b.modelUrl, embedUrl: b.embedUrl, model: b.model } }) } },
+      toast: () => {}, lclCrumb: () => {},
+      creds: { apiKey: 'PLAT-KEY', embedApiKey: 'PLAT-EMB', embedModelId: 'emb-1', model: 'm1' },
+      D: { settings: {} },
+      credsToSettings: c2 => ({ apiKey: c2.apiKey }), saveSettings: () => {}, persist: () => {}
+    })
+    vm.runInContext(mE[0] + String.fromCharCode(10) + mG[0], ctx)
+    vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", modelUrl: ' + JSON.stringify(PA4) + ' }, isDefault: true, presets: [{ name: "PlatformAI", modelUrl: ' + JSON.stringify(PA4) + ', embedUrl: "pe" }, { name: "Kepler", modelUrl: "https://nc3.gov.sg/kepler/v1/chat/completion", embedUrl: "ke" }, { name: "NC3 Dev", modelUrl: ' + JSON.stringify(NC4) + ', embedUrl: "de" }] }', ctx)
+    el('s-ep-sel').value = NC4
+    el('s-ep-key').value = 'NC3-KEY'
+    el('s-ep-embk').value = 'NC3-EMB'
+    await vm.runInContext('saveEndpointFromSP()', ctx)
+    const stashOk = vm.runInContext('D.settings.gwVault.PlatformAI.apiKey', ctx) === 'PLAT-KEY'
+    const devOk = vm.runInContext('D.settings.devVault["NC3 Dev"].apiKey', ctx) === 'NC3-KEY' && vm.runInContext('D.settings.devVault["NC3 Dev"].embedApiKey', ctx) === 'NC3-EMB'
+    const applied = vm.runInContext('creds.apiKey', ctx) === 'NC3-KEY' && vm.runInContext('creds.embedApiKey', ctx) === 'NC3-EMB'
+    const gwClean = vm.runInContext('D.settings.gwVault["NC3 Dev"] === undefined', ctx)
+    const postOk = posts.length === 1 && posts[0].b.name === 'NC3 Dev'
+    // back to PlatformAI via the gateway segment: NC3 keys stay in devVault only
+    await vm.runInContext('setGateway("PlatformAI", "sp")', ctx)
+    const restored = vm.runInContext('creds.apiKey', ctx) === 'PLAT-KEY' && vm.runInContext('creds.embedApiKey', ctx) === 'PLAT-EMB'
+    const devKept = vm.runInContext('D.settings.devVault["NC3 Dev"].apiKey', ctx) === 'NC3-KEY'
+    // selecting NC3 Dev in the selector reloads its stored key pair into the fields
+    els['s-ep-sel'].value = NC4
+    els['s-ep-key'].value = ''; els['s-ep-embk'].value = ''
+    vm.runInContext('endpointSelChanged()', ctx)
+    const fieldsLoad = els['s-ep-key'].value === 'NC3-KEY' && els['s-ep-embk'].value === 'NC3-EMB'
+    check('C32 per-endpoint key pairs: devVault separate from gwVault', stashOk && devOk && applied && gwClean && postOk && restored && devKept && fieldsLoad, 'stash=' + stashOk + ' dev=' + devOk + ' applied=' + applied + ' gwClean=' + gwClean + ' restored=' + restored + ' kept=' + devKept + ' fields=' + fieldsLoad)
+  } },
+
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
