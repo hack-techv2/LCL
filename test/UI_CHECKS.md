@@ -122,32 +122,20 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   collapsed (`lcl_tray_min`); ▸ expands. With an over-budget set, the collapsed bar
 
   stays amber with "too large to send" + "Embed all for RAG".
-- **U27 developer endpoint** — (server restarted on the new build) Settings → System →
-  Developer (below Account; visible in `#demo`, on the alpha channel, or when an
-  override is active): selector shows PlatformAI / NC3 Dev / Custom…; picking a
-  preset shows the read-only model/embed URL summary (both kepler URLs for NC3; a
-  custom endpoint with a blank Embeddings URL shows amber "none — file embedding &
-  RAG disabled"); Custom reveals Name + Model URL + Embeddings URL +
-  Model in a dashed box; Save switches the endpoint (blocked with a toast in demo);
-  with a non-default endpoint the health pill reads "Chat + embed · <name>" and the
-  server startup log shows the override. While on an endpoint without an embeddings
-  URL, uploading a file to embed fails with "no embeddings URL". POSTing a
-  non-gov.sg URL via devtools gets 400.
+- **U27 developer endpoint — REMOVED (7 Jul)** — the Settings → System → Developer
+  section (custom endpoint URLs / per-endpoint key store) was removed; only the
+  gateway picker (U28) remains. There is no longer a Developer nav item, and
+  `#sp` opens without it. Custom endpoint URLs can no longer be set from the UI
+  (the server `/api/endpoint` allowlist still guards the gateway presets).
 - **U28 gateway picker** — (server restarted) Settings → Connection and the Connect
   modal both show the GATEWAY segment (PlatformAI · api.ai.tech.gov.sg | NC3 (Dev) ·
   dev-nc3.csa.gov.sg). Click NC3 (Dev): key fields swap to its saved keys (blank +
   toast "enter your NC3 (Dev) API key" on first use), labels flip to "NC3 (Dev) API
   Key", health pill reads "… · NC3 (Dev)"; click PlatformAI: previous keys restored
-  from the vault.
-  With a custom Developer endpoint active, neither tab lights and the note says the
-  override wins. Settings → Embedding shows the read-only SOURCE BANNER: dot +
-  "Embedding via <gateway>" + embeddings URL (orange = Kepler, neutral = PlatformAI,
-  amber = custom override / "RAG disabled" when it has no embed URL). Developer →
-  Custom prefills the Model field with the model in use. Developer shows API Key +
-  Embed API Key for every selection — pick an endpoint and its stored pair loads
-  (PlatformAI/Kepler = the gateway keys; NC3 Dev/customs = the separate dev store);
-  Save with typed keys stores + applies them. In #demo the switch is blocked with a
-  toast.
+  from the vault. Settings → Embedding shows the read-only SOURCE BANNER: dot +
+  "Embedding via <gateway>" + embeddings URL (orange = NC3 (Dev), neutral =
+  PlatformAI). Keys are stored per gateway in `gwVault` — switching restores the
+  key you last used for that gateway. In #demo the switch is blocked with a toast.
 
 ### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
 - Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
