@@ -3145,7 +3145,7 @@ async function connect() {
     let r, rd, connected = false
     for (let ti = 0; ti < tokenBudgets.length; ti++) {
       const budget = tokenBudgets[ti]
-      ;({ r, data: rd } = await fetchWithRetry('/api/chat', {
+      ;({ r, data: rd } = await fetchWithRetry(proxyUrl('/api/chat'), {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ apiKey, modelId:model, payload:{ messages:[{role:'user',content:'Hi'}], max_tokens:budget, stream:false } })
       }, {
