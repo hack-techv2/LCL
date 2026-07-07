@@ -5,13 +5,15 @@ release.
 
 ## 7 Jul 2026 — Developer settings: switchable API endpoint (alpha)
 
-Per CL: point LCL at a different gateway (e.g. NC3 dev) without touching code. Version stays v0.67d.
+Per CL: point LCL at a different gateway (e.g. kepler on NC3 dev) without touching code. Reworked same-day from host-only to FULL URLS after CL supplied the real kepler URL (different scheme AND path). Version stays v0.67d.
 
-- **Settings → System → Developer** (below Account): an API Endpoint selector prefilled with **PlatformAI — api.ai.tech.gov.sg** and **NC3 Dev — dev-nc3.csa.gov.sg**, plus **Custom…** which reveals Name + Host fields. Applies on Save; picking PlatformAI clears the override.
-- **Server-persisted**: `GET/POST /api/endpoint` — the choice lives in `appData.settings.endpoint` (lcl_data.json), applies to chat + embed immediately (both upstream call sites route through `upstreamTarget()`), and survives restarts. Startup log shows the active endpoint.
-- **Allowlist (public repo!)**: the server accepts only `*.gov.sg` hostnames (optional `:port`) — the local proxy can never be steered to an arbitrary internet host. Suffix-spoof shapes (`gov.sg.attacker.io`, `api.ai.tech.gov.sg.evil.com`, paths, IPs) are all refused 400.
-- **Visibility**: the Developer nav item shows on the alpha update channel, in `#demo`, or whenever an override is active (an active override is never hidden). The health pill gains "· <name>" whenever you're not on PlatformAI, so a forgotten dev switch is impossible to miss. Endpoint changes are blocked (with a toast) in demo mode.
-- Tests **T36–T38** (default+presets, set/persist/reset, allowlist refusals) + **C30** (render, custom toggle, save POST body, badge); suites **38/38 + 30/30**. Crumb `endpoint_set`. NOTE: needs a node restart to pick up the new server routes.
+- **Settings → System → Developer** (below Account): endpoint selector prefilled with **PlatformAI** and **NC3 Dev** (kepler: `http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion`), plus **Custom…** — Name, Model URL, Embeddings URL (optional), Model id (optional; kepler proxies PlatformAI so the same model ids work and presets leave it blank). Picking a preset shows a read-only summary of exactly where model/embed traffic goes; picking PlatformAI clears the override. Applies on Save.
+- **Server-persisted**: `GET/POST /api/endpoint` — `{name, modelUrl, embedUrl, model}` in `appData.settings.endpoint`; both upstream call sites parse the URL (scheme/host/port/path) via `upstreamTarget(kind)`; `http://` endpoints get a plain-HTTP keep-alive agent (no TLS gate). First-cut `{host}` overrides auto-migrate. Startup log shows the active endpoint.
+- **No embeddings URL = RAG honestly off**: `/api/embed` + `/api/embed-batch` refuse with "This endpoint has no embeddings URL - switch back to PlatformAI to embed files." (400) instead of silently misrouting; the preset summary shows "none — file embedding & RAG disabled" in amber.
+- **Allowlist (public repo!)**: URL hostnames must be `*.gov.sg`, scheme http/https only, no credentials — the local proxy can never be steered to an arbitrary internet host. Spoof shapes (`gov.sg.attacker.io`, `api.ai.tech.gov.sg.evil.com`, schemeless, ftp, user:pass) all 400, embed URL validated too.
+- **Endpoint-pinned model**: a custom endpoint may pin a model id — applied on switch, with your previous model stashed and restored when you return to the default endpoint.
+- **Visibility**: Developer nav item shows on the alpha channel, in `#demo`, or when an override is active (never hidden then); health pill gains "· <name>" off-default; endpoint changes blocked (toast) in demo.
+- Tests **T36–T39** (URL presets, kepler set/persist/reset, allowlist refusals incl. bad embed URL, embeds refused without an embeddings URL) + **C30** (render, preset summary, custom toggle, save POST body, badge); suites **39/39 + 30/30**. Crumb `endpoint_set`. NOTE: needs a node restart to pick up the new server routes.
 
 ## 7 Jul 2026 — Split runs answer the QUESTION, not just summarise (alpha)
 
