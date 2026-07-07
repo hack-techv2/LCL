@@ -110,11 +110,14 @@
       <div class="sf">
         <label>API Endpoint</label>
         <select id="s-ep-sel" class="model-sel" onchange="endpointSelChanged()"></select>
+        <div id="s-ep-summary" class="hidden"></div>
         <div id="s-ep-custom" class="hidden">
           <div class="sf"><label>Name</label><input type="text" id="s-ep-name" placeholder="My dev gateway"></div>
-          <div class="sf"><label>Host</label><input type="text" id="s-ep-host" placeholder="dev-gw.csa.gov.sg"></div>
+          <div class="sf"><label>Model URL</label><input type="text" id="s-ep-url" placeholder="http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion"></div>
+          <div class="sf"><label>Embeddings URL <span class="sf-opt">(optional &mdash; blank disables file embedding &amp; RAG)</span></label><input type="text" id="s-ep-emb" placeholder="https://api.ai.tech.gov.sg/platform/models/embeddings"></div>
+          <div class="sf"><label>Model <span class="sf-opt">(optional &mdash; blank keeps your current model)</span></label><input type="text" id="s-ep-model" placeholder="cce.claude-opus-4-6"></div>
         </div>
-        <div class="sf-cap">Where chat and embedding requests are sent. Applies on Save &mdash; the server accepts only *.gov.sg hosts. The status pill shows the endpoint name whenever you are not on PlatformAI.</div>
+        <div class="sf-cap">Where model and embedding requests are sent. Applies on Save &mdash; only *.gov.sg hosts are accepted; http URLs are unencrypted (dev networks only). Keys are sent as x-api-key. The status pill shows the endpoint name whenever you are not on PlatformAI.</div>
       </div>
     </div>
     </div>
