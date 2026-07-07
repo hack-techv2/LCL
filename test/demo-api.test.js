@@ -244,6 +244,26 @@ const CASES = [
     const r = await req({ method: 'OPTIONS', path: '/api/health', headers: { origin: 'https://evil.example' } })
     check('T35 CORS: internet origin gets no grant', r.status === 204 && !r.headers['access-control-allow-origin'], 'acao=' + (r.headers['access-control-allow-origin'] || 'none'))
   } },
+  { id: 'T36 endpoint: default + presets', tags: ['gate'], fn: async () => {
+    const r = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const ok = r.active && r.active.host === 'api.ai.tech.gov.sg' && r.isDefault === true && Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].host === 'dev-nc3.csa.gov.sg'
+    check('T36 endpoint: default + presets', ok, 'active=' + (r.active && r.active.host) + ' presets=' + (r.presets && r.presets.length))
+  } },
+  { id: 'T37 endpoint: set gov.sg host, persists, reset clears', tags: ['gate'], fn: async () => {
+    const s1 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ host: 'dev-nc3.csa.gov.sg', name: 'NC3 Dev' }))).body)
+    const g1 = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const s2 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ host: 'api.ai.tech.gov.sg' }))).body)
+    const g2 = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const ok = s1.ok === true && g1.active.host === 'dev-nc3.csa.gov.sg' && g1.active.name === 'NC3 Dev' && g1.isDefault === false && s2.ok === true && g2.isDefault === true
+    check('T37 endpoint: set gov.sg host, persists, reset clears', ok, 'set=' + (g1.active && g1.active.host) + '/' + g1.isDefault + ' reset=' + g2.isDefault)
+  } },
+  { id: 'T38 endpoint: non-gov.sg hosts refused (allowlist)', tags: ['gate'], fn: async () => {
+    const bad = ['evil.example.com', 'api.ai.tech.gov.sg.evil.com', 'gov.sg.attacker.io', 'dev-nc3.csa.gov.sg/path', '127.0.0.1:8080', 'gov.sg']
+    const rs = []
+    for (const h of bad) rs.push((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ host: h }))).status)
+    const g = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    check('T38 endpoint: non-gov.sg hosts refused (allowlist)', rs.every(s => s === 400) && g.isDefault === true, 'statuses=' + rs.join(','))
+  } },
   { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
     const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
     const r1 = json((await g()).body)
