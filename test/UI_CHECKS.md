@@ -133,6 +133,17 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   server startup log shows the override. While on an endpoint without an embeddings
   URL, uploading a file to embed fails with "no embeddings URL". POSTing a
   non-gov.sg URL via devtools gets 400.
+- **U28 gateway picker** — (server restarted) Settings → Connection and the Connect
+  modal both show the GATEWAY segment (PlatformAI · api.ai.tech.gov.sg | Kepler ·
+  nc3.gov.sg). Click Kepler: key fields swap to the Kepler-saved keys (blank + toast
+  "enter your Kepler API key" on first use), labels flip to "Kepler API Key", health
+  pill reads "… · Kepler"; click PlatformAI: previous keys restored from the vault.
+  With a custom Developer endpoint active, neither tab lights and the note says the
+  override wins. Settings → Embedding shows the read-only SOURCE BANNER: dot +
+  "Embedding via <gateway>" + embeddings URL (orange = Kepler, neutral = PlatformAI,
+  amber = custom override / "RAG disabled" when it has no embed URL). Developer →
+  Custom prefills the Model field with the model in use. In #demo the switch is
+  blocked with a toast.
 
 ### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
 - Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
