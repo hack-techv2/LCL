@@ -635,7 +635,8 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .at-add{display:inline-flex;align-items:center;font-size:11px;color:var(--info);border:1px dashed color-mix(in srgb, var(--info) 50%, transparent);border-radius:999px;padding:3px 10px;cursor:pointer}
 .at-embed{font-size:11px;padding:3px 12px}
 .at-clear{font-size:10px;font-weight:400;color:var(--tx2);cursor:pointer;text-decoration:underline dotted;margin-right:2px}
-.at-lbl{cursor:pointer;user-select:none}
+.at-lbl{cursor:pointer;user-select:none}
+
 .at-min{cursor:pointer;font-weight:700;font-size:13px;line-height:1;padding:0 4px;user-select:none}
 .at-min:hover{color:var(--tx)}
 #attach-tray.min .at-head{margin-bottom:0}
@@ -711,6 +712,21 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .seg-code{font-size:13px;font-weight:600}
 .seg-full{font-size:10px;font-weight:400;opacity:.85;line-height:1.2}
 .seg-btn:hover{color:var(--tx2)}
+.seg-btn.on{background:var(--acbg);border-color:var(--ac);color:var(--ac-tx)}
+.gw-note{font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.5}
+#gw-emb-banner{display:flex;align-items:center;gap:12px;border-radius:10px;padding:12px 14px;margin:-2px 0 14px;border:1px solid var(--bdr2);background:var(--bg3)}
+#gw-emb-banner.hidden{display:none}
+.gwb-dot{width:10px;height:10px;border-radius:50%;background:#2ea44f;flex-shrink:0}
+.gwb-title{font-size:14px;font-weight:700;color:var(--tx)}
+.gwb-url{font-family:var(--mono);font-size:11.5px;color:var(--tx2);word-break:break-all;margin-top:2px}
+#gw-emb-banner.gw-kepler{background:var(--acbg);border-color:color-mix(in srgb, var(--ac) 40%, transparent)}
+#gw-emb-banner.gw-kepler .gwb-title{color:var(--ac-tx)}
+#gw-emb-banner.gw-kepler .gwb-url{color:var(--ac-tx);opacity:.8}
+#gw-emb-banner.gw-kepler .gwb-dot{background:var(--ac)}
+#gw-emb-banner.gw-custom{background:var(--pinbg);border-color:rgba(240,165,0,.45)}
+#gw-emb-banner.gw-custom .gwb-title{color:var(--pin)}
+#gw-emb-banner.gw-custom .gwb-url{color:var(--pin);opacity:.85}
+#gw-emb-banner.gw-custom .gwb-dot{background:var(--pin)}
 .seg-btn.on-cce{background:rgba(240,165,0,.16);border-color:rgba(240,165,0,.6);color:#ffc24d}
 .seg-btn.on-rsn{background:rgba(96,165,225,.16);border-color:rgba(96,165,225,.6);color:#a9d2f6}
 /* Light mode: dark text on the tint reads far better than bright amber/blue */
