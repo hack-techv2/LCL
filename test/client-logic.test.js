@@ -488,6 +488,36 @@ const CASES = [
     check('C29 split run carries the user instruction through map-reduce', out === 'ANSWER' && partOk && combineOk && sysOk && genericOk, 'part=' + partOk + ' combine=' + combineOk + ' sys=' + sysOk + ' generic=' + genericOk)
   } },
 
+  { id: 'C30 developer endpoint: render, custom toggle, save POST, badge', fn: async () => {
+    const S = src('80-ui.js')
+    const m = S.match(/\/\/ === endpoint-dev ===([\s\S]*?)\/\/ === end endpoint-dev ===/)
+    if (!m) return check('C30 developer endpoint', false, 'endpoint-dev markers not found')
+    const els = {}
+    const el = id => els[id] || (els[id] = { value: '', innerHTML: '', options: [1], classes: {}, classList: { toggle: (c, v) => { els[id].classes[c] = v } } })
+    const posts = []
+    const ctx = vm.createContext({
+      document: { getElementById: id => el(id), querySelector: () => null },
+      setTimeout: () => 0, console,
+      httpPost: async (u, b) => { posts.push({ u, b }); return { ok: true, json: async () => ({ ok: true, active: { name: b.name, host: b.host } }) } },
+      toast: () => {}, creds: null
+    })
+    vm.runInContext(m[0], ctx)
+    vm.runInContext('lclEndpoint = { active: { name: "NC3 Dev", host: "dev-nc3.csa.gov.sg" }, isDefault: false, presets: [{ name: "PlatformAI", host: "api.ai.tech.gov.sg" }, { name: "NC3 Dev", host: "dev-nc3.csa.gov.sg" }] }', ctx)
+    const badge = vm.runInContext('endpointBadge()', ctx)
+    vm.runInContext('renderEndpointSection()', ctx)
+    const selOk = els['s-ep-sel'].value === 'dev-nc3.csa.gov.sg' && /PlatformAI/.test(els['s-ep-sel'].innerHTML) && /Custom/.test(els['s-ep-sel'].innerHTML) && els['s-ep-custom'].classes.hidden === true
+    els['s-ep-sel'].value = '__custom'
+    vm.runInContext('endpointSelChanged()', ctx)
+    const customShown = els['s-ep-custom'].classes.hidden === false
+    els['s-ep-name'].value = 'My Gateway'
+    els['s-ep-host'].value = 'dev-gw.csa.gov.sg'
+    await vm.runInContext('saveEndpointFromSP()', ctx)
+    const postOk = posts.length === 1 && posts[0].u === '/api/endpoint' && posts[0].b.host === 'dev-gw.csa.gov.sg' && posts[0].b.name === 'My Gateway'
+    const badgeAfter = vm.runInContext('endpointBadge()', ctx)
+    vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", host: "api.ai.tech.gov.sg" }, isDefault: true, presets: [] }', ctx)
+    const noBadge = vm.runInContext('endpointBadge()', ctx) === ''
+    check('C30 developer endpoint: render, custom toggle, save POST, badge', badge === ' \u00b7 NC3 Dev' && selOk && customShown && postOk && badgeAfter === ' \u00b7 My Gateway' && noBadge, 'badge=[' + badge + '] sel=' + selOk + ' custom=' + customShown + ' post=' + postOk + ' after=[' + badgeAfter + ']')
+  } },
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
