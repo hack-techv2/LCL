@@ -3,6 +3,16 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Developer settings: switchable API endpoint (alpha)
+
+Per CL: point LCL at a different gateway (e.g. NC3 dev) without touching code. Version stays v0.67d.
+
+- **Settings → System → Developer** (below Account): an API Endpoint selector prefilled with **PlatformAI — api.ai.tech.gov.sg** and **NC3 Dev — dev-nc3.csa.gov.sg**, plus **Custom…** which reveals Name + Host fields. Applies on Save; picking PlatformAI clears the override.
+- **Server-persisted**: `GET/POST /api/endpoint` — the choice lives in `appData.settings.endpoint` (lcl_data.json), applies to chat + embed immediately (both upstream call sites route through `upstreamTarget()`), and survives restarts. Startup log shows the active endpoint.
+- **Allowlist (public repo!)**: the server accepts only `*.gov.sg` hostnames (optional `:port`) — the local proxy can never be steered to an arbitrary internet host. Suffix-spoof shapes (`gov.sg.attacker.io`, `api.ai.tech.gov.sg.evil.com`, paths, IPs) are all refused 400.
+- **Visibility**: the Developer nav item shows on the alpha update channel, in `#demo`, or whenever an override is active (an active override is never hidden). The health pill gains "· <name>" whenever you're not on PlatformAI, so a forgotten dev switch is impossible to miss. Endpoint changes are blocked (with a toast) in demo mode.
+- Tests **T36–T38** (default+presets, set/persist/reset, allowlist refusals) + **C30** (render, custom toggle, save POST body, badge); suites **38/38 + 30/30**. Crumb `endpoint_set`. NOTE: needs a node restart to pick up the new server routes.
+
 ## 7 Jul 2026 — Split runs answer the QUESTION, not just summarise (alpha)
 
 From CL's first field run of pacing v2 (which held up): he asked a whole-docs run to "search the presenter's name" and got summaries back. Cause: the user's text reached the top level, but the map-reduce SPLIT path hardcoded 'Summarise this part…' / 'Combine these part-summaries…', so any doc big enough to split dropped the question entirely. Version stays v0.67d.
