@@ -54,22 +54,22 @@ const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
 const API_HOST = 'api.ai.tech.gov.sg'   // default upstream (PlatformAI)
 // --- Switchable upstream (Settings -> System -> Developer) ------------------
 // The active endpoint persists in appData.settings.endpoint {name, modelUrl,
-// embedUrl, model}. Full URLs so scheme AND path can differ per gateway (kepler:
-// http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion). embedUrl blank = file
+// embedUrl, model}. Full URLs so the path can differ per gateway (kepler:
+// https://dev-nc3.csa.gov.sg/kepler/v1/...). HTTPS ONLY (per CL). embedUrl blank = file
 // embedding/RAG disabled at that endpoint. model blank = keep the user's model
 // (kepler proxies PlatformAI, so the same model ids work).
 // SECURITY: URL hostnames are validated against *.gov.sg so this local proxy
 // can never be steered to an arbitrary internet host (the repo is public).
 const ENDPOINT_PRESETS = [
   { name: 'PlatformAI', modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions', embedUrl: 'https://api.ai.tech.gov.sg/platform/models/embeddings', model: '' },
-  { name: 'NC3 Dev',    modelUrl: 'http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: 'http://dev-nc3.csa.gov.sg/kepler/v1/embeddings', model: '' }
+  { name: 'NC3 Dev',    modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings', model: '' }
 ]
 function validEndpointUrl(u, allowEmpty) {
   if (u == null || String(u).trim() === '') return !!allowEmpty
   if (typeof u !== 'string' || u.length > 500) return false
   let p
   try { p = new URL(u.trim()) } catch (e) { return false }
-  if (p.protocol !== 'https:' && p.protocol !== 'http:') return false
+  if (p.protocol !== 'https:') return false   // https only (per CL, 7 Jul)
   if (p.username || p.password) return false
   return /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+gov\.sg$/.test(p.hostname.toLowerCase())
 }
@@ -85,7 +85,7 @@ function activeEndpoint() {
 function upstreamTarget(kind) {   // kind: 'chat' (default) | 'embed'
   const a = activeEndpoint()
   const u = new URL(kind === 'embed' ? (a.embedUrl || a.modelUrl) : a.modelUrl)
-  return { protocol: u.protocol, hostname: u.hostname, port: u.port ? parseInt(u.port, 10) : (u.protocol === 'http:' ? 80 : 443), path: u.pathname + (u.search || '') }
+  return { protocol: u.protocol, hostname: u.hostname, port: u.port ? parseInt(u.port, 10) : 443, path: u.pathname + (u.search || '') }
 }
 const CHAT_PATH = '/platform/models/chat/completions'
 const EMBED_PATH = '/platform/models/embeddings'
@@ -558,10 +558,7 @@ const upstreamAgent = new https.Agent({
   maxFreeSockets: 4,
   timeout: 60_000
 })
-// Plain-HTTP twin for http:// dev endpoints (e.g. kepler on dev-nc3). No TLS
-// gate applies (tlsGateFails passes non-TLS sockets through).
-const upstreamAgentHttp = new http.Agent({ keepAlive: true, keepAliveMsecs: 10_000, maxSockets: 8, maxFreeSockets: 4, timeout: 60_000 })
-function upstreamRequest(opts, onRes) { return (opts.protocol === 'http:' ? http : https).request(opts, onRes) }
+// (http:// upstreams were briefly supported on 7 Jul, then removed same day: CL confirmed kepler is https.)
 
 // ---------------------------------------------------------------------------
 // Change 2: TLS/CERT RETRY FIX — destroy socket on cert/TLS errors
@@ -576,7 +573,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     port: _tgt.port,
     path: _tgt.path,
     method: 'POST',
-    agent: _tgt.protocol === 'http:' ? upstreamAgentHttp : upstreamAgent,
+    agent: upstreamAgent,
     headers: {
       'x-api-key': apiKey,
       'Content-Type': 'application/json',
@@ -610,7 +607,7 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     cb(err, result)
   }
 
-  const req = upstreamRequest(opts, upstreamRes => {
+  const req = https.request(opts, upstreamRes => {
     if (tlsGateFails(upstreamRes.socket)) {
       const ae = String(upstreamRes.socket.authorizationError || 'TLS not trusted')
       upstreamRes.resume(); try { upstreamRes.socket.destroy() } catch {}
@@ -823,7 +820,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   const _tgt = upstreamTarget('chat')   // streaming = chat only
   const opts = {
     protocol: _tgt.protocol, hostname: _tgt.hostname, port: _tgt.port, path: _tgt.path, method: 'POST',
-    agent: _tgt.protocol === 'http:' ? upstreamAgentHttp : upstreamAgent,
+    agent: upstreamAgent,
     headers: {
       'x-api-key': apiKey,
       'Content-Type':  'application/json',
@@ -843,7 +840,7 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   log.debug('[stream] payload  ~' + Math.ceil(Buffer.byteLength(bodyStr) / 4) + ' tokens (est)')
   log.debug('========================================')
 
-  const upReq = upstreamRequest(opts, upRes => {
+  const upReq = https.request(opts, upRes => {
     if (tlsGateFails(upRes.socket)) {
       const ae = String(upRes.socket.authorizationError || 'TLS not trusted')
       upRes.resume(); try { upRes.socket.destroy() } catch {}
