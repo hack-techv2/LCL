@@ -113,7 +113,8 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
 
 - **U26 tray collapse** — open the seeded "GovTech maia - working files" chat (`#demo`):
 
-  tray shows 7 blue chips (chips area caps at 30vh and scrolls); ▾ chevron OR clicking
+  tray shows 7 blue chips (chips area caps at 30vh and scrolls); ▾ chevron OR clicking
+
   the header label collapses
 
   to one "7 files attached" line with the token meter still visible; reload → stays
@@ -121,6 +122,13 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   collapsed (`lcl_tray_min`); ▸ expands. With an over-budget set, the collapsed bar
 
   stays amber with "too large to send" + "Embed all for RAG".
+- **U27 developer endpoint** — (server restarted on the new build) Settings → System →
+  Developer (below Account; visible in `#demo`, on the alpha channel, or when an
+  override is active): selector shows PlatformAI / NC3 Dev / Custom…; Custom reveals
+  Name + Host in a dashed box; Save switches the endpoint (blocked with a toast in
+  demo); with a non-default endpoint the health pill reads "Chat + embed · <name>"
+  and the server startup log shows the override. POSTing a non-gov.sg host via
+  devtools gets 400.
 
 ### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
 - Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
