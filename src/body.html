@@ -11,7 +11,10 @@
       <div class="modal-name">Local Comet LLM (LCL)</div>
     </div>
     <div class="modal-sub">// GovTech Models API - v0.67d Alpha</div>
-    <div class="field"><label>GovTech Models API Key</label>
+    <div class="field"><label>Gateway</label>
+      <div class="seg-cls" id="gw-seg-modal"><button type="button" class="seg-btn" data-gw="PlatformAI" onclick="setGateway('PlatformAI','modal')"><span class="seg-code">PlatformAI</span><span class="seg-full">api.ai.tech.gov.sg</span></button><button type="button" class="seg-btn" data-gw="Kepler" onclick="setGateway('Kepler','modal')"><span class="seg-code">Kepler</span><span class="seg-full">nc3.gov.sg</span></button></div>
+      <div class="gw-note" id="gw-note-modal">Pick the gateway your key was issued for.</div></div>
+    <div class="field"><label id="m-key-label">GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
     <div class="field"><label>Data classification</label>
       <div class="seg-cls" id="cls-seg-cfg"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','cfg')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','cfg')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
@@ -43,14 +46,19 @@
       <div class="sp-main">
     <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
       <div class="sp-lbl">Connection</div>
-      <div class="sp-cap">Your GovTech Models gateway credentials and the chat model LCL uses.</div>
+      <div class="sp-cap">Your gateway credentials and the chat model LCL uses.</div>
+      <div class="sf"><label>Gateway</label>
+        <div class="seg-cls" id="gw-seg-sp"><button type="button" class="seg-btn" data-gw="PlatformAI" onclick="setGateway('PlatformAI','sp')"><span class="seg-code">PlatformAI</span><span class="seg-full">api.ai.tech.gov.sg</span></button><button type="button" class="seg-btn" data-gw="Kepler" onclick="setGateway('Kepler','sp')"><span class="seg-code">Kepler</span><span class="seg-full">nc3.gov.sg</span></button></div>
+        <div class="sf-cap" id="gw-note-sp">Keys are saved per gateway &mdash; switching restores the key you used last time.</div>
+      </div>
       <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
-      <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
+      <div class="sf"><label id="s-key-label">GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
     <div class="sp-sec" data-sec="embedding">
       <div class="sp-lbl">Embedding</div>
       <div class="sp-cap">Converts uploaded files into vectors for RAG search. Leave a field blank to keep the current value.</div>
+      <div id="gw-emb-banner" class="hidden"><span class="gwb-dot"></span><div><div class="gwb-title"></div><div class="gwb-url"></div></div></div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
       <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
@@ -115,7 +123,7 @@
           <div class="sf"><label>Name</label><input type="text" id="s-ep-name" placeholder="My dev gateway"></div>
           <div class="sf"><label>Model URL</label><input type="text" id="s-ep-url" placeholder="https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion"></div>
           <div class="sf"><label>Embeddings URL <span class="sf-opt">(optional &mdash; blank disables file embedding &amp; RAG)</span></label><input type="text" id="s-ep-emb" placeholder="https://api.ai.tech.gov.sg/platform/models/embeddings"></div>
-          <div class="sf"><label>Model <span class="sf-opt">(optional &mdash; blank keeps your current model)</span></label><input type="text" id="s-ep-model" placeholder="cce.claude-opus-4-6"></div>
+          <div class="sf"><label>Model <span class="sf-opt">(defaults to the model in use)</span></label><input type="text" id="s-ep-model" placeholder="cce.claude-opus-4-6"></div>
         </div>
         <div class="sf-cap">Where model and embedding requests are sent. Applies on Save &mdash; only https URLs on *.gov.sg hosts are accepted. Keys are sent as x-api-key. The status pill shows the endpoint name whenever you are not on PlatformAI.</div>
       </div>
