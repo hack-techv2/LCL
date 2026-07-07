@@ -124,11 +124,14 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
   stays amber with "too large to send" + "Embed all for RAG".
 - **U27 developer endpoint** — (server restarted on the new build) Settings → System →
   Developer (below Account; visible in `#demo`, on the alpha channel, or when an
-  override is active): selector shows PlatformAI / NC3 Dev / Custom…; Custom reveals
-  Name + Host in a dashed box; Save switches the endpoint (blocked with a toast in
-  demo); with a non-default endpoint the health pill reads "Chat + embed · <name>"
-  and the server startup log shows the override. POSTing a non-gov.sg host via
-  devtools gets 400.
+  override is active): selector shows PlatformAI / NC3 Dev / Custom…; picking a
+  preset shows the read-only model/embed URL summary (NC3 shows amber "none — file
+  embedding & RAG disabled"); Custom reveals Name + Model URL + Embeddings URL +
+  Model in a dashed box; Save switches the endpoint (blocked with a toast in demo);
+  with a non-default endpoint the health pill reads "Chat + embed · <name>" and the
+  server startup log shows the override. While on an endpoint without an embeddings
+  URL, uploading a file to embed fails with "no embeddings URL". POSTing a
+  non-gov.sg URL via devtools gets 400.
 
 ### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
 - Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
