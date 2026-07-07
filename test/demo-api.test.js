@@ -247,7 +247,7 @@ const CASES = [
   { id: 'T36 endpoint: default + URL presets', tags: ['gate'], fn: async () => {
     const r = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
     const ok = r.active && r.active.modelUrl === "https://api.ai.tech.gov.sg/platform/models/chat/completions" && r.active.embedUrl === "https://api.ai.tech.gov.sg/platform/models/embeddings" && r.isDefault === true &&
-      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].modelUrl === "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && r.presets[1].embedUrl === ''
+      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].modelUrl === "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && r.presets[1].embedUrl === 'http://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
     check('T36 endpoint: default + URL presets', ok, 'active=' + (r.active && r.active.modelUrl) + ' presets=' + (r.presets && r.presets.length))
   } },
   { id: 'T37 endpoint: set kepler URL (http), persists, reset clears', tags: ['gate'], fn: async () => {
