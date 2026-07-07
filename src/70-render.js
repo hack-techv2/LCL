@@ -17,9 +17,8 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  return (creds.embedApiKey && creds.embedModelId)
-    ? 'Chat + embed'
-    : 'Chat only'
+  const base = (creds.embedApiKey && creds.embedModelId) ? 'Chat + embed' : 'Chat only'
+  return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
 // ---------------------------------------------------------------------------
