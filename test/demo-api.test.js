@@ -247,28 +247,28 @@ const CASES = [
   { id: 'T36 endpoint: default + URL presets', tags: ['gate'], fn: async () => {
     const r = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
     const ok = r.active && r.active.modelUrl === "https://api.ai.tech.gov.sg/platform/models/chat/completions" && r.active.embedUrl === "https://api.ai.tech.gov.sg/platform/models/embeddings" && r.isDefault === true &&
-      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].modelUrl === "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && r.presets[1].embedUrl === 'http://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
+      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].modelUrl === "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && r.presets[1].embedUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
     check('T36 endpoint: default + URL presets', ok, 'active=' + (r.active && r.active.modelUrl) + ' presets=' + (r.presets && r.presets.length))
   } },
-  { id: 'T37 endpoint: set kepler URL (http), persists, reset clears', tags: ['gate'], fn: async () => {
-    const s1 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'NC3 Dev', modelUrl: "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: '' }))).body)
+  { id: 'T37 endpoint: set kepler URL, persists, reset clears', tags: ['gate'], fn: async () => {
+    const s1 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'NC3 Dev', modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: '' }))).body)
     const g1 = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
     const s2 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "https://api.ai.tech.gov.sg/platform/models/chat/completions" }))).body)
     const g2 = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
-    const ok = s1.ok === true && g1.active.modelUrl === "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && g1.active.name === 'NC3 Dev' && g1.active.embedUrl === '' && g1.isDefault === false && s2.ok === true && g2.isDefault === true
-    check('T37 endpoint: set kepler URL (http), persists, reset clears', ok, 'set=' + (g1.active && g1.active.modelUrl) + '/' + g1.isDefault + ' reset=' + g2.isDefault)
+    const ok = s1.ok === true && g1.active.modelUrl === "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && g1.active.name === 'NC3 Dev' && g1.active.embedUrl === '' && g1.isDefault === false && s2.ok === true && g2.isDefault === true
+    check('T37 endpoint: set kepler URL, persists, reset clears', ok, 'set=' + (g1.active && g1.active.modelUrl) + '/' + g1.isDefault + ' reset=' + g2.isDefault)
   } },
   { id: 'T38 endpoint: non-gov.sg / malformed URLs refused', tags: ['gate'], fn: async () => {
-    const bad = ['https://evil.example.com/v1', 'http://gov.sg.attacker.io/kepler', 'https://api.ai.tech.gov.sg.evil.com/v1', 'ftp://dev-nc3.csa.gov.sg/x', 'https://u:p@dev-nc3.csa.gov.sg/x', 'dev-nc3.csa.gov.sg/kepler']
+    const bad = ['https://evil.example.com/v1', 'http://gov.sg.attacker.io/kepler', 'http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', 'https://api.ai.tech.gov.sg.evil.com/v1', 'ftp://dev-nc3.csa.gov.sg/x', 'https://u:p@dev-nc3.csa.gov.sg/x', 'dev-nc3.csa.gov.sg/kepler']
     const rs = []
     for (const u of bad) rs.push((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: u }))).status)
     // good model URL + bad embed URL must also be refused
-    rs.push((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: 'https://evil.example.com/emb' }))).status)
+    rs.push((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: 'https://evil.example.com/emb' }))).status)
     const g = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
     check('T38 endpoint: non-gov.sg / malformed URLs refused', rs.every(s => s === 400) && g.isDefault === true, 'statuses=' + rs.join(','))
   } },
   { id: 'T39 endpoint without embeddings URL refuses embeds (clear error)', tags: ['gate', 'embed'], fn: async () => {
-    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'NC3 Dev', modelUrl: "http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: '' }))
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'NC3 Dev', modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: '' }))
     const e1 = await req({ method: 'POST', path: '/api/embed' }, JSON.stringify({ apiKey: 'not-demo-key', modelId: 'm', input: 'x' }))
     const e2 = await req({ method: 'POST', path: '/api/embed-batch' }, JSON.stringify({ apiKey: 'not-demo-key', modelId: 'm', inputs: ['x'] }))
     await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "https://api.ai.tech.gov.sg/platform/models/chat/completions" }))
