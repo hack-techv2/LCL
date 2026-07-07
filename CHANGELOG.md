@@ -3,6 +3,13 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Fix: Connect fails when index.html is opened as a local file (alpha)
+
+When LCL is opened directly (double-clicked `file://`) instead of via the proxy at localhost:3000, **Connect** errored even though chat messages worked. Cause: the Connect validation ping used `fetchWithRetry('/api/chat', …)` with a RAW relative path, which resolves to `file:///api/chat` and fails — chat messages already route through `httpPost` → `proxyUrl`, but this one call didn't. Fixed by wrapping the ping in `proxyUrl('/api/chat')` so it hits the proxy origin (`http://127.0.0.1:3000`) like every other call.
+
+- Audited **all** network call sites: connect was the ONLY unrouted one. The other seven (`httpGet`/`httpPost`/`httpPut`/`httpDelete` in transport, `loadEndpointInfo`, and the two `clientlog` fetches) already route through `proxyUrl`; no `EventSource`/`XMLHttpRequest`/`sendBeacon`/`WebSocket`/`location.origin` URL building anywhere.
+- Test **C33** guards it (source-level: connect uses `proxyUrl('/api/chat')`, no raw `fetchWithRetry('/api/chat'`); C19 already covers the proxyUrl shim mapping. Client-only change (`src/20-auth.js`); **server.txt unchanged**. Suites **40/40 (demo-api) + 31/31 (client-logic)**, build 5/5.
+
 ## 7 Jul 2026 — Removed the Developer endpoint section; kept the gateway picker (alpha)
 
 Per CL: bundling the Developer + Connection endpoint config together didn't work out with the latest build, so the Developer endpoint feature is removed and LCL keeps just the gateway picker (the initial mode). Version stays v0.67d.
