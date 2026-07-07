@@ -719,6 +719,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .seg-btn.on-cce .seg-full,.seg-btn.on-rsn .seg-full{opacity:1}
 .sp-contrib{font-size:12px;color:var(--tx2);margin-right:auto}
 #sp .sp-sec .btn-s{font-size:13.5px;padding:9px 16px}
+.sp-nav-it.hidden{display:none}
+#s-ep-custom{margin-top:8px;padding:10px 12px 2px;border:1px dashed var(--bdr2);border-radius:8px}
+#s-ep-custom.hidden{display:none}
 .upd-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:13px}
 .upd-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
