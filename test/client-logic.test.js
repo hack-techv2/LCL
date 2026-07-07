@@ -522,6 +522,42 @@ const CASES = [
     const noBadge = vm.runInContext('endpointBadge()', ctx) === ''
     check('C30 developer endpoint: render, summary, custom toggle, save POST, badge', badge === ' \u00b7 NC3 Dev' && selOk && sumOk && customShown && postOk && badgeAfter === ' \u00b7 My Gateway' && noBadge, 'badge=[' + badge + '] sel=' + selOk + ' sum=' + sumOk + ' custom=' + customShown + ' post=' + postOk + ' after=[' + badgeAfter + ']')
   } },
+  { id: 'C31 gateway switch: per-gateway key vault + endpoint POST', fn: async () => {
+    const S = src('80-ui.js')
+    const mE = S.match(/\/\/ === endpoint-dev ===([\s\S]*?)\/\/ === end endpoint-dev ===/)
+    const mG = S.match(/\/\/ === gateway ===([\s\S]*?)\/\/ === end gateway ===/)
+    if (!mE || !mG) return check('C31 gateway switch', false, 'markers not found')
+    const posts = []
+    const PA3 = 'https://api.ai.tech.gov.sg/platform/models/chat/completions'
+    const KP3 = 'https://nc3.gov.sg/kepler/v1/chat/completion'
+    const gwbTitle = { textContent: '' }, gwbUrl = { textContent: '' }
+    const banner = { className: 'hidden', querySelector: sel => (sel === '.gwb-title' ? gwbTitle : (sel === '.gwb-url' ? gwbUrl : null)) }
+    const ctx = vm.createContext({
+      document: { getElementById: id => (id === 'gw-emb-banner' ? banner : null), querySelectorAll: () => [], querySelector: () => null },
+      setTimeout: () => 0, console, URL,
+      httpPost: async (u, b) => { posts.push({ u, b }); return { ok: true, json: async () => ({ ok: true, active: { name: b.name, modelUrl: b.modelUrl, embedUrl: b.embedUrl } }) } },
+      toast: () => {}, lclCrumb: () => {},
+      creds: { apiKey: 'PLAT-KEY', embedApiKey: 'PLAT-EMB', embedModelId: 'emb-1', model: 'm1' },
+      D: { settings: {} },
+      credsToSettings: c2 => ({ apiKey: c2.apiKey }), saveSettings: () => {}, persist: () => {}
+    })
+    vm.runInContext(mE[0] + String.fromCharCode(10) + mG[0], ctx)
+    vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ' }, isDefault: true, presets: [{ name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ', embedUrl: "pe" }, { name: "Kepler", modelUrl: ' + JSON.stringify(KP3) + ', embedUrl: "ke" }, { name: "NC3 Dev", modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: "x" }] }', ctx)
+    const gw0 = vm.runInContext('currentGateway()', ctx)
+    await vm.runInContext('setGateway("Kepler", "sp")', ctx)
+    const vault1 = vm.runInContext('D.settings.gwVault.PlatformAI.apiKey', ctx) === 'PLAT-KEY'
+    const cleared = vm.runInContext('creds.apiKey', ctx) === '' && vm.runInContext('creds.embedApiKey', ctx) === ''
+    const gw1 = vm.runInContext('currentGateway()', ctx)
+    const post1 = posts.length === 1 && posts[0].u === '/api/endpoint' && posts[0].b.name === 'Kepler' && posts[0].b.modelUrl === KP3 && posts[0].b.embedUrl === 'ke'
+    // user pastes the assigned Kepler key, then flips back
+    vm.runInContext('creds.apiKey = "KEP-KEY"; creds.embedApiKey = "KEP-EMB"', ctx)
+    await vm.runInContext('setGateway("PlatformAI", "sp")', ctx)
+    const restored = vm.runInContext('creds.apiKey', ctx) === 'PLAT-KEY' && vm.runInContext('creds.embedApiKey', ctx) === 'PLAT-EMB'
+    const vault2 = vm.runInContext('D.settings.gwVault.Kepler.apiKey', ctx) === 'KEP-KEY'
+    const gw2 = vm.runInContext('currentGateway()', ctx)
+    const noteOk = gwbTitle.textContent === 'Embedding via PlatformAI' && gwbUrl.textContent === 'pe' && banner.className === ''
+    check('C31 gateway switch: per-gateway key vault + endpoint POST', gw0 === 'PlatformAI' && gw1 === 'Kepler' && vault1 && cleared && post1 && restored && vault2 && gw2 === 'PlatformAI' && noteOk, 'gw=' + gw0 + '>' + gw1 + '>' + gw2 + ' vault=' + vault1 + '/' + vault2 + ' cleared=' + cleared + ' restored=' + restored + ' post=' + post1)
+  } },
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
     if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
