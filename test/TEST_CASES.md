@@ -140,6 +140,8 @@ embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
 
 ### T40 (7 Jul) — persist survival: set the Kepler endpoint, then POST `/api/data` with a client-style body whose settings LACK `endpoint` (the client never carries it) — the override must survive (server re-attaches its own `endpoint`). Replays the 7 Jul field bug where a debounced persist() silently reverted the gateway to PlatformAI.
 
+### C32 (7 Jul) — per-endpoint key pairs: saving NC3 Dev with typed keys stashes the outgoing PlatformAI pair into `gwVault`, stores the NC3 pair in `devVault` (separate store — gwVault gains NO dev entries), and applies the pair to creds; switching back via the gateway segment restores the PlatformAI pair while devVault keeps the NC3 pair; re-selecting NC3 Dev in the Developer dropdown reloads its stored pair into the key fields.
+
 ### C31 (7 Jul) — gateway switch: `setGateway('Kepler')` stashes the current gateway's keys in `D.settings.gwVault`, POSTs the Kepler preset to `/api/endpoint`, and clears creds keys (none saved yet); after the user pastes a Kepler key, switching back stashes it and restores the PlatformAI keys. `currentGateway()` resolves PlatformAI/Kepler/Custom from the active endpoint. Runs the real `// === gateway ===` block. T36 asserts the 3-preset list (PlatformAI / Kepler nc3.gov.sg / NC3 Dev).
 
 ### C29 (7 Jul) — split run carries the user instruction through map-reduce: with a non-summary ask ("Search the presenter's name"), part requests get the extract prompt + the ask verbatim, the combine request answers the ORIGINAL ask from the part-extracts, and the system line switches to "processing a document"; a summarise-style ask keeps the original generic part/combine prompts (captured from the real fetch bodies).
