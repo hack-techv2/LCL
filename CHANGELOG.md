@@ -3,6 +3,19 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Gateway picker: PlatformAI / Kepler with per-gateway keys (alpha)
+
+Per CL: users will be assigned keys on Kepler (prod: nc3.gov.sg) and need a first-class way to point LCL at it — not a Developer-only toggle. Version stays v0.67d.
+
+- **Gateway segment** (same pattern as the classification picker) at the top of **Settings → Connection** AND in the **Connect modal**: **PlatformAI** (api.ai.tech.gov.sg) | **Kepler** (nc3.gov.sg, `/kepler/v1/chat/completion` + `/kepler/v1/embeddings`). The API-key label follows the pick ("GovTech Models API Key" ↔ "Kepler API Key").
+- **Keys are stored PER GATEWAY** (`D.settings.gwVault`, chat + embed keys): switching stashes the current gateway's keys and restores the target's — paste each key once, flip freely forever. First switch to a gateway with no saved key toasts "enter your <gateway> API key". Applies immediately (not on Save), rides the same `/api/endpoint` mechanism, and validation always runs against the ACTIVE gateway so a wrong-gateway key fails at connect/save with a clear message.
+- **Embedding section shows the source as a banner** (per CL's mockup pick): a read-only status box under the caption — status dot + "Embedding via **Kepler**" + the full embeddings URL. Orange tint on Kepler, neutral on PlatformAI, amber for a custom Developer override (incl. "none — file embedding & RAG disabled" when it has no embeddings URL). Purely reflects the Connection pick — no action on it.
+- **Developer custom Model field defaults to the model in use** (was blank) — pick Custom and the current model id is prefilled, editable as before.
+- **Server**: Kepler added to `ENDPOINT_PRESETS` (now PlatformAI / Kepler / NC3 Dev). Developer section unchanged — custom URLs and dev boxes still override the gateway pick, and the segment then shows "A custom Developer endpoint is active" with neither tab lit. Health pill: "Chat + embed · Kepler" while off PlatformAI. Demo blocks switches with a toast.
+- Fixed a latent bug the vault exposed: `D.settings = credsToSettings(creds)` (saveSP/connect/endpoint-save) overwrote the whole settings object, which would have dropped `gwVault` — now merges.
+- **Debug logs show the real endpoint** (from CL's kepler run): the streaming path logged `[stream] path = /platform/models/chat/completions` — the legacy constant the handlers pass around — never the URL actually hit, and no host at all. Both outbound log blocks now print `url = <effective URL>` via `targetUrlStr()` (kepler, custom ports, everything).
+- Tests **C31** (vault stash/restore both directions, endpoint POST, gateway detection) + **T36** updated for 3 presets; suites **39/39 + 31/31**. Crumb `gateway_set`. Needs a node restart (server preset list changed).
+
 ## 7 Jul 2026 — Developer settings: switchable API endpoint (alpha)
 
 Per CL: point LCL at a different gateway (e.g. kepler on NC3 dev) without touching code. Reworked same-day from host-only to FULL URLS after CL supplied the real kepler URL (different path); https-only per CL. Version stays v0.67d.
