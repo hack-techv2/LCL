@@ -38,6 +38,7 @@
         <div class="sp-nav-lbl">System</div>
         <button type="button" class="sp-nav-it" data-sec="updates" onclick="spNav('updates')">Updates</button>
         <button type="button" class="sp-nav-it" data-sec="account" onclick="spNav('account')">Account</button>
+        <button type="button" class="sp-nav-it" data-sec="developer" onclick="spNav('developer')">Developer</button>
       </nav>
       <div class="sp-main">
     <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
@@ -102,6 +103,19 @@
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
+    </div>
+    <div class="sp-sec" data-sec="developer">
+      <div class="sp-lbl">Developer</div>
+      <div class="sp-cap">Advanced settings for testing. Leave the endpoint on PlatformAI unless you know what you&rsquo;re doing.</div>
+      <div class="sf">
+        <label>API Endpoint</label>
+        <select id="s-ep-sel" class="model-sel" onchange="endpointSelChanged()"></select>
+        <div id="s-ep-custom" class="hidden">
+          <div class="sf"><label>Name</label><input type="text" id="s-ep-name" placeholder="My dev gateway"></div>
+          <div class="sf"><label>Host</label><input type="text" id="s-ep-host" placeholder="dev-gw.csa.gov.sg"></div>
+        </div>
+        <div class="sf-cap">Where chat and embedding requests are sent. Applies on Save &mdash; the server accepts only *.gov.sg hosts. The status pill shows the endpoint name whenever you are not on PlatformAI.</div>
+      </div>
     </div>
     </div>
     <div class="sp-foot">
