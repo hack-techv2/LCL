@@ -655,7 +655,8 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .at-add{display:inline-flex;align-items:center;font-size:11px;color:var(--info);border:1px dashed color-mix(in srgb, var(--info) 50%, transparent);border-radius:999px;padding:3px 10px;cursor:pointer}
 .at-embed{font-size:11px;padding:3px 12px}
 .at-clear{font-size:10px;font-weight:400;color:var(--tx2);cursor:pointer;text-decoration:underline dotted;margin-right:2px}
-.at-lbl{cursor:pointer;user-select:none}
+.at-lbl{cursor:pointer;user-select:none}
+
 .at-min{cursor:pointer;font-weight:700;font-size:13px;line-height:1;padding:0 4px;user-select:none}
 .at-min:hover{color:var(--tx)}
 #attach-tray.min .at-head{margin-bottom:0}
@@ -731,6 +732,21 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .seg-code{font-size:13px;font-weight:600}
 .seg-full{font-size:10px;font-weight:400;opacity:.85;line-height:1.2}
 .seg-btn:hover{color:var(--tx2)}
+.seg-btn.on{background:var(--acbg);border-color:var(--ac);color:var(--ac-tx)}
+.gw-note{font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.5}
+#gw-emb-banner{display:flex;align-items:center;gap:12px;border-radius:10px;padding:12px 14px;margin:-2px 0 14px;border:1px solid var(--bdr2);background:var(--bg3)}
+#gw-emb-banner.hidden{display:none}
+.gwb-dot{width:10px;height:10px;border-radius:50%;background:#2ea44f;flex-shrink:0}
+.gwb-title{font-size:14px;font-weight:700;color:var(--tx)}
+.gwb-url{font-family:var(--mono);font-size:11.5px;color:var(--tx2);word-break:break-all;margin-top:2px}
+#gw-emb-banner.gw-kepler{background:var(--acbg);border-color:color-mix(in srgb, var(--ac) 40%, transparent)}
+#gw-emb-banner.gw-kepler .gwb-title{color:var(--ac-tx)}
+#gw-emb-banner.gw-kepler .gwb-url{color:var(--ac-tx);opacity:.8}
+#gw-emb-banner.gw-kepler .gwb-dot{background:var(--ac)}
+#gw-emb-banner.gw-custom{background:var(--pinbg);border-color:rgba(240,165,0,.45)}
+#gw-emb-banner.gw-custom .gwb-title{color:var(--pin)}
+#gw-emb-banner.gw-custom .gwb-url{color:var(--pin);opacity:.85}
+#gw-emb-banner.gw-custom .gwb-dot{background:var(--pin)}
 .seg-btn.on-cce{background:rgba(240,165,0,.16);border-color:rgba(240,165,0,.6);color:#ffc24d}
 .seg-btn.on-rsn{background:rgba(96,165,225,.16);border-color:rgba(96,165,225,.6);color:#a9d2f6}
 /* Light mode: dark text on the tint reads far better than bright amber/blue */
@@ -856,7 +872,10 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div class="modal-name">Local Comet LLM (LCL)</div>
     </div>
     <div class="modal-sub">// GovTech Models API - v0.67d Alpha</div>
-    <div class="field"><label>GovTech Models API Key</label>
+    <div class="field"><label>Gateway</label>
+      <div class="seg-cls" id="gw-seg-modal"><button type="button" class="seg-btn" data-gw="PlatformAI" onclick="setGateway('PlatformAI','modal')"><span class="seg-code">PlatformAI</span><span class="seg-full">api.ai.tech.gov.sg</span></button><button type="button" class="seg-btn" data-gw="Kepler" onclick="setGateway('Kepler','modal')"><span class="seg-code">Kepler</span><span class="seg-full">nc3.gov.sg</span></button></div>
+      <div class="gw-note" id="gw-note-modal">Pick the gateway your key was issued for.</div></div>
+    <div class="field"><label id="m-key-label">GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
     <div class="field"><label>Data classification</label>
       <div class="seg-cls" id="cls-seg-cfg"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','cfg')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','cfg')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
@@ -888,14 +907,19 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div class="sp-main">
     <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
       <div class="sp-lbl">Connection</div>
-      <div class="sp-cap">Your GovTech Models gateway credentials and the chat model LCL uses.</div>
+      <div class="sp-cap">Your gateway credentials and the chat model LCL uses.</div>
+      <div class="sf"><label>Gateway</label>
+        <div class="seg-cls" id="gw-seg-sp"><button type="button" class="seg-btn" data-gw="PlatformAI" onclick="setGateway('PlatformAI','sp')"><span class="seg-code">PlatformAI</span><span class="seg-full">api.ai.tech.gov.sg</span></button><button type="button" class="seg-btn" data-gw="Kepler" onclick="setGateway('Kepler','sp')"><span class="seg-code">Kepler</span><span class="seg-full">nc3.gov.sg</span></button></div>
+        <div class="sf-cap" id="gw-note-sp">Keys are saved per gateway &mdash; switching restores the key you used last time.</div>
+      </div>
       <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
-      <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
+      <div class="sf"><label id="s-key-label">GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
     <div class="sp-sec" data-sec="embedding">
       <div class="sp-lbl">Embedding</div>
       <div class="sp-cap">Converts uploaded files into vectors for RAG search. Leave a field blank to keep the current value.</div>
+      <div id="gw-emb-banner" class="hidden"><span class="gwb-dot"></span><div><div class="gwb-title"></div><div class="gwb-url"></div></div></div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
       <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
@@ -960,7 +984,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           <div class="sf"><label>Name</label><input type="text" id="s-ep-name" placeholder="My dev gateway"></div>
           <div class="sf"><label>Model URL</label><input type="text" id="s-ep-url" placeholder="https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion"></div>
           <div class="sf"><label>Embeddings URL <span class="sf-opt">(optional &mdash; blank disables file embedding &amp; RAG)</span></label><input type="text" id="s-ep-emb" placeholder="https://api.ai.tech.gov.sg/platform/models/embeddings"></div>
-          <div class="sf"><label>Model <span class="sf-opt">(optional &mdash; blank keeps your current model)</span></label><input type="text" id="s-ep-model" placeholder="cce.claude-opus-4-6"></div>
+          <div class="sf"><label>Model <span class="sf-opt">(defaults to the model in use)</span></label><input type="text" id="s-ep-model" placeholder="cce.claude-opus-4-6"></div>
         </div>
         <div class="sf-cap">Where model and embedding requests are sent. Applies on Save &mdash; only https URLs on *.gov.sg hosts are accepted. Keys are sent as x-api-key. The status pill shows the endpoint name whenever you are not on PlatformAI.</div>
       </div>
@@ -3182,7 +3206,7 @@ async function connect() {
   const prevEmbedModelId = creds?.embedModelId || D.settings?.embedModelId || ''
   creds = makeCreds({ apiKey, model, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
   // Write settings into D directly — persist() will carry them to disk on every save
-  D.settings = credsToSettings(creds)
+  D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
   // Also save via /api/config for immediate server-side update
   await saveSettings(D.settings)
   await persist()  // write D (with settings) to disk right now
@@ -7135,7 +7159,7 @@ function saveSP() {
   creds.embedMaxTokens  = (!_mv || /^auto$/i.test(_mv)) ? 'auto' : Math.max(0, parseInt(_mv) || 0)
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
-  D.settings = credsToSettings(creds)
+  D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
   saveSettings(D.settings)
   persist()
   if (typeof saveEndpointFromSP === 'function') saveEndpointFromSP()   // Developer endpoint (async; no-op when unchanged)
@@ -7198,6 +7222,11 @@ function endpointSelChanged() {
   const isCustom = sel.value === '__custom'
   const custom = document.getElementById('s-ep-custom')
   if (custom) custom.classList.toggle('hidden', !isCustom)
+  // Custom's Model field defaults to the model currently in use (per CL, 7 Jul).
+  if (isCustom) {
+    const mEl = document.getElementById('s-ep-model')
+    if (mEl && !String(mEl.value || '').trim() && typeof creds !== 'undefined' && creds && creds.model) mEl.value = creds.model
+  }
   const sum = document.getElementById('s-ep-summary')
   if (sum) {
     const p = (lclEndpoint.presets || []).find(function (x) { return x.modelUrl === sel.value })
@@ -7234,6 +7263,7 @@ async function refreshDevSection() {
   const btn = document.querySelector('.sp-nav-it[data-sec="developer"]')
   if (btn) btn.classList.toggle('hidden', !devSectionVisible())
   renderEndpointSection()
+  if (typeof renderGatewaySeg === 'function') renderGatewaySeg()
 }
 
 async function saveEndpointFromSP() {
@@ -7265,10 +7295,10 @@ async function saveEndpointFromSP() {
     if (d.active && d.active.model && creds) {
       try { if (wasDefault) localStorage.setItem('lcl_model_default', creds.model || '') } catch (e) {}
       creds.model = d.active.model
-      D.settings = credsToSettings(creds); saveSettings(D.settings); persist()
+      D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds)); saveSettings(D.settings); persist()
     } else if (lclEndpoint.isDefault && creds) {
       let stash = null; try { stash = localStorage.getItem('lcl_model_default') } catch (e) {}
-      if (stash) { creds.model = stash; try { localStorage.removeItem('lcl_model_default') } catch (e) {} ; D.settings = credsToSettings(creds); saveSettings(D.settings); persist() }
+      if (stash) { creds.model = stash; try { localStorage.removeItem('lcl_model_default') } catch (e) {} ; D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds)); saveSettings(D.settings); persist() }
     }
     if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { modelUrl: d.active && d.active.modelUrl, embed: !!(d.active && d.active.embedUrl) })
     toast('Endpoint set: ' + ((d.active && (d.active.name || d.active.modelUrl)) || ep.name), 'ok')
@@ -7277,8 +7307,89 @@ async function saveEndpointFromSP() {
 }
 
 // Load once at boot so the health-pill badge is correct before Settings opens.
-try { setTimeout(function () { loadEndpointInfo() }, 800) } catch (e) {}
+try { setTimeout(function () { loadEndpointInfo().then(function () { if (typeof renderGatewaySeg === 'function') renderGatewaySeg() }) }, 800) } catch (e) {}
 // === end endpoint-dev ===
+// =============================================================================
+// Gateway picker (Connection + Connect modal): PlatformAI vs Kepler as a
+// first-class choice. Keys are stored PER GATEWAY (D.settings.gwVault) so
+// switching restores the key you used last time; the endpoint itself rides the
+// same /api/endpoint mechanism as the Developer section.
+// === gateway ===
+function currentGateway() {
+  if (!lclEndpoint || lclEndpoint.isDefault !== false) return 'PlatformAI'
+  const a = lclEndpoint.active || {}
+  const k = ((lclEndpoint.presets || []).find(function (p) { return p.name === 'Kepler' }) || {})
+  return a.modelUrl === k.modelUrl ? 'Kepler' : 'Custom'
+}
+
+function gwVault() {
+  D.settings = D.settings || {}
+  D.settings.gwVault = D.settings.gwVault || {}
+  return D.settings.gwVault
+}
+
+async function setGateway(name, where) {
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 gateway not changed', 'info'); renderGatewaySeg(); return }
+  const cur = currentGateway()
+  if (name === cur) { renderGatewaySeg(); return }
+  const presets = (lclEndpoint && lclEndpoint.presets) || []
+  const target = name === 'Kepler' ? presets.find(function (p) { return p.name === 'Kepler' }) : presets[0]
+  if (!target) { toast('Gateway presets unavailable \u2014 restart the LCL server (old server.txt?)', 'err'); return }
+  // Stash the CURRENT gateway\u2019s keys before switching (Custom overrides excluded).
+  if (creds && cur !== 'Custom') gwVault()[cur] = { apiKey: creds.apiKey || '', embedApiKey: creds.embedApiKey || '', embedModelId: creds.embedModelId || '' }
+  try {
+    const r = await httpPost('/api/endpoint', { name: target.name, modelUrl: target.modelUrl, embedUrl: target.embedUrl || '', model: '' })
+    let d = {}; try { d = await r.json() } catch (e) {}
+    if (!r.ok) { toast('Gateway switch failed: ' + ((d && d.error) || ('HTTP ' + r.status)), 'err'); return }
+    lclEndpoint = { active: d.active, isDefault: !!(d.active && presets[0] && d.active.modelUrl === presets[0].modelUrl), presets: presets }
+  } catch (e) { toast('Gateway switch failed: ' + e.message, 'err'); return }
+  // Restore the target gateway\u2019s saved keys (may be blank on first use).
+  const saved = gwVault()[name] || {}
+  if (creds) {
+    creds.apiKey = saved.apiKey || ''
+    creds.embedApiKey = saved.embedApiKey || ''
+    if (saved.embedModelId) creds.embedModelId = saved.embedModelId
+    D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
+    saveSettings(D.settings); persist()
+  }
+  const kEl = document.getElementById('s-key'); if (kEl) kEl.value = (creds && creds.apiKey) || ''
+  const eEl = document.getElementById('s-embk'); if (eEl) eEl.value = (creds && creds.embedApiKey) || ''
+  renderGatewaySeg()
+  if (typeof refreshDevSection === 'function') refreshDevSection()
+  if (typeof lclCrumb === 'function') lclCrumb('gateway_set', { gw: name, where: where, hasKey: !!saved.apiKey })
+  toast(saved.apiKey ? 'Switched to ' + name : 'Switched to ' + name + ' \u2014 enter your ' + name + ' API key', saved.apiKey ? 'ok' : 'info')
+  if (creds && creds.apiKey && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+}
+
+function renderGatewaySeg() {
+  const cur = currentGateway()
+  ;['sp', 'modal'].forEach(function (w) {
+    const seg = document.getElementById('gw-seg-' + w); if (!seg) return
+    const btns = seg.querySelectorAll ? seg.querySelectorAll('.seg-btn') : []
+    btns.forEach(function (b) { b.classList.toggle('on', b.dataset.gw === cur) })
+    const note = document.getElementById('gw-note-' + w)
+    if (note) note.textContent = cur === 'Custom' ? 'A custom Developer endpoint is active \u2014 it overrides the gateway pick.' : (w === 'modal' ? 'Pick the gateway your key was issued for.' : 'Keys are saved per gateway \u2014 switching restores the key you used last time.')
+  })
+  const lbl = document.getElementById('s-key-label')
+  if (lbl) lbl.textContent = cur === 'Kepler' ? 'Kepler API Key' : 'GovTech Models API Key'
+  const mlbl = document.getElementById('m-key-label')
+  if (mlbl) mlbl.textContent = cur === 'Kepler' ? 'Kepler API Key' : 'GovTech Models API Key'
+  // Embedding section: read-only banner reflecting the Connection gateway pick
+  // (users run ONE source). Orange = Kepler, neutral = PlatformAI, amber = custom.
+  const banner = document.getElementById('gw-emb-banner')
+  if (banner && lclEndpoint) {
+    const ps = lclEndpoint.presets || []
+    const act = lclEndpoint.active || {}
+    const p = cur === 'Kepler' ? ps.find(function (x) { return x.name === 'Kepler' }) : (cur === 'PlatformAI' ? ps[0] : act)
+    const embUrl = (p && p.embedUrl) || ''
+    banner.className = cur === 'Kepler' ? 'gw-kepler' : (cur === 'Custom' ? 'gw-custom' : '')
+    const tEl = banner.querySelector('.gwb-title')
+    if (tEl) tEl.textContent = cur === 'Custom' ? 'Embedding via custom endpoint (Developer)' : 'Embedding via ' + cur
+    const uEl = banner.querySelector('.gwb-url')
+    if (uEl) uEl.textContent = embUrl || 'none \u2014 file embedding & RAG disabled'
+  }
+}
+// === end gateway ===
 
 // =============================================================================
 // Theme
