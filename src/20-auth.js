@@ -219,7 +219,7 @@ async function connect() {
   const prevEmbedModelId = creds?.embedModelId || D.settings?.embedModelId || ''
   creds = makeCreds({ apiKey, model, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
   // Write settings into D directly — persist() will carry them to disk on every save
-  D.settings = credsToSettings(creds)
+  D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
   // Also save via /api/config for immediate server-side update
   await saveSettings(D.settings)
   await persist()  // write D (with settings) to disk right now
