@@ -329,6 +329,7 @@ function openSP() {
   let _spSec = 'connection'; try { _spSec = localStorage.getItem('lcl_sp_sec') || 'connection' } catch {}
   spNav(document.querySelector('#sp .sp-sec[data-sec="' + _spSec + '"]') ? _spSec : 'connection')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+  if (typeof refreshDevSection === 'function') refreshDevSection()
 }
 
 // Full-page Settings navigation (left rail): show ONE section; remembers last.
@@ -742,6 +743,7 @@ function saveSP() {
   D.settings = credsToSettings(creds)
   saveSettings(D.settings)
   persist()
+  if (typeof saveEndpointFromSP === 'function') saveEndpointFromSP()   // Developer endpoint (async; no-op when unchanged)
   closeSP(); toast('Settings saved','ok')
   // Validate a new/changed embedding key NOW (one tiny embed call) so a wrong or
   // truncated key is caught with a clear message instead of silently 401'ing on
@@ -763,6 +765,88 @@ async function checkEmbedKey() {
     toast('Embedding key error: ' + e.message, 'err')
   }
 }
+// =============================================================================
+// Developer settings (Settings -> System -> Developer): switchable upstream
+// endpoint. The server-side *.gov.sg allowlist is the real guard - this UI only
+// picks. Visible on the alpha channel, in #demo, or when an override is active.
+// === endpoint-dev ===
+var lclEndpoint = null   // { active: {name, host}, isDefault, presets: [...] }
+
+async function loadEndpointInfo() {
+  try {
+    const r = await fetch(proxyUrl('/api/endpoint'))
+    if (!r.ok) return null
+    lclEndpoint = await r.json()
+    return lclEndpoint
+  } catch (e) { return null }
+}
+
+// ' \u00b7 Name' suffix for the health pill whenever we are NOT on PlatformAI,
+// so a forgotten dev switch is impossible to miss.
+function endpointBadge() {
+  return (lclEndpoint && lclEndpoint.active && lclEndpoint.isDefault === false)
+    ? ' \u00b7 ' + (lclEndpoint.active.name || lclEndpoint.active.host)
+    : ''
+}
+
+function endpointSelChanged() {
+  const sel = document.getElementById('s-ep-sel'); if (!sel) return
+  const custom = document.getElementById('s-ep-custom')
+  if (custom) custom.classList.toggle('hidden', sel.value !== '__custom')
+}
+
+function renderEndpointSection() {
+  const sel = document.getElementById('s-ep-sel'); if (!sel || !lclEndpoint) return
+  const presets = lclEndpoint.presets || []
+  const act = lclEndpoint.active || {}
+  const isPreset = presets.some(function (p) { return p.host === act.host })
+  sel.innerHTML = presets.map(function (p) {
+    return '<option value="' + p.host + '">' + p.name + ' \u2014 ' + p.host + '</option>'
+  }).join('') + '<option value="__custom">Custom\u2026</option>'
+  sel.value = isPreset ? act.host : '__custom'
+  const nameEl = document.getElementById('s-ep-name'), hostEl = document.getElementById('s-ep-host')
+  if (nameEl) nameEl.value = isPreset ? '' : (act.name || '')
+  if (hostEl) hostEl.value = isPreset ? '' : (act.host || '')
+  endpointSelChanged()
+}
+
+function devSectionVisible() {
+  if (lclEndpoint && lclEndpoint.isDefault === false) return true   // never hide an active override
+  if (typeof demoOn === 'function' && demoOn()) return true
+  return !!(typeof lclUpdate !== 'undefined' && lclUpdate && lclUpdate.channel === 'alpha')
+}
+
+async function refreshDevSection() {
+  await loadEndpointInfo()
+  const btn = document.querySelector('.sp-nav-it[data-sec="developer"]')
+  if (btn) btn.classList.toggle('hidden', !devSectionVisible())
+  renderEndpointSection()
+}
+
+async function saveEndpointFromSP() {
+  const sel = document.getElementById('s-ep-sel')
+  if (!sel || !lclEndpoint || !sel.options.length) return   // section never rendered
+  const v = sel.value
+  const host = (v === '__custom' ? (document.getElementById('s-ep-host').value || '') : v).trim()
+  const name = v === '__custom' ? (document.getElementById('s-ep-name').value || '').trim() : (((lclEndpoint.presets || []).find(function (p) { return p.host === v }) || {}).name || v)
+  if (!host) return
+  const act = lclEndpoint.active || {}
+  if (host.toLowerCase() === (act.host || '') && (name || host) === (act.name || act.host)) return   // unchanged
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 endpoint not changed', 'info'); return }
+  try {
+    const r = await httpPost('/api/endpoint', { host: host, name: name })
+    let d = {}; try { d = await r.json() } catch (e) {}
+    if (!r.ok) { toast('Endpoint rejected: ' + ((d && d.error) || ('HTTP ' + r.status)), 'err'); return }
+    lclEndpoint = { active: d.active, isDefault: !!(d.active && lclEndpoint.presets && lclEndpoint.presets[0] && d.active.host === lclEndpoint.presets[0].host), presets: lclEndpoint.presets }
+    if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { host: d.active && d.active.host })
+    toast('Endpoint set: ' + ((d.active && (d.active.name || d.active.host)) || host), 'ok')
+    if (creds && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+  } catch (e) { toast('Endpoint error: ' + e.message, 'err') }
+}
+
+// Load once at boot so the health-pill badge is correct before Settings opens.
+try { setTimeout(function () { loadEndpointInfo() }, 800) } catch (e) {}
+// === end endpoint-dev ===
 
 // =============================================================================
 // Theme
