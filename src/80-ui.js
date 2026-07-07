@@ -803,7 +803,7 @@ function endpointSelChanged() {
   const isCustom = sel.value === '__custom'
   const custom = document.getElementById('s-ep-custom')
   if (custom) custom.classList.toggle('hidden', !isCustom)
-  // Custom's Model field defaults to the model currently in use (per CL, 7 Jul).
+  // Custom\u2019s Model field defaults to the model currently in use (per CL, 7 Jul).
   if (isCustom) {
     const mEl = document.getElementById('s-ep-model')
     if (mEl && !String(mEl.value || '').trim() && typeof creds !== 'undefined' && creds && creds.model) mEl.value = creds.model
@@ -813,6 +813,13 @@ function endpointSelChanged() {
     const p = (lclEndpoint.presets || []).find(function (x) { return x.modelUrl === sel.value })
     sum.innerHTML = p ? endpointSummaryHtml(p) : ''
     sum.classList.toggle('hidden', !p)
+  }
+  // Load the SELECTED endpoint\u2019s stored key pair into the key fields.
+  if (typeof keyStoreFor === 'function') {
+    const selName = isCustom ? String((document.getElementById('s-ep-name') || {}).value || '').trim() : (((lclEndpoint.presets || []).find(function (p2) { return p2.modelUrl === sel.value }) || {}).name || '')
+    const st = selName ? (keyStoreFor(selName)[selName] || {}) : {}
+    const kEl = document.getElementById('s-ep-key'); if (kEl) kEl.value = st.apiKey || ''
+    const eEl2 = document.getElementById('s-ep-embk'); if (eEl2) eEl2.value = st.embedApiKey || ''
   }
 }
 
@@ -825,7 +832,7 @@ function renderEndpointSection() {
     return '<option value="' + p.modelUrl + '">' + p.name + '</option>'
   }).join('') + '<option value="__custom">Custom\u2026</option>'
   sel.value = isPreset ? act.modelUrl : '__custom'
-  const f = function (id, v) { const el2 = document.getElementById(id); if (el2) el2.value = v }
+  const f = function (id, v2) { const el2 = document.getElementById(id); if (el2) el2.value = v2 }
   f('s-ep-name', isPreset ? '' : (act.name || ''))
   f('s-ep-url', isPreset ? '' : (act.modelUrl || ''))
   f('s-ep-emb', isPreset ? '' : (act.embedUrl || ''))
@@ -861,9 +868,25 @@ async function saveEndpointFromSP() {
     ep = { name: p.name, modelUrl: p.modelUrl, embedUrl: p.embedUrl || '', model: p.model || '' }
   }
   if (!ep.modelUrl) return
+  const kNew = gv('s-ep-key'), eNew = gv('s-ep-embk')
+  const store = (typeof keyStoreFor === 'function') ? keyStoreFor : null
   const act = lclEndpoint.active || {}
-  if (ep.modelUrl === (act.modelUrl || '') && ep.name === (act.name || '') && ep.embedUrl === (act.embedUrl || '') && ep.model === (act.model || '')) return   // unchanged
-  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 endpoint not changed', 'info'); return }
+  const same = ep.modelUrl === (act.modelUrl || '') && ep.name === (act.name || '') && ep.embedUrl === (act.embedUrl || '') && ep.model === (act.model || '')
+  if (typeof demoOn === 'function' && demoOn()) { if (!same) toast('Demo mode \u2014 endpoint not changed', 'info'); return }
+  if (same) {
+    // No endpoint change \u2014 but persist edited keys for THIS endpoint.
+    if (creds && store && (kNew !== (creds.apiKey || '') || eNew !== (creds.embedApiKey || ''))) {
+      creds.apiKey = kNew; creds.embedApiKey = eNew
+      store(ep.name)[ep.name] = { apiKey: kNew, embedApiKey: eNew, embedModelId: creds.embedModelId || '' }
+      D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
+      saveSettings(D.settings); persist()
+      toast('Keys saved for ' + ep.name, 'ok')
+      if (typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+    }
+    return
+  }
+  // Stash the CURRENT endpoint\u2019s key pair under its own store before switching.
+  if (creds && store) { const cn = act.name || 'PlatformAI'; store(cn)[cn] = { apiKey: creds.apiKey || '', embedApiKey: creds.embedApiKey || '', embedModelId: creds.embedModelId || '' } }
   try {
     const r = await httpPost('/api/endpoint', ep)
     let d = {}; try { d = await r.json() } catch (e) {}
@@ -871,19 +894,26 @@ async function saveEndpointFromSP() {
     const defUrl = (lclEndpoint.presets && lclEndpoint.presets[0] && lclEndpoint.presets[0].modelUrl) || ''
     const wasDefault = lclEndpoint.isDefault !== false
     lclEndpoint = { active: d.active, isDefault: !!(d.active && d.active.modelUrl === defUrl), presets: lclEndpoint.presets }
+    // Keys for the target endpoint: typed fields win, else its stored entry.
+    if (creds && store) {
+      const st = store(ep.name)[ep.name] || {}
+      creds.apiKey = kNew || st.apiKey || ''
+      creds.embedApiKey = eNew || st.embedApiKey || ''
+      store(ep.name)[ep.name] = { apiKey: creds.apiKey, embedApiKey: creds.embedApiKey, embedModelId: creds.embedModelId || '' }
+    }
     // Endpoint-pinned model: apply it, stashing the current model once so
     // returning to the default endpoint restores what you had.
     if (d.active && d.active.model && creds) {
       try { if (wasDefault) localStorage.setItem('lcl_model_default', creds.model || '') } catch (e) {}
       creds.model = d.active.model
-      D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds)); saveSettings(D.settings); persist()
     } else if (lclEndpoint.isDefault && creds) {
       let stash = null; try { stash = localStorage.getItem('lcl_model_default') } catch (e) {}
-      if (stash) { creds.model = stash; try { localStorage.removeItem('lcl_model_default') } catch (e) {} ; D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds)); saveSettings(D.settings); persist() }
+      if (stash) { creds.model = stash; try { localStorage.removeItem('lcl_model_default') } catch (e) {} }
     }
-    if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { modelUrl: d.active && d.active.modelUrl, embed: !!(d.active && d.active.embedUrl) })
-    toast('Endpoint set: ' + ((d.active && (d.active.name || d.active.modelUrl)) || ep.name), 'ok')
-    if (creds && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+    if (creds) { D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds)); saveSettings(D.settings); persist() }
+    if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { modelUrl: d.active && d.active.modelUrl, embed: !!(d.active && d.active.embedUrl), hasKey: !!(creds && creds.apiKey) })
+    toast((creds && creds.apiKey) ? 'Endpoint set: ' + ((d.active && (d.active.name || d.active.modelUrl)) || ep.name) : 'Endpoint set: ' + ep.name + ' \u2014 enter its API key', (creds && creds.apiKey) ? 'ok' : 'info')
+    if (creds && creds.apiKey && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
   } catch (e) { toast('Endpoint error: ' + e.message, 'err') }
 }
 
@@ -899,8 +929,8 @@ try { setTimeout(function () { loadEndpointInfo().then(function () { if (typeof 
 function currentGateway() {
   if (!lclEndpoint || lclEndpoint.isDefault !== false) return 'PlatformAI'
   const a = lclEndpoint.active || {}
-  const k = ((lclEndpoint.presets || []).find(function (p) { return p.name === 'Kepler' }) || {})
-  return a.modelUrl === k.modelUrl ? 'Kepler' : 'Custom'
+  const k = (lclEndpoint.presets || [])[1] || {}   // presets[1] = the second user gateway
+  return a.modelUrl === k.modelUrl ? (k.name || 'Gateway') : 'Custom'
 }
 
 function gwVault() {
@@ -909,15 +939,32 @@ function gwVault() {
   return D.settings.gwVault
 }
 
+// Developer endpoints (NC3 Dev, customs) keep a SEPARATE key store from the
+// user gateways, so testing keys never touch the PlatformAI/Kepler pair (CL).
+function devVault() {
+  D.settings = D.settings || {}
+  D.settings.devVault = D.settings.devVault || {}
+  return D.settings.devVault
+}
+
+function keyStoreFor(name) {
+  // First two presets are the USER gateways (PlatformAI + the current second
+  // gateway, e.g. 'NC3 (Dev)'); everything else is a developer endpoint.
+  const gws = (lclEndpoint && lclEndpoint.presets && lclEndpoint.presets.length) ? lclEndpoint.presets.slice(0, 2).map(function (p) { return p.name }) : ['PlatformAI', 'NC3 (Dev)']
+  return gws.indexOf(name) >= 0 ? gwVault() : devVault()
+}
+
 async function setGateway(name, where) {
   if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 gateway not changed', 'info'); renderGatewaySeg(); return }
   const cur = currentGateway()
   if (name === cur) { renderGatewaySeg(); return }
   const presets = (lclEndpoint && lclEndpoint.presets) || []
-  const target = name === 'Kepler' ? presets.find(function (p) { return p.name === 'Kepler' }) : presets[0]
+  const target = presets.find(function (p) { return p.name === name }) || presets[0]
   if (!target) { toast('Gateway presets unavailable \u2014 restart the LCL server (old server.txt?)', 'err'); return }
-  // Stash the CURRENT gateway\u2019s keys before switching (Custom overrides excluded).
-  if (creds && cur !== 'Custom') gwVault()[cur] = { apiKey: creds.apiKey || '', embedApiKey: creds.embedApiKey || '', embedModelId: creds.embedModelId || '' }
+  // Stash the CURRENT endpoint’s key pair under its own store (gateways ->
+  // gwVault, developer endpoints -> devVault, keyed by endpoint name).
+  const curName = (lclEndpoint && lclEndpoint.active && lclEndpoint.active.name) || cur
+  if (creds) keyStoreFor(curName)[curName] = { apiKey: creds.apiKey || '', embedApiKey: creds.embedApiKey || '', embedModelId: creds.embedModelId || '' }
   try {
     const r = await httpPost('/api/endpoint', { name: target.name, modelUrl: target.modelUrl, embedUrl: target.embedUrl || '', model: '' })
     let d = {}; try { d = await r.json() } catch (e) {}
@@ -925,7 +972,7 @@ async function setGateway(name, where) {
     lclEndpoint = { active: d.active, isDefault: !!(d.active && presets[0] && d.active.modelUrl === presets[0].modelUrl), presets: presets }
   } catch (e) { toast('Gateway switch failed: ' + e.message, 'err'); return }
   // Restore the target gateway\u2019s saved keys (may be blank on first use).
-  const saved = gwVault()[name] || {}
+  const saved = keyStoreFor(name)[name] || {}
   if (creds) {
     creds.apiKey = saved.apiKey || ''
     creds.embedApiKey = saved.embedApiKey || ''
@@ -951,19 +998,20 @@ function renderGatewaySeg() {
     const note = document.getElementById('gw-note-' + w)
     if (note) note.textContent = cur === 'Custom' ? 'A custom Developer endpoint is active \u2014 it overrides the gateway pick.' : (w === 'modal' ? 'Pick the gateway your key was issued for.' : 'Keys are saved per gateway \u2014 switching restores the key you used last time.')
   })
+  const keyLbl = (cur === 'PlatformAI' || cur === 'Custom') ? 'GovTech Models API Key' : cur + ' API Key'
   const lbl = document.getElementById('s-key-label')
-  if (lbl) lbl.textContent = cur === 'Kepler' ? 'Kepler API Key' : 'GovTech Models API Key'
+  if (lbl) lbl.textContent = keyLbl
   const mlbl = document.getElementById('m-key-label')
-  if (mlbl) mlbl.textContent = cur === 'Kepler' ? 'Kepler API Key' : 'GovTech Models API Key'
+  if (mlbl) mlbl.textContent = keyLbl
   // Embedding section: read-only banner reflecting the Connection gateway pick
   // (users run ONE source). Orange = Kepler, neutral = PlatformAI, amber = custom.
   const banner = document.getElementById('gw-emb-banner')
   if (banner && lclEndpoint) {
     const ps = lclEndpoint.presets || []
     const act = lclEndpoint.active || {}
-    const p = cur === 'Kepler' ? ps.find(function (x) { return x.name === 'Kepler' }) : (cur === 'PlatformAI' ? ps[0] : act)
+    const p = cur === 'Custom' ? act : ((ps || []).find(function (x) { return x.name === cur }) || ps[0])
     const embUrl = (p && p.embedUrl) || ''
-    banner.className = cur === 'Kepler' ? 'gw-kepler' : (cur === 'Custom' ? 'gw-custom' : '')
+    banner.className = cur === 'Custom' ? 'gw-custom' : (cur === 'PlatformAI' ? '' : 'gw-kepler')
     const tEl = banner.querySelector('.gwb-title')
     if (tEl) tEl.textContent = cur === 'Custom' ? 'Embedding via custom endpoint (Developer)' : 'Embedding via ' + cur
     const uEl = banner.querySelector('.gwb-url')
