@@ -739,6 +739,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .seg-btn.on-cce .seg-full,.seg-btn.on-rsn .seg-full{opacity:1}
 .sp-contrib{font-size:12px;color:var(--tx2);margin-right:auto}
 #sp .sp-sec .btn-s{font-size:13.5px;padding:9px 16px}
+.sp-nav-it.hidden{display:none}
+#s-ep-custom{margin-top:8px;padding:10px 12px 2px;border:1px dashed var(--bdr2);border-radius:8px}
+#s-ep-custom.hidden{display:none}
 .upd-card{background:var(--bg3);border:1px solid var(--bdr);border-radius:11px;padding:13px}
 .upd-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .upd-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center}
@@ -875,6 +878,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <div class="sp-nav-lbl">System</div>
         <button type="button" class="sp-nav-it" data-sec="updates" onclick="spNav('updates')">Updates</button>
         <button type="button" class="sp-nav-it" data-sec="account" onclick="spNav('account')">Account</button>
+        <button type="button" class="sp-nav-it" data-sec="developer" onclick="spNav('developer')">Developer</button>
       </nav>
       <div class="sp-main">
     <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
@@ -939,6 +943,19 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
+    </div>
+    <div class="sp-sec" data-sec="developer">
+      <div class="sp-lbl">Developer</div>
+      <div class="sp-cap">Advanced settings for testing. Leave the endpoint on PlatformAI unless you know what you&rsquo;re doing.</div>
+      <div class="sf">
+        <label>API Endpoint</label>
+        <select id="s-ep-sel" class="model-sel" onchange="endpointSelChanged()"></select>
+        <div id="s-ep-custom" class="hidden">
+          <div class="sf"><label>Name</label><input type="text" id="s-ep-name" placeholder="My dev gateway"></div>
+          <div class="sf"><label>Host</label><input type="text" id="s-ep-host" placeholder="dev-gw.csa.gov.sg"></div>
+        </div>
+        <div class="sf-cap">Where chat and embedding requests are sent. Applies on Save &mdash; the server accepts only *.gov.sg hosts. The status pill shows the endpoint name whenever you are not on PlatformAI.</div>
+      </div>
     </div>
     </div>
     <div class="sp-foot">
@@ -5856,9 +5873,8 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  return (creds.embedApiKey && creds.embedModelId)
-    ? 'Chat + embed'
-    : 'Chat only'
+  const base = (creds.embedApiKey && creds.embedModelId) ? 'Chat + embed' : 'Chat only'
+  return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
 // ---------------------------------------------------------------------------
@@ -6700,6 +6716,7 @@ function openSP() {
   let _spSec = 'connection'; try { _spSec = localStorage.getItem('lcl_sp_sec') || 'connection' } catch {}
   spNav(document.querySelector('#sp .sp-sec[data-sec="' + _spSec + '"]') ? _spSec : 'connection')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+  if (typeof refreshDevSection === 'function') refreshDevSection()
 }
 
 // Full-page Settings navigation (left rail): show ONE section; remembers last.
@@ -7113,6 +7130,7 @@ function saveSP() {
   D.settings = credsToSettings(creds)
   saveSettings(D.settings)
   persist()
+  if (typeof saveEndpointFromSP === 'function') saveEndpointFromSP()   // Developer endpoint (async; no-op when unchanged)
   closeSP(); toast('Settings saved','ok')
   // Validate a new/changed embedding key NOW (one tiny embed call) so a wrong or
   // truncated key is caught with a clear message instead of silently 401'ing on
@@ -7134,6 +7152,88 @@ async function checkEmbedKey() {
     toast('Embedding key error: ' + e.message, 'err')
   }
 }
+// =============================================================================
+// Developer settings (Settings -> System -> Developer): switchable upstream
+// endpoint. The server-side *.gov.sg allowlist is the real guard - this UI only
+// picks. Visible on the alpha channel, in #demo, or when an override is active.
+// === endpoint-dev ===
+var lclEndpoint = null   // { active: {name, host}, isDefault, presets: [...] }
+
+async function loadEndpointInfo() {
+  try {
+    const r = await fetch(proxyUrl('/api/endpoint'))
+    if (!r.ok) return null
+    lclEndpoint = await r.json()
+    return lclEndpoint
+  } catch (e) { return null }
+}
+
+// ' \u00b7 Name' suffix for the health pill whenever we are NOT on PlatformAI,
+// so a forgotten dev switch is impossible to miss.
+function endpointBadge() {
+  return (lclEndpoint && lclEndpoint.active && lclEndpoint.isDefault === false)
+    ? ' \u00b7 ' + (lclEndpoint.active.name || lclEndpoint.active.host)
+    : ''
+}
+
+function endpointSelChanged() {
+  const sel = document.getElementById('s-ep-sel'); if (!sel) return
+  const custom = document.getElementById('s-ep-custom')
+  if (custom) custom.classList.toggle('hidden', sel.value !== '__custom')
+}
+
+function renderEndpointSection() {
+  const sel = document.getElementById('s-ep-sel'); if (!sel || !lclEndpoint) return
+  const presets = lclEndpoint.presets || []
+  const act = lclEndpoint.active || {}
+  const isPreset = presets.some(function (p) { return p.host === act.host })
+  sel.innerHTML = presets.map(function (p) {
+    return '<option value="' + p.host + '">' + p.name + ' \u2014 ' + p.host + '</option>'
+  }).join('') + '<option value="__custom">Custom\u2026</option>'
+  sel.value = isPreset ? act.host : '__custom'
+  const nameEl = document.getElementById('s-ep-name'), hostEl = document.getElementById('s-ep-host')
+  if (nameEl) nameEl.value = isPreset ? '' : (act.name || '')
+  if (hostEl) hostEl.value = isPreset ? '' : (act.host || '')
+  endpointSelChanged()
+}
+
+function devSectionVisible() {
+  if (lclEndpoint && lclEndpoint.isDefault === false) return true   // never hide an active override
+  if (typeof demoOn === 'function' && demoOn()) return true
+  return !!(typeof lclUpdate !== 'undefined' && lclUpdate && lclUpdate.channel === 'alpha')
+}
+
+async function refreshDevSection() {
+  await loadEndpointInfo()
+  const btn = document.querySelector('.sp-nav-it[data-sec="developer"]')
+  if (btn) btn.classList.toggle('hidden', !devSectionVisible())
+  renderEndpointSection()
+}
+
+async function saveEndpointFromSP() {
+  const sel = document.getElementById('s-ep-sel')
+  if (!sel || !lclEndpoint || !sel.options.length) return   // section never rendered
+  const v = sel.value
+  const host = (v === '__custom' ? (document.getElementById('s-ep-host').value || '') : v).trim()
+  const name = v === '__custom' ? (document.getElementById('s-ep-name').value || '').trim() : (((lclEndpoint.presets || []).find(function (p) { return p.host === v }) || {}).name || v)
+  if (!host) return
+  const act = lclEndpoint.active || {}
+  if (host.toLowerCase() === (act.host || '') && (name || host) === (act.name || act.host)) return   // unchanged
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 endpoint not changed', 'info'); return }
+  try {
+    const r = await httpPost('/api/endpoint', { host: host, name: name })
+    let d = {}; try { d = await r.json() } catch (e) {}
+    if (!r.ok) { toast('Endpoint rejected: ' + ((d && d.error) || ('HTTP ' + r.status)), 'err'); return }
+    lclEndpoint = { active: d.active, isDefault: !!(d.active && lclEndpoint.presets && lclEndpoint.presets[0] && d.active.host === lclEndpoint.presets[0].host), presets: lclEndpoint.presets }
+    if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { host: d.active && d.active.host })
+    toast('Endpoint set: ' + ((d.active && (d.active.name || d.active.host)) || host), 'ok')
+    if (creds && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+  } catch (e) { toast('Endpoint error: ' + e.message, 'err') }
+}
+
+// Load once at boot so the health-pill badge is correct before Settings opens.
+try { setTimeout(function () { loadEndpointInfo() }, 800) } catch (e) {}
+// === end endpoint-dev ===
 
 // =============================================================================
 // Theme
