@@ -1703,6 +1703,13 @@ function handleSaveData(req, res) {
     if (body.updateChannel === undefined && appData.updateChannel !== undefined) {
       body.updateChannel = appData.updateChannel
     }
+    // The endpoint override is SERVER-owned (set via /api/endpoint) - the client's
+    // settings copy never carries it, so a full /api/data save must not wipe it.
+    // (7 Jul log: Kepler set, then a debounced persist() replaced settings and the
+    // very next stream silently went back to PlatformAI.)
+    if (body.settings && !body.settings.endpoint && appData.settings && appData.settings.endpoint) {
+      body.settings.endpoint = appData.settings.endpoint
+    }
     // Strip full embedding vectors — only embHash is needed on disk
     if (body && body.chats) {
       for (const chat of Object.values(body.chats)) {
