@@ -125,8 +125,9 @@ isn't automatable, so these are a manual checklist. Use a real embedding key.
 - **U27 developer endpoint** — (server restarted on the new build) Settings → System →
   Developer (below Account; visible in `#demo`, on the alpha channel, or when an
   override is active): selector shows PlatformAI / NC3 Dev / Custom…; picking a
-  preset shows the read-only model/embed URL summary (NC3 shows amber "none — file
-  embedding & RAG disabled"); Custom reveals Name + Model URL + Embeddings URL +
+  preset shows the read-only model/embed URL summary (both kepler URLs for NC3; a
+  custom endpoint with a blank Embeddings URL shows amber "none — file embedding &
+  RAG disabled"); Custom reveals Name + Model URL + Embeddings URL +
   Model in a dashed box; Save switches the endpoint (blocked with a toast in demo);
   with a non-default endpoint the health pill reads "Chat + embed · <name>" and the
   server startup log shows the override. While on an endpoint without an embeddings
