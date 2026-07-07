@@ -770,7 +770,7 @@ async function checkEmbedKey() {
 // endpoint. The server-side *.gov.sg allowlist is the real guard - this UI only
 // picks. Visible on the alpha channel, in #demo, or when an override is active.
 // === endpoint-dev ===
-var lclEndpoint = null   // { active: {name, host}, isDefault, presets: [...] }
+var lclEndpoint = null   // { active: {name, modelUrl, embedUrl, model}, isDefault, presets }
 
 async function loadEndpointInfo() {
   try {
@@ -785,28 +785,46 @@ async function loadEndpointInfo() {
 // so a forgotten dev switch is impossible to miss.
 function endpointBadge() {
   return (lclEndpoint && lclEndpoint.active && lclEndpoint.isDefault === false)
-    ? ' \u00b7 ' + (lclEndpoint.active.name || lclEndpoint.active.host)
+    ? ' \u00b7 ' + (lclEndpoint.active.name || lclEndpoint.active.modelUrl)
     : ''
 }
 
+// Read-only where-does-traffic-go summary shown under the selector for presets.
+function endpointSummaryHtml(ep) {
+  if (!ep || !ep.modelUrl) return ''
+  const e = (typeof esc === 'function') ? esc : function (s) { return s }
+  return '<div><span class="ep-k">model</span>' + e(ep.modelUrl) + '</div>' +
+    '<div><span class="ep-k">embed</span>' + (ep.embedUrl ? e(ep.embedUrl) : '<span class="ep-warn">none \u2014 file embedding &amp; RAG disabled</span>') + '</div>' +
+    (ep.model ? '<div><span class="ep-k">model id</span>' + e(ep.model) + '</div>' : '')
+}
+
 function endpointSelChanged() {
-  const sel = document.getElementById('s-ep-sel'); if (!sel) return
+  const sel = document.getElementById('s-ep-sel'); if (!sel || !lclEndpoint) return
+  const isCustom = sel.value === '__custom'
   const custom = document.getElementById('s-ep-custom')
-  if (custom) custom.classList.toggle('hidden', sel.value !== '__custom')
+  if (custom) custom.classList.toggle('hidden', !isCustom)
+  const sum = document.getElementById('s-ep-summary')
+  if (sum) {
+    const p = (lclEndpoint.presets || []).find(function (x) { return x.modelUrl === sel.value })
+    sum.innerHTML = p ? endpointSummaryHtml(p) : ''
+    sum.classList.toggle('hidden', !p)
+  }
 }
 
 function renderEndpointSection() {
   const sel = document.getElementById('s-ep-sel'); if (!sel || !lclEndpoint) return
   const presets = lclEndpoint.presets || []
   const act = lclEndpoint.active || {}
-  const isPreset = presets.some(function (p) { return p.host === act.host })
+  const isPreset = presets.some(function (p) { return p.modelUrl === act.modelUrl })
   sel.innerHTML = presets.map(function (p) {
-    return '<option value="' + p.host + '">' + p.name + ' \u2014 ' + p.host + '</option>'
+    return '<option value="' + p.modelUrl + '">' + p.name + '</option>'
   }).join('') + '<option value="__custom">Custom\u2026</option>'
-  sel.value = isPreset ? act.host : '__custom'
-  const nameEl = document.getElementById('s-ep-name'), hostEl = document.getElementById('s-ep-host')
-  if (nameEl) nameEl.value = isPreset ? '' : (act.name || '')
-  if (hostEl) hostEl.value = isPreset ? '' : (act.host || '')
+  sel.value = isPreset ? act.modelUrl : '__custom'
+  const f = function (id, v) { const el2 = document.getElementById(id); if (el2) el2.value = v }
+  f('s-ep-name', isPreset ? '' : (act.name || ''))
+  f('s-ep-url', isPreset ? '' : (act.modelUrl || ''))
+  f('s-ep-emb', isPreset ? '' : (act.embedUrl || ''))
+  f('s-ep-model', isPreset ? '' : (act.model || ''))
   endpointSelChanged()
 }
 
@@ -827,19 +845,38 @@ async function saveEndpointFromSP() {
   const sel = document.getElementById('s-ep-sel')
   if (!sel || !lclEndpoint || !sel.options.length) return   // section never rendered
   const v = sel.value
-  const host = (v === '__custom' ? (document.getElementById('s-ep-host').value || '') : v).trim()
-  const name = v === '__custom' ? (document.getElementById('s-ep-name').value || '').trim() : (((lclEndpoint.presets || []).find(function (p) { return p.host === v }) || {}).name || v)
-  if (!host) return
+  const gv = function (id) { const el2 = document.getElementById(id); return el2 ? String(el2.value || '').trim() : '' }
+  let ep
+  if (v === '__custom') {
+    ep = { name: gv('s-ep-name') || 'Custom', modelUrl: gv('s-ep-url'), embedUrl: gv('s-ep-emb'), model: gv('s-ep-model') }
+  } else {
+    const p = (lclEndpoint.presets || []).find(function (x) { return x.modelUrl === v })
+    if (!p) return
+    ep = { name: p.name, modelUrl: p.modelUrl, embedUrl: p.embedUrl || '', model: p.model || '' }
+  }
+  if (!ep.modelUrl) return
   const act = lclEndpoint.active || {}
-  if (host.toLowerCase() === (act.host || '') && (name || host) === (act.name || act.host)) return   // unchanged
+  if (ep.modelUrl === (act.modelUrl || '') && ep.name === (act.name || '') && ep.embedUrl === (act.embedUrl || '') && ep.model === (act.model || '')) return   // unchanged
   if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 endpoint not changed', 'info'); return }
   try {
-    const r = await httpPost('/api/endpoint', { host: host, name: name })
+    const r = await httpPost('/api/endpoint', ep)
     let d = {}; try { d = await r.json() } catch (e) {}
     if (!r.ok) { toast('Endpoint rejected: ' + ((d && d.error) || ('HTTP ' + r.status)), 'err'); return }
-    lclEndpoint = { active: d.active, isDefault: !!(d.active && lclEndpoint.presets && lclEndpoint.presets[0] && d.active.host === lclEndpoint.presets[0].host), presets: lclEndpoint.presets }
-    if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { host: d.active && d.active.host })
-    toast('Endpoint set: ' + ((d.active && (d.active.name || d.active.host)) || host), 'ok')
+    const defUrl = (lclEndpoint.presets && lclEndpoint.presets[0] && lclEndpoint.presets[0].modelUrl) || ''
+    const wasDefault = lclEndpoint.isDefault !== false
+    lclEndpoint = { active: d.active, isDefault: !!(d.active && d.active.modelUrl === defUrl), presets: lclEndpoint.presets }
+    // Endpoint-pinned model: apply it, stashing the current model once so
+    // returning to the default endpoint restores what you had.
+    if (d.active && d.active.model && creds) {
+      try { if (wasDefault) localStorage.setItem('lcl_model_default', creds.model || '') } catch (e) {}
+      creds.model = d.active.model
+      D.settings = credsToSettings(creds); saveSettings(D.settings); persist()
+    } else if (lclEndpoint.isDefault && creds) {
+      let stash = null; try { stash = localStorage.getItem('lcl_model_default') } catch (e) {}
+      if (stash) { creds.model = stash; try { localStorage.removeItem('lcl_model_default') } catch (e) {} ; D.settings = credsToSettings(creds); saveSettings(D.settings); persist() }
+    }
+    if (typeof lclCrumb === 'function') lclCrumb('endpoint_set', { modelUrl: d.active && d.active.modelUrl, embed: !!(d.active && d.active.embedUrl) })
+    toast('Endpoint set: ' + ((d.active && (d.active.name || d.active.modelUrl)) || ep.name), 'ok')
     if (creds && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
   } catch (e) { toast('Endpoint error: ' + e.message, 'err') }
 }
