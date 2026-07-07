@@ -275,6 +275,20 @@ const CASES = [
     const ok = e1.status === 400 && /embeddings URL/.test(e1.body) && e2.status === 400 && /embeddings URL/.test(e2.body)
     check('T39 endpoint without embeddings URL refuses embeds (clear error)', ok, 'embed=' + e1.status + ' batch=' + e2.status)
   } },
+  { id: 'T40 persist (/api/data) must NOT wipe the endpoint override', tags: ['gate'], fn: async () => {
+    // 7 Jul field log: switch to Kepler, then the client's debounced persist()
+    // replaced appData.settings (no endpoint key) and the next stream silently
+    // went back to PlatformAI. The endpoint is server-owned and must survive.
+    const cur = json((await req({ method: 'GET', path: '/api/data' })).body)
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'Kepler', modelUrl: 'https://nc3.gov.sg/kepler/v1/chat/completion', embedUrl: 'https://nc3.gov.sg/kepler/v1/embeddings' }))
+    const clientCopy = Object.assign({}, cur, { settings: Object.assign({}, cur.settings || {}) })
+    delete clientCopy.settings.endpoint   // the client never carries it
+    await req({ method: 'POST', path: '/api/data', headers: H }, JSON.stringify(clientCopy))
+    const g = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions' }))
+    const ok = g.active && g.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completion' && g.isDefault === false
+    check('T40 persist (/api/data) must NOT wipe the endpoint override', ok, 'after-persist=' + (g.active && g.active.modelUrl) + '/' + g.isDefault)
+  } },
   { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
     const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
     const r1 = json((await g()).body)
