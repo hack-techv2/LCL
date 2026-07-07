@@ -539,6 +539,12 @@ const CASES = [
     const ok = delays[0] === 6000 && delays[1] === 4000 && delays[2] === 2800 && delays[3] > 6000 && delays[3] <= 8000
     check('C13 toast duration: type floor + length scaling', ok, 'delays=' + JSON.stringify(delays))
   } },
+  { id: 'C33 connect ping routed through proxyUrl (file:// fix)', fn: async () => {
+    const S = src('20-auth.js')
+    const routed = S.includes("fetchWithRetry(proxyUrl('/api/chat')")
+    const noRaw = !S.includes("fetchWithRetry('/api/chat'")
+    check('C33 connect ping routed through proxyUrl (file:// fix)', routed && noRaw, 'routed=' + routed + ' noRaw=' + noRaw)
+  } },
 ]
 
 ;(async () => {
