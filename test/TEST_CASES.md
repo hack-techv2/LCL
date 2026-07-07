@@ -136,4 +136,6 @@ embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
 
 ### C28 (7 Jul) — settings `spNav`: exactly one `.sp-sec`/`.sp-nav-it` pair gets `.on` for the routed section; choice persists to `lcl_sp_sec`; legacy `spTab('settings'/'models')` aliases to `defaults`/`connection`. Runs the REAL function source extracted from 80-ui.js.
 
+### C30 (7 Jul) — developer endpoint UI: `renderEndpointSection` fills the selector (presets + Custom…) and selects the active host; Custom reveals Name/Host fields (`endpointSelChanged`); Save POSTs `{host, name}` to `/api/endpoint`; `endpointBadge()` returns " · <name>" only when off-default. Runs the real `// === endpoint-dev ===` block from 80-ui.js. Server side: **T36** default+presets, **T37** set gov.sg host → persists → reset clears, **T38** allowlist refuses non-gov.sg shapes (suffix spoofs, paths, IPs) with 400.
+
 ### C29 (7 Jul) — split run carries the user instruction through map-reduce: with a non-summary ask ("Search the presenter's name"), part requests get the extract prompt + the ask verbatim, the combine request answers the ORIGINAL ask from the part-extracts, and the system line switches to "processing a document"; a summarise-style ask keeps the original generic part/combine prompts (captured from the real fetch bodies).
