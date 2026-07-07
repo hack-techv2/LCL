@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 7 Jul 2026 — Removed the Developer endpoint section; kept the gateway picker (alpha)
+
+Per CL: bundling the Developer + Connection endpoint config together didn't work out with the latest build, so the Developer endpoint feature is removed and LCL keeps just the gateway picker (the initial mode). Version stays v0.67d.
+
+- **Removed** Settings → System → Developer entirely: the nav item, the API-endpoint selector, the Custom endpoint fields (Name / Model URL / Embeddings URL / Model), and the per-endpoint API/Embed key fields. Client functions `renderEndpointSection` / `endpointSelChanged` / `endpointSummaryHtml` / `devSectionVisible` / `refreshDevSection` / `saveEndpointFromSP` and the `devVault` key store are gone; `keyStoreFor()` now always resolves to the single per-gateway `gwVault`. Dead `#s-ep-*` CSS removed.
+- **Kept** the gateway picker (Settings → Connection + the Connect modal): PlatformAI | NC3 (Dev), per-gateway keys in `gwVault`, the Embedding source banner, and the `endpointBadge()` health-pill suffix. `lclEndpoint` / `loadEndpointInfo` stay — opening Settings now reloads them just to refresh the gateway segment.
+- **Server unchanged**: `/api/endpoint` + the two presets and the `*.gov.sg` https-only allowlist remain (the gateway picker rides them), so no node restart is needed for this change.
+- **Tests**: removed client-logic **C30** (developer endpoint UI) and **C32** (`devVault` key pairs); gateway coverage **C31** stays. Server `/api/endpoint` tests **T36–T40** unchanged. Suites **40/40 (demo-api) + 30/30 (client-logic)**; build 5/5 + checksums refreshed.
+
 ## 7 Jul 2026 — Gateway picker: PlatformAI / Kepler with per-gateway keys (alpha)
 
 Per CL: users will be assigned keys on Kepler (prod: nc3.gov.sg) and need a first-class way to point LCL at it — not a Developer-only toggle. Version stays v0.67d.
