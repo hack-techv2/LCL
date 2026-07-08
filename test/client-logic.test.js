@@ -578,7 +578,7 @@ const CASES = [
     const U = src('80-ui.js'); const B = src('body.html')
     const fns = U.includes('function renderOcrChip(') && U.includes('function toggleOcrInfo(')
     const chip = B.includes('id="ocr-chip"') && B.includes('onclick="toggleOcrInfo(event)"')
-    const acts = B.includes('onclick="testOcrEngine()"') && B.includes('onclick="clearOcrEngine()"')
+    const acts = B.includes('onclick="enableOcrEngine()"') && B.includes('onclick="clearOcrEngine()"')
     check('C37 OCR chip + popover wired (80-ui + body.html)', fns && chip && acts, 'fns=' + fns + ' chip=' + chip + ' acts=' + acts)
   } },
 ]
