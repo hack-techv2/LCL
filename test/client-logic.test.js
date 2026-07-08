@@ -558,6 +558,29 @@ const CASES = [
     const jsonNull = fn({ statusCode: 400, body: '{"error":"bad model"}' }, 'embeddings') === null
     check('C34 gatewayErrorMessage: 503/HTML proxy page -> friendly (server.txt)', friendly && jsonNull, 'msg=' + JSON.stringify(msg) + ' jsonNull=' + jsonNull)
   } },
+  { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
+    const S = src('40-files.js')
+    const noNaptha = !S.includes('tessdata.projectnaptha.com')
+    const jsdelivrLang = S.includes("TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'")
+    const wiredLang = S.includes('langPath: TESSERACT_LANG')
+    const persistent = S.includes('let _ocrWorker = null') && S.includes('async function ensureOcrWorker')
+    check('C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', noNaptha && jsdelivrLang && wiredLang && persistent, 'noNaptha=' + noNaptha + ' lang=' + jsdelivrLang + ' wired=' + wiredLang + ' persistent=' + persistent)
+  } },
+  { id: 'C36 image files route through OCR (imageExtractor + filter + recognize)', fn: async () => {
+    const S = src('40-files.js')
+    const regd = S.includes('png:  (file) => imageExtractor(file)') && S.includes('jpeg: (file) => imageExtractor(file)')
+    const fn = S.includes('function imageExtractor(file)') && S.includes('ocrFile: file') && S.includes("scanWarning: 'Image file")
+    const filter = S.includes('f.scanWarning && (f.pdfDoc || f.ocrFile)')
+    const imgOcr = S.includes('else if (item.ocrFile)') && S.includes('worker.recognize(item.ocrFile)')
+    check('C36 image files route through OCR (imageExtractor + filter + recognize)', regd && fn && filter && imgOcr, 'regd=' + regd + ' fn=' + fn + ' filter=' + filter + ' imgOcr=' + imgOcr)
+  } },
+  { id: 'C37 OCR chip + popover wired (80-ui + body.html)', fn: async () => {
+    const U = src('80-ui.js'); const B = src('body.html')
+    const fns = U.includes('function renderOcrChip(') && U.includes('function toggleOcrInfo(')
+    const chip = B.includes('id="ocr-chip"') && B.includes('onclick="toggleOcrInfo(event)"')
+    const acts = B.includes('onclick="testOcrEngine()"') && B.includes('onclick="clearOcrEngine()"')
+    check('C37 OCR chip + popover wired (80-ui + body.html)', fns && chip && acts, 'fns=' + fns + ' chip=' + chip + ' acts=' + acts)
+  } },
 ]
 
 ;(async () => {
