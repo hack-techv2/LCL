@@ -840,6 +840,18 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .rag-info ul{margin:6px 0;padding-left:16px}
 .rag-info li{margin:3px 0}
 .rag-info b{color:var(--tx);font-weight:500}
+.tb-ocr{display:inline-flex;align-items:center;gap:5px}
+.tb-ocr svg{opacity:.85}
+.ocr-dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);display:inline-block}
+.ocr-dot.ocr-idle{background:var(--tx3)}
+.ocr-dot.ocr-loading{background:#f0a500}
+.ocr-dot.ocr-ready{background:#2ea44f}
+.ocr-dot.ocr-blocked{background:var(--red)}
+.ocr-info{position:absolute;right:12px;top:52px;width:290px;z-index:60;margin:0;padding:13px 15px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12.5px;line-height:1.6;color:var(--tx2)}
+.ocr-info.hidden{display:none}
+.ocr-info p{margin:6px 0}
+.ocr-acts{display:flex;gap:8px;margin-top:10px}
+.ocr-acts .btn-s{flex:1}
 
 /* Embed 'Search mode' segmented control (Auto / Specific / Whole doc). */
 .dp-search-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:2px;display:flex;align-items:center;gap:8px}
@@ -1069,7 +1081,14 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     </div>
     <div class="tb-right" id="tb-right">
       <span class="health" id="health-pill" data-tip-bottom="Connection health"><span class="dot"></span><span id="health-txt">Idle</span></span>
+      <button type="button" class="tb-btn tb-ocr" id="ocr-chip" onclick="toggleOcrInfo(event)" data-tip-bottom="OCR - text from scans and images"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2 5V3.5A1.5 1.5 0 013.5 2H5"/><path d="M11 2h1.5A1.5 1.5 0 0114 3.5V5"/><path d="M14 11v1.5a1.5 1.5 0 01-1.5 1.5H11"/><path d="M5 14H3.5A1.5 1.5 0 012 12.5V11"/><path d="M4.5 8h7"/></svg>OCR<span class="ocr-dot" id="ocr-dot"></span></button>
       <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom="Upload files for RAG — requires an embedding API key">Embed (0)</button>
+      <div id="ocr-info" class="ocr-info hidden">
+        <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
+        <p id="ocr-status">Ready when needed</p>
+        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Text is read in your browser - nothing is uploaded to extract it.</p>
+        <div class="ocr-acts"><button type="button" class="btn-s" onclick="testOcrEngine()">Test engine</button><button type="button" class="btn-s" onclick="clearOcrEngine()">Clear engine</button></div>
+      </div>
     </div>
   </div>
 
@@ -3757,6 +3776,10 @@ async function extractLegacyPptText(file) {
   return { text, scanWarning: 'Legacy .ppt was parsed with best-effort binary text extraction. For reliable slide order/layout, save as .pptx or PDF.', structure: { kind: 'ppt-legacy-best-effort' } }
 }
 
+function imageExtractor(file) {
+  return Promise.resolve({ text: '', scanWarning: 'Image file - run OCR to extract text.', ocrFile: file, structure: { kind: 'image' } })
+}
+
 const EXTRACTORS = {
   pdf:  async (file) => extractPdfStructured(file),
   docx: async (file) => extractDocxStructured(file),
@@ -3768,6 +3791,14 @@ const EXTRACTORS = {
   ppsx: async (file) => extractPptxStructured(file),
   potx: async (file) => extractPptxStructured(file),
   ppt:  async (file) => extractLegacyPptText(file),
+  png:  (file) => imageExtractor(file),
+  jpg:  (file) => imageExtractor(file),
+  jpeg: (file) => imageExtractor(file),
+  webp: (file) => imageExtractor(file),
+  bmp:  (file) => imageExtractor(file),
+  gif:  (file) => imageExtractor(file),
+  tif:  (file) => imageExtractor(file),
+  tiff: (file) => imageExtractor(file),
   // Any other file: read it as UTF-8 text. If it sniffs as binary (NUL bytes,
   // or a high share of U+FFFD replacement chars from undecodable bytes), reject
   // it as unsupported. queueFilesForPreview() catches this, shows a per-file
@@ -3810,38 +3841,91 @@ function loadScript(url) {
   })
 }
 
-// Render each scanned (empty-text) page to canvas at 2× scale, run Tesseract
-// OCR on it, and patch the recovered text back into item.extractedText.
-// Clears item.scanWarning on success so the embed confirm shows no residual warning.
-async function ocrQueueItem(item) {
-  const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
-  if (!window.Tesseract) {
-    toast('Loading OCR engine — first use only (~3 MB, cached after this)...', 'info')
-    await loadScript(TESSERACT_CDN)
-  }
-  const worker    = await Tesseract.createWorker('eng')
-  const pdf       = item.pdfDoc
-  const pageTexts = item.pages.map(p => p.text)  // per-page copy, index 0 = page 1
+// --- Tesseract OCR engine -------------------------------------------------
+// tesseract.js already defaults workerPath + corePath to jsDelivr (reachable
+// here); only langPath defaults to the upstream tessdata host, which is blocked
+// on the gov network - point it at the SAME language data mirrored on jsDelivr.
+// The worker + language data load ONCE (persistent worker) and the language
+// file is cached by the browser (IndexedDB) after the first successful download.
+const TESSERACT_CDN  = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
+const TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'
+
+let _ocrWorker = null            // shared Tesseract worker (created once, reused)
+let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
+
+function ocrState() { return _ocrState }
+function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
+
+// Load the script + create ONE worker, reused across files and OCR runs.
+async function ensureOcrWorker() {
+  if (_ocrWorker) return _ocrWorker
+  setOcrState('loading')
   try {
-    for (let i = 0; i < item.emptyPageNums.length; i++) {
-      const pageNum  = item.emptyPageNums[i]
-      setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
-      toast('OCR: scanning page ' + pageNum + ' of ' + pdf.numPages + '...', 'info')
-      const page     = await pdf.getPage(pageNum)
-      const viewport = page.getViewport({ scale: 2.0 })  // 2× for better accuracy
-      const canvas   = document.createElement('canvas')
-      canvas.width   = viewport.width
-      canvas.height  = viewport.height
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
-      const { data: { text } } = await worker.recognize(canvas)
-      pageTexts[pageNum - 1] = text.trim()
+    if (!window.Tesseract) {
+      toast('Loading OCR engine (first use downloads once, then cached)...', 'info')
+      await loadScript(TESSERACT_CDN)
     }
+    _ocrWorker = await Tesseract.createWorker('eng', 1, { langPath: TESSERACT_LANG })
+    setOcrState('ready')
+    return _ocrWorker
+  } catch (e) {
+    _ocrWorker = null
+    setOcrState('blocked')
+    throw new Error('OCR engine could not load (the download may be blocked on your network): ' + ((e && e.message) || e))
+  }
+}
+
+// Terminate the worker + drop the cached engine/language data so the next OCR
+// re-downloads fresh. Wired to the OCR chip popover's "Clear engine".
+async function clearOcrEngine() {
+  try { if (_ocrWorker) await _ocrWorker.terminate() } catch (e) {}
+  _ocrWorker = null
+  let cleared = false
+  try { if (window.indexedDB) { indexedDB.deleteDatabase('keyval-store'); cleared = true } } catch (e) {}
+  setOcrState('idle')
+  if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared - it re-downloads on next use' : 'OCR engine reset', 'ok')
+}
+
+// Force the engine to load now (chip popover "Test engine") so a blocked
+// download is surfaced before the user relies on it.
+async function testOcrEngine() {
+  if (typeof toast === 'function') toast('Checking OCR engine...', 'info')
+  try { await ensureOcrWorker(); if (typeof toast === 'function') toast('OCR engine ready', 'ok') }
+  catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
+}
+
+// OCR a queued item in place: a scanned PDF (empty pages -> canvas) or an image
+// file (item.ocrFile). Patches item.extractedText and clears item.scanWarning.
+async function ocrQueueItem(item) {
+  const worker = await ensureOcrWorker()
+  try {
+    if (item.pdfDoc) {
+      const pdf = item.pdfDoc
+      const pageTexts = item.pages.map(p => p.text)   // index 0 = page 1
+      for (let i = 0; i < item.emptyPageNums.length; i++) {
+        const pageNum  = item.emptyPageNums[i]
+        setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
+        toast('OCR: scanning page ' + pageNum + ' of ' + pdf.numPages + '...', 'info')
+        const page     = await pdf.getPage(pageNum)
+        const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
+        const canvas   = document.createElement('canvas')
+        canvas.width   = viewport.width
+        canvas.height  = viewport.height
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+        const { data: { text } } = await worker.recognize(canvas)
+        pageTexts[pageNum - 1] = (text || '').trim()
+      }
+      item.extractedText = pageTexts.join('\n').trim()
+    } else if (item.ocrFile) {
+      setHealth('warn', 'OCR image')
+      toast('OCR: reading ' + item.name + '...', 'info')
+      const { data: { text } } = await worker.recognize(item.ocrFile)
+      item.extractedText = (text || '').trim()
+    }
+    item.scanWarning = null
   } finally {
-    await worker.terminate()
     setHealth('ok', connectedLabel())
   }
-  item.extractedText = pageTexts.join('\n').trim()
-  item.scanWarning   = null  // resolved — all pages now have text
 }
 
 // =============================================================================
@@ -3930,14 +4014,14 @@ async function queueFilesForPreview(files, target) {
   // enough.
   if (target === 'docs') {
     // If any files have scanned pages, offer to OCR them before embedding.
-    const scannedItems = previewQueue.filter(f => f.scanWarning && f.pdfDoc)
+    const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
     if (scannedItems.length) {
       const ocrList = scannedItems.map(f => '  - ' + f.name + ': ' + f.scanWarning).join('\n')
       const doOcr = confirm(
-        '⚠️ Scanned pages detected:\n\n' + ocrList + '\n\n' +
-        'Run OCR on the scanned pages before embedding?\n\n' +
-        'OK     = Run OCR first (recommended — ~3 MB one-time download, cached)\n' +
-        'Cancel = Embed as-is (scanned pages will be missing from context)'
+        'Scanned pages or images detected:\n\n' + ocrList + '\n\n' +
+        'Run OCR to extract their text before embedding?\n\n' +
+        'OK     = Run OCR first (recommended - engine downloads once, then cached)\n' +
+        'Cancel = Embed as-is (these files will contribute no text)'
       )
       if (doOcr) {
         for (const item of scannedItems) {
@@ -5871,6 +5955,7 @@ function renderAll() {
   renderChatList(); renderTopbar(); renderMessages(); renderDocPanel(); updateDocsBtn()
   updateSendBtn()
   renderSkillPicker(); renderSkillChip()
+  if (typeof renderOcrChip === 'function') renderOcrChip()
 }
 
 function renderTopbar() {
@@ -7339,6 +7424,44 @@ function toggleRagInfo(e) {
   const onDoc = ev => {
     if (ev.type === 'keydown' && ev.key !== 'Escape') return
     if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('.rag-term')))) return
+    box.classList.add('hidden')
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onDoc, true)
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onDoc, true)
+  }, 0)
+}
+
+// OCR status chip (top bar, beside Embed). Reflects ocrState() with a coloured
+// dot; the click popover offers Test engine + Clear engine.
+function renderOcrChip() {
+  const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
+  const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: 'Ready \u2014 engine cached', blocked: 'Unavailable \u2014 engine blocked' }
+  const label = labels[st] || labels.idle
+  const dot = document.getElementById('ocr-dot')
+  if (dot) dot.className = 'ocr-dot ocr-' + st
+  const chip = document.getElementById('ocr-chip')
+  if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + label)
+  const statusEl = document.getElementById('ocr-status')
+  if (statusEl) statusEl.textContent = label
+}
+
+function toggleOcrInfo(e) {
+  if (e) {
+    e.stopPropagation()
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return
+    if (e.type === 'keydown') e.preventDefault()
+  }
+  const box = document.getElementById('ocr-info')
+  if (!box) return
+  renderOcrChip()
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return }
+  box.classList.remove('hidden')
+  const onDoc = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return
+    if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('#ocr-chip')))) return
     box.classList.add('hidden')
     document.removeEventListener('mousedown', onDoc, true)
     document.removeEventListener('keydown', onDoc, true)
