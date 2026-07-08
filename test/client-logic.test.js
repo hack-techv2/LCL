@@ -545,6 +545,19 @@ const CASES = [
     const noRaw = !S.includes("fetchWithRetry('/api/chat'")
     check('C33 connect ping routed through proxyUrl (file:// fix)', routed && noRaw, 'routed=' + routed + ' noRaw=' + noRaw)
   } },
+  { id: 'C34 gatewayErrorMessage: 503/HTML proxy page -> friendly (server.txt)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const m = S.match(/function gatewayErrorMessage\(upstream, label\) \{[\s\S]*?\n\}/)
+    if (!m) return check('C34 gatewayErrorMessage', false, 'function not found in server.txt')
+    const ctx = vm.createContext({})
+    vm.runInContext(m[0], ctx)
+    const fn = vm.runInContext('gatewayErrorMessage', ctx)
+    const html503 = { statusCode: 503, body: '<!DOCTYPE HTML PUBLIC "-//W3C//DTD"><HTML><HEAD><TITLE>ERROR: The requested URL could not be retrieved</TITLE></HEAD></HTML>' }
+    const msg = fn(html503, 'embeddings')
+    const friendly = !!msg && /temporarily unavailable/.test(msg) && /HTTP 503/.test(msg) && /network proxy/.test(msg) && !/DOCTYPE/i.test(msg)
+    const jsonNull = fn({ statusCode: 400, body: '{"error":"bad model"}' }, 'embeddings') === null
+    check('C34 gatewayErrorMessage: 503/HTML proxy page -> friendly (server.txt)', friendly && jsonNull, 'msg=' + JSON.stringify(msg) + ' jsonNull=' + jsonNull)
+  } },
 ]
 
 ;(async () => {
