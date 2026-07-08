@@ -564,7 +564,8 @@ const CASES = [
     const jsdelivrLang = S.includes("TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'")
     const wiredLang = S.includes('langPath: TESSERACT_LANG')
     const persistent = S.includes('let _ocrWorker = null') && S.includes('async function ensureOcrWorker')
-    check('C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', noNaptha && jsdelivrLang && wiredLang && persistent, 'noNaptha=' + noNaptha + ' lang=' + jsdelivrLang + ' wired=' + wiredLang + ' persistent=' + persistent)
+    const noStore = S.includes("cacheMethod: 'none'")
+    check('C35 OCR engine: reachable CDN + persistent worker + no IndexedDB (tracking-prevention safe)', noNaptha && jsdelivrLang && wiredLang && persistent && noStore, 'noNaptha=' + noNaptha + ' lang=' + jsdelivrLang + ' wired=' + wiredLang + ' persistent=' + persistent + ' noStore=' + noStore)
   } },
   { id: 'C36 image files route through OCR (imageExtractor + filter + recognize)', fn: async () => {
     const S = src('40-files.js')
