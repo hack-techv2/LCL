@@ -457,8 +457,10 @@ function loadScript(url) {
 // tesseract.js already defaults workerPath + corePath to jsDelivr (reachable
 // here); only langPath defaults to the upstream tessdata host, which is blocked
 // on the gov network - point it at the SAME language data mirrored on jsDelivr.
-// The worker + language data load ONCE (persistent worker) and the language
-// file is cached by the browser (IndexedDB) after the first successful download.
+// A single PERSISTENT worker is reused. cacheMethod:'none' disables Tesseract's
+// IndexedDB cache: gov Edge "tracking prevention" blocks storage access for the
+// CDN worker (surfaces as an opaque "Script error. 0:0" and breaks OCR), so we
+// skip caching and just download the language data into memory once per session.
 const TESSERACT_CDN  = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
 const TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'
 
@@ -477,7 +479,7 @@ async function ensureOcrWorker() {
       toast('Loading OCR engine (first use downloads once, then cached)...', 'info')
       await loadScript(TESSERACT_CDN)
     }
-    _ocrWorker = await Tesseract.createWorker('eng', 1, { langPath: TESSERACT_LANG })
+    _ocrWorker = await Tesseract.createWorker('eng', 1, { langPath: TESSERACT_LANG, cacheMethod: 'none' })
     setOcrState('ready')
     return _ocrWorker
   } catch (e) {
