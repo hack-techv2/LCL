@@ -952,3 +952,41 @@ function toggleRagInfo(e) {
     document.addEventListener('keydown', onDoc, true)
   }, 0)
 }
+
+// OCR status chip (top bar, beside Embed). Reflects ocrState() with a coloured
+// dot; the click popover offers Test engine + Clear engine.
+function renderOcrChip() {
+  const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
+  const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: 'Ready \u2014 engine cached', blocked: 'Unavailable \u2014 engine blocked' }
+  const label = labels[st] || labels.idle
+  const dot = document.getElementById('ocr-dot')
+  if (dot) dot.className = 'ocr-dot ocr-' + st
+  const chip = document.getElementById('ocr-chip')
+  if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + label)
+  const statusEl = document.getElementById('ocr-status')
+  if (statusEl) statusEl.textContent = label
+}
+
+function toggleOcrInfo(e) {
+  if (e) {
+    e.stopPropagation()
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return
+    if (e.type === 'keydown') e.preventDefault()
+  }
+  const box = document.getElementById('ocr-info')
+  if (!box) return
+  renderOcrChip()
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return }
+  box.classList.remove('hidden')
+  const onDoc = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return
+    if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('#ocr-chip')))) return
+    box.classList.add('hidden')
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onDoc, true)
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onDoc, true)
+  }, 0)
+}
