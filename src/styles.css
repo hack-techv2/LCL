@@ -820,6 +820,18 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .rag-info ul{margin:6px 0;padding-left:16px}
 .rag-info li{margin:3px 0}
 .rag-info b{color:var(--tx);font-weight:500}
+.tb-ocr{display:inline-flex;align-items:center;gap:5px}
+.tb-ocr svg{opacity:.85}
+.ocr-dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);display:inline-block}
+.ocr-dot.ocr-idle{background:var(--tx3)}
+.ocr-dot.ocr-loading{background:#f0a500}
+.ocr-dot.ocr-ready{background:#2ea44f}
+.ocr-dot.ocr-blocked{background:var(--red)}
+.ocr-info{position:absolute;right:12px;top:52px;width:290px;z-index:60;margin:0;padding:13px 15px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12.5px;line-height:1.6;color:var(--tx2)}
+.ocr-info.hidden{display:none}
+.ocr-info p{margin:6px 0}
+.ocr-acts{display:flex;gap:8px;margin-top:10px}
+.ocr-acts .btn-s{flex:1}
 
 /* Embed 'Search mode' segmented control (Auto / Specific / Whole doc). */
 .dp-search-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);margin-bottom:2px;display:flex;align-items:center;gap:8px}
