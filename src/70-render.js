@@ -6,6 +6,7 @@ function renderAll() {
   renderChatList(); renderTopbar(); renderMessages(); renderDocPanel(); updateDocsBtn()
   updateSendBtn()
   renderSkillPicker(); renderSkillChip()
+  if (typeof renderOcrChip === 'function') renderOcrChip()
 }
 
 function renderTopbar() {
