@@ -1087,7 +1087,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
         <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
         <p id="ocr-status">Ready when needed</p>
         <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Text is read in your browser - nothing is uploaded to extract it.</p>
-        <div class="ocr-acts"><button type="button" class="btn-s" onclick="testOcrEngine()">Test engine</button><button type="button" class="btn-s" onclick="clearOcrEngine()">Clear engine</button></div>
+        <div class="ocr-acts"><button type="button" class="btn-s" onclick="enableOcrEngine()">Enable engine</button><button type="button" class="btn-s" onclick="clearOcrEngine()">Clear engine</button></div>
       </div>
     </div>
   </div>
@@ -3886,10 +3886,10 @@ async function clearOcrEngine() {
   if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared - it re-downloads on next use' : 'OCR engine reset', 'ok')
 }
 
-// Force the engine to load now (chip popover "Test engine") so a blocked
+// Force the engine to load now (chip popover "Enable engine") so a blocked
 // download is surfaced before the user relies on it.
-async function testOcrEngine() {
-  if (typeof toast === 'function') toast('Checking OCR engine...', 'info')
+async function enableOcrEngine() {
+  if (typeof toast === 'function') toast('Enabling OCR engine...', 'info')
   try { await ensureOcrWorker(); if (typeof toast === 'function') toast('OCR engine ready', 'ok') }
   catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
 }
@@ -5967,7 +5967,7 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  const base = (creds.embedApiKey && creds.embedModelId) ? 'Chat + embed' : 'Chat only'
+  const base = (creds.embedApiKey && creds.embedModelId) ? 'Chat + OCR + embed' : 'Chat + OCR'
   return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
