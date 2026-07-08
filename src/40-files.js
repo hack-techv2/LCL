@@ -388,6 +388,10 @@ async function extractLegacyPptText(file) {
   return { text, scanWarning: 'Legacy .ppt was parsed with best-effort binary text extraction. For reliable slide order/layout, save as .pptx or PDF.', structure: { kind: 'ppt-legacy-best-effort' } }
 }
 
+function imageExtractor(file) {
+  return Promise.resolve({ text: '', scanWarning: 'Image file - run OCR to extract text.', ocrFile: file, structure: { kind: 'image' } })
+}
+
 const EXTRACTORS = {
   pdf:  async (file) => extractPdfStructured(file),
   docx: async (file) => extractDocxStructured(file),
@@ -399,6 +403,14 @@ const EXTRACTORS = {
   ppsx: async (file) => extractPptxStructured(file),
   potx: async (file) => extractPptxStructured(file),
   ppt:  async (file) => extractLegacyPptText(file),
+  png:  (file) => imageExtractor(file),
+  jpg:  (file) => imageExtractor(file),
+  jpeg: (file) => imageExtractor(file),
+  webp: (file) => imageExtractor(file),
+  bmp:  (file) => imageExtractor(file),
+  gif:  (file) => imageExtractor(file),
+  tif:  (file) => imageExtractor(file),
+  tiff: (file) => imageExtractor(file),
   // Any other file: read it as UTF-8 text. If it sniffs as binary (NUL bytes,
   // or a high share of U+FFFD replacement chars from undecodable bytes), reject
   // it as unsupported. queueFilesForPreview() catches this, shows a per-file
@@ -441,38 +453,91 @@ function loadScript(url) {
   })
 }
 
-// Render each scanned (empty-text) page to canvas at 2× scale, run Tesseract
-// OCR on it, and patch the recovered text back into item.extractedText.
-// Clears item.scanWarning on success so the embed confirm shows no residual warning.
-async function ocrQueueItem(item) {
-  const TESSERACT_CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
-  if (!window.Tesseract) {
-    toast('Loading OCR engine — first use only (~3 MB, cached after this)...', 'info')
-    await loadScript(TESSERACT_CDN)
-  }
-  const worker    = await Tesseract.createWorker('eng')
-  const pdf       = item.pdfDoc
-  const pageTexts = item.pages.map(p => p.text)  // per-page copy, index 0 = page 1
+// --- Tesseract OCR engine -------------------------------------------------
+// tesseract.js already defaults workerPath + corePath to jsDelivr (reachable
+// here); only langPath defaults to the upstream tessdata host, which is blocked
+// on the gov network - point it at the SAME language data mirrored on jsDelivr.
+// The worker + language data load ONCE (persistent worker) and the language
+// file is cached by the browser (IndexedDB) after the first successful download.
+const TESSERACT_CDN  = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
+const TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'
+
+let _ocrWorker = null            // shared Tesseract worker (created once, reused)
+let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
+
+function ocrState() { return _ocrState }
+function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
+
+// Load the script + create ONE worker, reused across files and OCR runs.
+async function ensureOcrWorker() {
+  if (_ocrWorker) return _ocrWorker
+  setOcrState('loading')
   try {
-    for (let i = 0; i < item.emptyPageNums.length; i++) {
-      const pageNum  = item.emptyPageNums[i]
-      setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
-      toast('OCR: scanning page ' + pageNum + ' of ' + pdf.numPages + '...', 'info')
-      const page     = await pdf.getPage(pageNum)
-      const viewport = page.getViewport({ scale: 2.0 })  // 2× for better accuracy
-      const canvas   = document.createElement('canvas')
-      canvas.width   = viewport.width
-      canvas.height  = viewport.height
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
-      const { data: { text } } = await worker.recognize(canvas)
-      pageTexts[pageNum - 1] = text.trim()
+    if (!window.Tesseract) {
+      toast('Loading OCR engine (first use downloads once, then cached)...', 'info')
+      await loadScript(TESSERACT_CDN)
     }
+    _ocrWorker = await Tesseract.createWorker('eng', 1, { langPath: TESSERACT_LANG })
+    setOcrState('ready')
+    return _ocrWorker
+  } catch (e) {
+    _ocrWorker = null
+    setOcrState('blocked')
+    throw new Error('OCR engine could not load (the download may be blocked on your network): ' + ((e && e.message) || e))
+  }
+}
+
+// Terminate the worker + drop the cached engine/language data so the next OCR
+// re-downloads fresh. Wired to the OCR chip popover's "Clear engine".
+async function clearOcrEngine() {
+  try { if (_ocrWorker) await _ocrWorker.terminate() } catch (e) {}
+  _ocrWorker = null
+  let cleared = false
+  try { if (window.indexedDB) { indexedDB.deleteDatabase('keyval-store'); cleared = true } } catch (e) {}
+  setOcrState('idle')
+  if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared - it re-downloads on next use' : 'OCR engine reset', 'ok')
+}
+
+// Force the engine to load now (chip popover "Test engine") so a blocked
+// download is surfaced before the user relies on it.
+async function testOcrEngine() {
+  if (typeof toast === 'function') toast('Checking OCR engine...', 'info')
+  try { await ensureOcrWorker(); if (typeof toast === 'function') toast('OCR engine ready', 'ok') }
+  catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
+}
+
+// OCR a queued item in place: a scanned PDF (empty pages -> canvas) or an image
+// file (item.ocrFile). Patches item.extractedText and clears item.scanWarning.
+async function ocrQueueItem(item) {
+  const worker = await ensureOcrWorker()
+  try {
+    if (item.pdfDoc) {
+      const pdf = item.pdfDoc
+      const pageTexts = item.pages.map(p => p.text)   // index 0 = page 1
+      for (let i = 0; i < item.emptyPageNums.length; i++) {
+        const pageNum  = item.emptyPageNums[i]
+        setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
+        toast('OCR: scanning page ' + pageNum + ' of ' + pdf.numPages + '...', 'info')
+        const page     = await pdf.getPage(pageNum)
+        const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
+        const canvas   = document.createElement('canvas')
+        canvas.width   = viewport.width
+        canvas.height  = viewport.height
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+        const { data: { text } } = await worker.recognize(canvas)
+        pageTexts[pageNum - 1] = (text || '').trim()
+      }
+      item.extractedText = pageTexts.join('\n').trim()
+    } else if (item.ocrFile) {
+      setHealth('warn', 'OCR image')
+      toast('OCR: reading ' + item.name + '...', 'info')
+      const { data: { text } } = await worker.recognize(item.ocrFile)
+      item.extractedText = (text || '').trim()
+    }
+    item.scanWarning = null
   } finally {
-    await worker.terminate()
     setHealth('ok', connectedLabel())
   }
-  item.extractedText = pageTexts.join('\n').trim()
-  item.scanWarning   = null  // resolved — all pages now have text
 }
 
 // =============================================================================
@@ -561,14 +626,14 @@ async function queueFilesForPreview(files, target) {
   // enough.
   if (target === 'docs') {
     // If any files have scanned pages, offer to OCR them before embedding.
-    const scannedItems = previewQueue.filter(f => f.scanWarning && f.pdfDoc)
+    const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
     if (scannedItems.length) {
       const ocrList = scannedItems.map(f => '  - ' + f.name + ': ' + f.scanWarning).join('\n')
       const doOcr = confirm(
-        '⚠️ Scanned pages detected:\n\n' + ocrList + '\n\n' +
-        'Run OCR on the scanned pages before embedding?\n\n' +
-        'OK     = Run OCR first (recommended — ~3 MB one-time download, cached)\n' +
-        'Cancel = Embed as-is (scanned pages will be missing from context)'
+        'Scanned pages or images detected:\n\n' + ocrList + '\n\n' +
+        'Run OCR to extract their text before embedding?\n\n' +
+        'OK     = Run OCR first (recommended - engine downloads once, then cached)\n' +
+        'Cancel = Embed as-is (these files will contribute no text)'
       )
       if (doOcr) {
         for (const item of scannedItems) {
