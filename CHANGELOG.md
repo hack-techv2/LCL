@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 8 Jul 2026 — OCR that actually works: reachable engine, image OCR, status chip (alpha)
+
+CL's scanned PDFs never OCR'd. Root cause: tesseract.js defaults its language data to `tessdata.projectnaptha.com`, which the gov proxy blocks (worker + core already default to jsDelivr, so they were fine). Also OCR only ran on scanned PDF *pages*, not image uploads, and there was no way to see or manage the engine.
+
+- **Reachable engine:** `createWorker` now overrides only `langPath` -> `https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0` (the SAME language data, mirrored on the already-working jsDelivr CDN). A single PERSISTENT worker is created and reused (was create + terminate per file); the language file caches in the browser after the first download.
+- **Image OCR:** png/jpg/jpeg/webp/bmp/gif/tif/tiff now extract via the same OCR path (`imageExtractor` hands the file to `ocrQueueItem`, which runs `worker.recognize(file)`); the embed OCR confirm now covers scanned PDFs AND images.
+- **OCR status chip** beside Embed in the top bar, with a state dot: idle / downloading / ready (green) / blocked (red). Clicking it opens a popover with the current state, **Test engine** (forces the download so a block surfaces up front) and **Clear engine** (terminates the worker + drops the cached engine/language data so it re-downloads fresh). Driven by `ocrState()` / `renderOcrChip()` / `toggleOcrInfo()`.
+- Tests **C35** (langPath off projectnaptha + persistent worker), **C36** (image extractors + filter + recognize), **C37** (chip + popover wired). Suites **40/40 (demo-api) + 35/35 (client-logic)**, build 5/5. Verified live in Chrome (`#demo`): chip renders beside Embed, Test engine downloaded from jsDelivr and went "ready", Clear engine reset to idle. Client-only change (index.html); **server.txt unchanged**.
+
 ## 8 Jul 2026 — Clearer embed error when the gateway/proxy returns a 503 HTML page (alpha)
 
 From CL's field log: a scanned-PDF embed failed with 14× HTTP 503 from the corporate proxy (Squid/Zscaler, *"The requested URL could not be retrieved"*), surfaced to the user as the cryptic `embed_fail … Non-JSON response: <!DOCTYPE HTML…`. The 503 was a transient gateway outage — a later retry embedded fine and chat worked throughout — but the message was unreadable.
