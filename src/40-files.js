@@ -479,10 +479,13 @@ async function ensureOcrWorker() {
       toast('Loading OCR engine (first use downloads it, ~15 MB)...', 'info')
       await loadScript(TESSERACT_CDN)
     }
-    // This tesseract.js build does NOT auto-initialise from createWorker('eng',...)
-    // - the core stays null and recognize throws "reading 'SetImageFile' of null".
-    // Create the worker, then explicitly load the language + initialise the core.
-    const w = await Tesseract.createWorker(undefined, undefined, { langPath: TESSERACT_LANG, cacheMethod: 'none' })
+    // This tesseract.js (v4.1.x) createWorker takes a SINGLE options object as its
+    // first arg and does NOT auto-load. langPath MUST go in that first-arg object -
+    // passing it later is ignored and it falls back to the default tessdata host,
+    // which the gov proxy serves without CORS (fetch blocked). After creating, we
+    // must explicitly loadLanguage + initialize or the core stays null and recognize
+    // throws "reading 'SetImageFile' of null".
+    const w = await Tesseract.createWorker({ langPath: TESSERACT_LANG, cacheMethod: 'none' })
     if (typeof w.loadLanguage === 'function') await w.loadLanguage('eng')
     if (typeof w.initialize === 'function') await w.initialize('eng', 1)
     _ocrWorker = w
@@ -525,7 +528,6 @@ async function ocrQueueItem(item) {
       for (let i = 0; i < item.emptyPageNums.length; i++) {
         const pageNum  = item.emptyPageNums[i]
         setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
-        toast('OCR: scanning page ' + pageNum + ' of ' + pdf.numPages + '...', 'info')
         const page     = await pdf.getPage(pageNum)
         const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
         const canvas   = document.createElement('canvas')
@@ -538,7 +540,6 @@ async function ocrQueueItem(item) {
       item.extractedText = pageTexts.join('\n').trim()
     } else if (item.ocrFile) {
       setHealth('warn', 'OCR image')
-      toast('OCR: reading ' + item.name + '...', 'info')
       const { data: { text } } = await worker.recognize(item.ocrFile)
       item.extractedText = (text || '').trim()
     }
@@ -582,13 +583,13 @@ async function queueFilesForPreview(files, target) {
     previewQueue = valid.map(f => ({ name: f.name, size: f.size, extractedText: '', _extracting: true }))
     showFilePreview()
   } else {
-    toast('Extracting text...', 'info')
+    if (typeof setHealth === 'function') setHealth('warn', 'Reading files...')
   }
   for (let _i = 0; _i < valid.length; _i++) {
     const f = valid[_i]
     const rec = progressive ? previewQueue.find(r => r.name === f.name && r._extracting) : null
     if (progressive && !rec) continue   // row was removed while still queued
-    if (typeof setHealth === 'function') setHealth('warn', 'Extracting ' + (_i + 1) + '/' + valid.length)
+    if (typeof setHealth === 'function') setHealth('warn', 'Reading ' + (_i + 1) + '/' + valid.length)
     await new Promise(r => setTimeout(r, 0))   // let the placeholder rows paint before the heavy parse
     if (gen !== _previewGen) return            // cancelled / superseded mid-extraction
     try {
@@ -636,22 +637,20 @@ async function queueFilesForPreview(files, target) {
     // If any files have scanned pages, offer to OCR them before embedding.
     const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
     if (scannedItems.length) {
-      const ocrList = scannedItems.map(f => '  - ' + f.name + ': ' + f.scanWarning).join('\n')
+      const ocrList = scannedItems.map(f => '  - ' + f.name).join('\n')
       const doOcr = confirm(
-        'Scanned pages or images detected:\n\n' + ocrList + '\n\n' +
-        'Run OCR to extract their text before embedding?\n\n' +
-        'OK     = Run OCR first (recommended - engine downloads once, then cached)\n' +
-        'Cancel = Embed as-is (these files will contribute no text)'
+        'These files are scanned images with no selectable text:\n\n' + ocrList + '\n\n' +
+        'Run OCR to read their text before embedding?\n\n' +
+        'OK     = Run OCR (recommended)\n' +
+        'Cancel = Embed without it - these files will add no text'
       )
       if (doOcr) {
+        let ocrOk = 0
         for (const item of scannedItems) {
-          try {
-            await ocrQueueItem(item)
-            toast(item.name + ' — OCR complete', 'ok')
-          } catch (e) {
-            toast('OCR failed for ' + item.name + ': ' + e.message, 'err')
-          }
+          try { await ocrQueueItem(item); ocrOk++ }
+          catch (e) { toast('OCR failed for ' + item.name + ': ' + e.message, 'err') }
         }
+        if (ocrOk) toast('OCR done - read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
       }
     }
 
@@ -998,11 +997,13 @@ async function commitDocs(files) {
       for (const ch of Object.values(D.chats || {})) if (Array.isArray(ch.docs)) ch.docs = ch.docs.filter(d => d.id !== p.doc.id)
     }
     renderDocPanel()
+    let embOk = 0, embChunks = 0
     for (const p of plans) {
       if (!sel.has(p.doc.id)) continue
-      toast('Embedding ' + p.doc.name + '...', 'info')
-      await embedDoc(p.doc, { plan: p.plan, skipGate: true })
+      await embedDoc(p.doc, { plan: p.plan, skipGate: true, quiet: true })
+      if (p.doc.status === 'ready') { embOk++; embChunks += (p.doc.chunks ? p.doc.chunks.length : 0) }
     }
+    if (embOk) toast('Embedded ' + embOk + ' file' + (embOk > 1 ? 's' : '') + ', ' + embChunks + ' chunk' + (embChunks === 1 ? '' : 's'), 'ok')
   } else {
     toast(added.length > 1 ? (added.length + ' files added (connect to embed for RAG)')
                            : ((added[0] ? added[0].name : 'File') + ' added (connect to embed for RAG)'), 'info')
@@ -1081,7 +1082,7 @@ async function embedDoc(doc, opts) {
     const { records, chunks, toEmbed, toEmbedIdx } = plan
     if (!records.length) {
       doc.chunks = []; doc.status = 'ready'
-      toast(doc.name + ' ready (no chunks)', 'ok')
+      toast(doc.name + ' embedded - no text found', 'ok')
       renderDocPanel(); return
     }
     setHealth('warn', 'Embedding 0/' + records.length)
@@ -1142,7 +1143,7 @@ async function embedDoc(doc, opts) {
     doc.embedProgress = null
     persist()
     setHealth('ok', connectedLabel())
-    toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
+    if (!(opts && opts.quiet)) toast(doc.name + ' embedded (' + doc.chunks.length + ' chunks)', 'ok')
     if (typeof lclCrumb === 'function') lclCrumb('embed_done', { doc: doc.name, chunks: doc.chunks.length })
     renderDocPanel()
     if (typeof refreshBudget === 'function') refreshBudget()
