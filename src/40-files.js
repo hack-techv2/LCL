@@ -476,10 +476,16 @@ async function ensureOcrWorker() {
   setOcrState('loading')
   try {
     if (!window.Tesseract) {
-      toast('Loading OCR engine (first use downloads once, then cached)...', 'info')
+      toast('Loading OCR engine (first use downloads it, ~15 MB)...', 'info')
       await loadScript(TESSERACT_CDN)
     }
-    _ocrWorker = await Tesseract.createWorker('eng', 1, { langPath: TESSERACT_LANG, cacheMethod: 'none' })
+    // This tesseract.js build does NOT auto-initialise from createWorker('eng',...)
+    // - the core stays null and recognize throws "reading 'SetImageFile' of null".
+    // Create the worker, then explicitly load the language + initialise the core.
+    const w = await Tesseract.createWorker(undefined, undefined, { langPath: TESSERACT_LANG, cacheMethod: 'none' })
+    if (typeof w.loadLanguage === 'function') await w.loadLanguage('eng')
+    if (typeof w.initialize === 'function') await w.initialize('eng', 1)
+    _ocrWorker = w
     setOcrState('ready')
     return _ocrWorker
   } catch (e) {
