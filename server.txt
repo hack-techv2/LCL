@@ -1410,20 +1410,40 @@ function callGccJsonAsync(pathName, apiKey, payload, opts) {
   })
 }
 
+// A corporate proxy (Zscaler/Squid) answers an unreachable or blocked upstream
+// with a 5xx HTML error page ("The requested URL could not be retrieved"), not
+// JSON. Turn that into a plain, actionable message instead of dumping raw HTML
+// (e.g. "Non-JSON response: <!DOCTYPE html>...") into the doc's embed error.
+// Returns null when the response is NOT a gateway/HTML error, so the caller
+// keeps its own (JSON) message.
+function gatewayErrorMessage(upstream, label) {
+  label = label || 'service'
+  const s = (upstream && upstream.statusCode) || 0
+  const body = (upstream && upstream.body) || ''
+  const looksHtml    = /^\s*<(?:!doctype|html)/i.test(body)
+  const proxyBlocked = /could not be retrieved|\(squid\)|access denied|zscaler/i.test(body)
+  if (looksHtml || proxyBlocked || (s >= 500 && s < 600)) {
+    return 'The ' + label + ' endpoint is temporarily unavailable' + (s ? ' (HTTP ' + s + ')' : '') +
+           (proxyBlocked ? ' - the network proxy could not reach it' : '') +
+           '. This is usually transient - please try again in a moment.'
+  }
+  return null
+}
+
 async function callStandardBatchEmbed(apiKey, modelId, texts) {
   elog('batch embed | ' + texts.length + ' chunks')
   const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts }, { no429Retry: true })
 
   if (!upstream.body || !upstream.body.trim()) {
-    throw new Error('Empty response from embeddings (status ' + upstream.statusCode + ')')
+    throw new Error(gatewayErrorMessage(upstream, 'embeddings') || ('Empty response from embeddings (status ' + upstream.statusCode + ')'))
   }
 
   let data
   try { data = JSON.parse(upstream.body) }
-  catch { throw new Error('Non-JSON response: ' + upstream.body.slice(0, 200)) }
+  catch { throw new Error(gatewayErrorMessage(upstream, 'embeddings') || ('Non-JSON response: ' + upstream.body.slice(0, 200))) }
 
   if (upstream.statusCode >= 400) {
-    throw new Error('Embeddings error ' + upstream.statusCode + ': ' + JSON.stringify(data))
+    throw new Error(gatewayErrorMessage(upstream, 'embeddings') || ('Embeddings error ' + upstream.statusCode + ': ' + JSON.stringify(data)))
   }
 
   const sorted = (data?.data || []).sort((a, b) => a.index - b.index)
