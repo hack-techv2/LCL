@@ -3,6 +3,13 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 8 Jul 2026 — Clearer embed error when the gateway/proxy returns a 503 HTML page (alpha)
+
+From CL's field log: a scanned-PDF embed failed with 14× HTTP 503 from the corporate proxy (Squid/Zscaler, *"The requested URL could not be retrieved"*), surfaced to the user as the cryptic `embed_fail … Non-JSON response: <!DOCTYPE HTML…`. The 503 was a transient gateway outage — a later retry embedded fine and chat worked throughout — but the message was unreadable.
+
+- `server.txt` now maps a non-JSON / 5xx / proxy-HTML response from the embeddings endpoint to a plain message via a new `gatewayErrorMessage()` helper used across the three `callStandardBatchEmbed` throws (empty body / non-JSON / 4xx+): *"The embeddings endpoint is temporarily unavailable (HTTP 503) - the network proxy could not reach it. This is usually transient - please try again in a moment."* Genuine JSON API errors (e.g. a 4xx with a JSON body) are unchanged — the helper returns null and the caller keeps its own message.
+- Test **C34** (extracts `gatewayErrorMessage` from server.txt, runs it in a vm): a 503 Squid HTML page → friendly message with no raw HTML; a JSON 400 → null. Suites **40/40 (demo-api) + 32/32 (client-logic)**, build 5/5. **server.txt CHANGED — restart node to pick it up.**
+
 ## 7 Jul 2026 — Fix: Connect fails when index.html is opened as a local file (alpha)
 
 When LCL is opened directly (double-clicked `file://`) instead of via the proxy at localhost:3000, **Connect** errored even though chat messages worked. Cause: the Connect validation ping used `fetchWithRetry('/api/chat', …)` with a RAW relative path, which resolves to `file:///api/chat` and fails — chat messages already route through `httpPost` → `proxyUrl`, but this one call didn't. Fixed by wrapping the ping in `proxyUrl('/api/chat')` so it hits the proxy origin (`http://127.0.0.1:3000`) like every other call.
