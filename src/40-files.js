@@ -498,10 +498,10 @@ async function clearOcrEngine() {
   if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared - it re-downloads on next use' : 'OCR engine reset', 'ok')
 }
 
-// Force the engine to load now (chip popover "Test engine") so a blocked
+// Force the engine to load now (chip popover "Enable engine") so a blocked
 // download is surfaced before the user relies on it.
-async function testOcrEngine() {
-  if (typeof toast === 'function') toast('Checking OCR engine...', 'info')
+async function enableOcrEngine() {
+  if (typeof toast === 'function') toast('Enabling OCR engine...', 'info')
   try { await ensureOcrWorker(); if (typeof toast === 'function') toast('OCR engine ready', 'ok') }
   catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
 }
