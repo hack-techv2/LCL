@@ -9,6 +9,12 @@ CL's scanned PDFs never OCR'd. Root cause: tesseract.js defaults its language da
 
 - **Reachable engine:** `createWorker` now overrides only `langPath` -> `https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0` (the SAME language data, mirrored on the already-working jsDelivr CDN). A single PERSISTENT worker is created and reused (was create + terminate per file), with `cacheMethod:'none'` so it never touches IndexedDB — gov Edge "tracking prevention" blocks storage access for the CDN worker (surfaces as an opaque `Script error. 0:0` that broke OCR mid-run), so the language data loads into memory once per session instead of caching. Also: the worker is created and then explicitly `loadLanguage('eng')` + `initialize('eng',1)` — this Tesseract build's one-shot `createWorker('eng',…)` form does NOT initialise the core, so recognize threw `Cannot read properties of null (reading 'SetImageFile')` and OCR never actually ran. Verified end-to-end in-browser (recognises real text now). Follow-up: `langPath` must be passed in createWorker's FIRST-arg options object (`createWorker({ langPath, cacheMethod:'none' })`) - passing it as a later arg was ignored, so it fell back to the default tessdata host which the gov proxy serves without CORS (`No 'Access-Control-Allow-Origin'`); confirmed the traineddata now loads from jsDelivr.
 
+## 9 Jul 2026 - OCR fixes: image OCR in attach/embed + green/grey toggle switch (alpha)
+
+- **Image OCR now triggers** in both attach and embed. The preview-record builders dropped `ocrFile` (only `pdfDoc` was carried onto records), so scanned images never matched the `scanWarning && (pdfDoc || ocrFile)` check - scanned PDFs OCR'd, images silently didn't. Now `ocrFile` rides onto the record (destructure + progressive `Object.assign` + docs `push`). Verified live: attaching an image now shows the "Scanned files detected" dialog.
+- **OCR engine toggle is now a green/grey switch** (On / Off, no "Ready" wording) in the chip popover, replacing the Enable/Disable text button; same `toggleOcrEngine()`. Verified live: Off/grey at idle, On/green once loaded.
+- Test **C36** also asserts `ocrFile` is carried through all three record sites. Suites 40/40 + 36/36, build 5/5.
+
 ## 9 Jul 2026 - OCR UX: attach-flow OCR, 3-way dialog, one-button toggle, chip progress (alpha)
 
 - **OCR on file upload (attach), not just embed:** the attach preview's Confirm now offers OCR for scanned files, same as the embed flow (previously attach never OCR'd, so an attached scan carried no text).
