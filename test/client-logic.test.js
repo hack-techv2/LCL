@@ -575,7 +575,8 @@ const CASES = [
     const fn = S.includes('function imageExtractor(file)') && S.includes('ocrFile: file') && S.includes("scanWarning: 'Image file")
     const filter = S.includes('f.scanWarning && (f.pdfDoc || f.ocrFile)')
     const imgOcr = S.includes('else if (item.ocrFile)') && S.includes('worker.recognize(item.ocrFile)')
-    check('C36 image files route through OCR (imageExtractor + filter + recognize)', regd && fn && filter && imgOcr, 'regd=' + regd + ' fn=' + fn + ' filter=' + filter + ' imgOcr=' + imgOcr)
+    const carried = (S.match(/pdfDoc, ocrFile,/g) || []).length >= 3   // destructure + progressive assign + docs push
+    check('C36 image files route through OCR (imageExtractor + filter + recognize + ocrFile carried)', regd && fn && filter && imgOcr && carried, 'regd=' + regd + ' fn=' + fn + ' filter=' + filter + ' imgOcr=' + imgOcr + ' carried=' + carried)
   } },
   { id: 'C37 OCR chip + popover wired (80-ui + body.html)', fn: async () => {
     const U = src('80-ui.js'); const B = src('body.html')
