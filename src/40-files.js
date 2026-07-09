@@ -468,18 +468,7 @@ let _ocrWorker = null            // shared Tesseract worker (created once, reuse
 let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
 
 function ocrState() { return _ocrState }
-function setOcrState(s) {
-  _ocrState = s
-  if (typeof renderOcrChip === 'function') renderOcrChip()
-  // Keep the health pill's '+ OCR' segment in sync: only refresh when idle-connected
-  // (pill 'ok'), so we don't clobber a 'Reading'/'Embedding' status mid-operation.
-  try {
-    const pill = document.getElementById('health-pill')
-    if (pill && pill.classList.contains('ok') && typeof creds !== 'undefined' && creds && typeof connectedLabel === 'function') {
-      setHealth('ok', connectedLabel())
-    }
-  } catch (e) {}
-}
+function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
 
 // Live per-run OCR progress for the chip (separate from engine-load state).
 let _ocrProg = null
@@ -489,8 +478,18 @@ function setOcrProgress(done, total) { _ocrProg = total ? { done: done, total: t
 // Single popover toggle: load the engine when idle/blocked, free it when ready.
 function toggleOcrEngine() {
   const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
-  if (st === 'ready') { clearOcrEngine() }
-  else if (st !== 'loading') { enableOcrEngine() }
+  // Remember the user's intent so the engine can auto-enable on the next page load
+  // (the engine bytes can't be cached on this network, but the preference can).
+  if (st === 'ready') { try { localStorage.setItem('lcl_ocr_on', '0') } catch (e) {}; clearOcrEngine() }
+  else if (st !== 'loading') { try { localStorage.setItem('lcl_ocr_on', '1') } catch (e) {}; enableOcrEngine() }
+}
+
+// On startup, if the user previously turned OCR on, quietly re-load the engine so
+// the toggle comes back On by itself. The CDN assets are usually still in the
+// browser HTTP cache, so this is fast after the first-ever load; a blocked network
+// surfaces as the normal 'blocked' state rather than an error.
+function autoEnableOcr() {
+  try { if (localStorage.getItem('lcl_ocr_on') === '1') ensureOcrWorker().catch(function () {}) } catch (e) {}
 }
 
 // Offer OCR for scanned files. verb = 'embed' | 'attach'. Resolves to 'ocr'
@@ -498,15 +497,17 @@ function toggleOcrEngine() {
 async function promptOcr(scannedItems, verb) {
   if (!scannedItems.length) return 'plain'
   if (typeof confirmDialog3 !== 'function') { return confirm('Scanned files detected - run OCR before ' + verb + '?') ? 'ocr' : 'plain' }
-  const list = scannedItems.map(f => '- ' + f.name).join('\n')
   const cap = verb.charAt(0).toUpperCase() + verb.slice(1)
+  const multi = scannedItems.length > 1
   return confirmDialog3({
-    title: 'Scanned files detected',
-    message: 'These files are scanned images with no selectable text:\n\n' + list + '\n\nRun OCR to read their text first?',
+    stacked: true,
+    title: multi ? 'Scanned files detected' : 'Scanned file detected',
+    message: (multi ? 'These files have' : 'This file has') + ' no selectable text. Read ' + (multi ? 'them' : 'it') + ' with OCR first so the contents can be used?',
+    chips: scannedItems.map(f => f.name),
     buttons: [
-      { text: 'Run OCR + ' + verb, value: 'ocr', primary: true },
-      { text: cap + ' without OCR', value: 'plain' },
-      { text: 'Cancel', value: 'cancel' }
+      { text: 'Run OCR, then ' + verb, sub: 'reads the scanned text first', value: 'ocr', variant: 'primary' },
+      { text: cap + ' without OCR', sub: 'the scanned text won\u2019t be included', value: 'plain', variant: 'secondary' },
+      { text: 'Cancel', value: 'cancel', variant: 'ghost' }
     ]
   })
 }
@@ -578,7 +579,6 @@ async function ocrQueueItem(item) {
       const pageTexts = item.pages.map(p => p.text)   // index 0 = page 1
       for (let i = 0; i < item.emptyPageNums.length; i++) {
         const pageNum  = item.emptyPageNums[i]
-        setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
         setOcrProgress(i + 1, item.emptyPageNums.length)
         const page     = await pdf.getPage(pageNum)
         const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
@@ -591,15 +591,15 @@ async function ocrQueueItem(item) {
       }
       item.extractedText = pageTexts.join('\n').trim()
     } else if (item.ocrFile) {
-      setHealth('warn', 'OCR image')
       setOcrProgress(1, 1)
       const { data: { text } } = await worker.recognize(item.ocrFile)
       item.extractedText = (text || '').trim()
     }
     item.scanWarning = null
   } finally {
+    // OCR progress lives ONLY on the OCR chip (setOcrProgress); the connection
+    // health pill is left untouched so the same 'n/N' isn't shown in two places.
     setOcrProgress(null, 0)
-    setHealth('ok', connectedLabel())
   }
 }
 
