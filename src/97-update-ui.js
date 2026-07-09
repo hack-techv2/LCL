@@ -247,7 +247,7 @@ async function applyAlphaNow(){
     return
   }
   try{
-    toast('Downloading alpha update...','info')
+    toast('Downloading alpha update…','info')
     const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){ toast('Update failed: '+d.error,'err'); return }
