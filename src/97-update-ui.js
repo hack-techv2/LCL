@@ -101,6 +101,13 @@ function openUpdateDialog(){
 
 function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
 
+// Flush any queued chat/state write to disk BEFORE asking the server to restart,
+// so a Node restart never drops the most recent chat mid-write. persist() awaits
+// the serialized write chain, so this guarantees the latest D is on disk.
+async function flushBeforeRestart(){
+  try { if (typeof persist === 'function') await persist() } catch {}
+}
+
 async function applyUpdate(){
   if (typeof demoOn === 'function' && demoOn()) {
     // Emulate the full download -> restart -> updated sequence (no network). The
@@ -196,6 +203,7 @@ async function setChannel(ch){
         ? 'Experimental build applied'
         : (d.restoredFromBackup ? 'Offline \u2014 restored local stable backup' : ('Restored stable '+((d.restored&&d.restored.tag)||'')))
       toast(msg+' \u2014 restarting Node\u2026','ok')
+      await flushBeforeRestart()
       try{ await httpPost('/api/update/restart') }catch{}
       waitForServerThenReload(); return
     }
@@ -254,6 +262,7 @@ async function applyAlphaNow(){
     const applied = (d.applied||[]).join(', ') || 'no changes'
     if (d.restartNeeded){
       toast('Applied ('+applied+'). Restarting Node…','ok')
+      await flushBeforeRestart()
       try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
@@ -298,6 +307,7 @@ async function simulateUpdate(files){
     if (d.error){ toast('Simulate failed: ' + d.error,'err'); return }
     if (d.restartNeeded){
       toast('Applied (' + label + '). Restarting Node.js\u2026','ok')
+      await flushBeforeRestart()
       try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
