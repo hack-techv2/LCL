@@ -4090,9 +4090,18 @@ async function queueFilesForPreview(files, target) {
     return
   }
 
-  // Attach-to-message flow: the panel is already open (progressive rows);
-  // refresh the final state.
+  // Attach-to-message flow: SAME OCR prompt as embed. If any shown files are
+  // scanned, offer the identical 3-way choice right after extraction (not hidden
+  // behind Confirm) so a scanned file never just looks empty in the preview.
+  const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
+  if (scannedItems.length) {
+    const choice = await promptOcr(scannedItems, 'attach')
+    if (choice === 'cancel') { cancelFilePreview(); return }
+    if (choice === 'ocr') await runOcrOnItems(scannedItems)
+  }
+  // The panel is already open (progressive rows); refresh the final state.
   renderPreviewTabs()
+  if (previewQueue[previewTabIdx]) selectPreviewTab(previewTabIdx)
   updateFpHint()
 }
 
@@ -4238,14 +4247,8 @@ async function confirmFilePreview() {
   if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
 
   const target = previewTarget
-  // Offer OCR for scanned files (same 3-way dialog as embed); Cancel keeps the
-  // preview open so the user can adjust.
-  const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
-  if (scannedItems.length) {
-    const choice = await promptOcr(scannedItems, target === 'docs' ? 'embed' : 'attach')
-    if (choice === 'cancel') return
-    if (choice === 'ocr') await runOcrOnItems(scannedItems)
-  }
+  // OCR is offered up-front when the scanned file is extracted into the preview
+  // (same 3-way dialog as embed), so no prompt is needed here at confirm time.
   const files = previewQueue.slice()
   previewQueue  = []
   previewTarget = null
