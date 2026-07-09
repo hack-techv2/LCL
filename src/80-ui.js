@@ -991,14 +991,15 @@ function renderOcrChip() {
     if (dot) dot.className = 'ocr-dot ocr-proc'
     if (lblEl) lblEl.textContent = 'OCR ' + prog.done + '/' + prog.total
     if (chip) chip.setAttribute('data-tip-bottom', p)
-    if (statusEl) statusEl.textContent = p
+    if (statusEl) { statusEl.textContent = p; statusEl.style.display = '' }
   } else {
-    const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: 'Ready', blocked: 'Unavailable \u2014 engine blocked' }
-    const label = labels[st] || labels.idle
+    // 'ready' shows no status line - the green 'On' toggle already says it; a 'Ready' line is redundant.
+    const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: '', blocked: 'Unavailable \u2014 engine blocked' }
+    const label = (st in labels) ? labels[st] : labels.idle
     if (dot) dot.className = 'ocr-dot ocr-' + st
     if (lblEl) lblEl.textContent = 'OCR'
-    if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + label)
-    if (statusEl) statusEl.textContent = label
+    if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + (label || 'On'))
+    if (statusEl) { statusEl.textContent = label; statusEl.style.display = label ? '' : 'none' }
   }
   if (tog) {
     const on = st === 'ready'
