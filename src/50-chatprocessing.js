@@ -287,7 +287,7 @@ async function send() {
 
   // auto-title after first message
   if (!chat.messages.length) {
-    chat.title = text.slice(0,42)+(text.length>42?'...':'')
+    chat.title = text.slice(0,42)+(text.length>42?'…':'')
   }
 
   const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
@@ -1083,14 +1083,14 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   }
   for (let p = 0; p < parts.length; p++) {
     if (signal && signal.aborted) return null
-    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' - ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '..._')
+    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' \u2014 ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '…_')
     const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], partInstr, liveEl, signal, depth + 1)
     if (s == null) return null
     partSummaries.push('Part ' + (p + 1) + ': ' + s)
     if (doneEl) doneEl.innerHTML = fmt(partSummaries.join('\n\n'))
     if (liveEl) liveEl.innerHTML = ''
   }
-  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + (summaryAsk ? ' part-summaries..._' : ' part-extracts..._'))
+  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + (summaryAsk ? ' part-summaries…_' : ' part-extracts…_'))
   // Reduce: answer the ORIGINAL request from the extracts (or combine summaries).
   const combineInstr = summaryAsk
     ? 'Combine these part-summaries into one cohesive summary of the whole document.'
@@ -1135,7 +1135,7 @@ async function runSplitSummaries(chat, docs, instruction) {
       const header = '**' + doc.name + '** - ' + kindWord + ' (' + (i + 1) + ' of ' + docs.length + ')\n\n'
       const bubble = appendMsg('ai', '', null, [doc.name])
       const bodyEl = bubble.querySelector('.msg-body')
-      if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising..._' : '_Working..._'))
+      if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising…_' : '_Working…_'))
       await waitForEmbedsIdle(bodyEl, header, signal)
       let summary = null
       try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
@@ -1151,7 +1151,7 @@ async function runSplitSummaries(chat, docs, instruction) {
       try { await persist() } catch (e) {}
       if (!signal.aborted && i < docs.length - 1) await abortableSleep(1200, signal)
     }
-    setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    setHealth('ok', connectedLabel())
   } catch (e) {
     setHealth('err', 'Summary failed')
   } finally {
@@ -1236,7 +1236,7 @@ async function continueTruncated(event) {
         msg.truncated = (r.finish === 'length')
         chat.updatedAt = Date.now()
         try { await persist() } catch (e) {}
-        setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+        setHealth('ok', connectedLabel())
         return
       }
       if (r.kind === 'ratelimit') {
@@ -1270,7 +1270,7 @@ function statusBox(tone, title, bodyHtml, opts) {
   opts = opts || {}
   const c = tone === 'warn'
     ? { bg: 'var(--pinbg)',            border: 'rgba(240,165,0,.35)', fg: 'var(--pin)' }
-    : { bg: 'rgba(220,60,60,.08)',     border: 'rgba(220,60,60,.3)',  fg: '#e05050'   }
+    : { bg: 'var(--redbg)',            border: 'rgba(231,76,60,.35)', fg: 'var(--red)' }
   const icon = STATUS_ICON[opts.icon || (tone === 'warn' ? 'clock' : 'err')] || ''
   const cancel = opts.cancel
     ? '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px" onclick="' + opts.cancel + '">Cancel retry</button></div>'
