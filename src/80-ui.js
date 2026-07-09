@@ -1001,9 +1001,12 @@ function renderOcrChip() {
     if (statusEl) statusEl.textContent = label
   }
   if (tog) {
-    if (st === 'ready') { tog.textContent = 'Disable OCR'; tog.disabled = false }
-    else if (st === 'loading') { tog.textContent = 'Enabling\u2026'; tog.disabled = true }
-    else { tog.textContent = 'Enable OCR'; tog.disabled = false }
+    const on = st === 'ready'
+    tog.classList.toggle('on', on)
+    tog.setAttribute('aria-checked', on ? 'true' : 'false')
+    tog.disabled = (st === 'loading')
+    const se = document.getElementById('ocr-eng-state')
+    if (se) { se.textContent = (st === 'loading') ? 'Enabling\u2026' : (on ? 'On' : 'Off'); se.classList.toggle('on', on) }
   }
 }
 
