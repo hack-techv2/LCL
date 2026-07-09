@@ -470,6 +470,46 @@ let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
 function ocrState() { return _ocrState }
 function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
 
+// Live per-run OCR progress for the chip (separate from engine-load state).
+let _ocrProg = null
+function ocrProgress() { return _ocrProg }
+function setOcrProgress(done, total) { _ocrProg = total ? { done: done, total: total } : null; if (typeof renderOcrChip === 'function') renderOcrChip() }
+
+// Single popover toggle: load the engine when idle/blocked, free it when ready.
+function toggleOcrEngine() {
+  const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
+  if (st === 'ready') { clearOcrEngine() }
+  else if (st !== 'loading') { enableOcrEngine() }
+}
+
+// Offer OCR for scanned files. verb = 'embed' | 'attach'. Resolves to 'ocr'
+// (run OCR then proceed), 'plain' (proceed without OCR), or 'cancel' (abort).
+async function promptOcr(scannedItems, verb) {
+  if (!scannedItems.length) return 'plain'
+  if (typeof confirmDialog3 !== 'function') { return confirm('Scanned files detected - run OCR before ' + verb + '?') ? 'ocr' : 'plain' }
+  const list = scannedItems.map(f => '- ' + f.name).join('\n')
+  const cap = verb.charAt(0).toUpperCase() + verb.slice(1)
+  return confirmDialog3({
+    title: 'Scanned files detected',
+    message: 'These files are scanned images with no selectable text:\n\n' + list + '\n\nRun OCR to read their text first?',
+    buttons: [
+      { text: 'Run OCR + ' + verb, value: 'ocr', primary: true },
+      { text: cap + ' without OCR', value: 'plain' },
+      { text: 'Cancel', value: 'cancel' }
+    ]
+  })
+}
+
+// Run OCR on the scanned items; one summary toast at the end.
+async function runOcrOnItems(scannedItems) {
+  let ocrOk = 0
+  for (const item of scannedItems) {
+    try { await ocrQueueItem(item); ocrOk++ }
+    catch (e) { toast('OCR failed for ' + item.name + ': ' + e.message, 'err') }
+  }
+  if (ocrOk) toast('OCR done - read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
+}
+
 // Load the script + create ONE worker, reused across files and OCR runs.
 async function ensureOcrWorker() {
   if (_ocrWorker) return _ocrWorker
@@ -528,6 +568,7 @@ async function ocrQueueItem(item) {
       for (let i = 0; i < item.emptyPageNums.length; i++) {
         const pageNum  = item.emptyPageNums[i]
         setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
+        setOcrProgress(i + 1, item.emptyPageNums.length)
         const page     = await pdf.getPage(pageNum)
         const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
         const canvas   = document.createElement('canvas')
@@ -540,11 +581,13 @@ async function ocrQueueItem(item) {
       item.extractedText = pageTexts.join('\n').trim()
     } else if (item.ocrFile) {
       setHealth('warn', 'OCR image')
+      setOcrProgress(1, 1)
       const { data: { text } } = await worker.recognize(item.ocrFile)
       item.extractedText = (text || '').trim()
     }
     item.scanWarning = null
   } finally {
+    setOcrProgress(null, 0)
     setHealth('ok', connectedLabel())
   }
 }
@@ -637,21 +680,9 @@ async function queueFilesForPreview(files, target) {
     // If any files have scanned pages, offer to OCR them before embedding.
     const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
     if (scannedItems.length) {
-      const ocrList = scannedItems.map(f => '  - ' + f.name).join('\n')
-      const doOcr = confirm(
-        'These files are scanned images with no selectable text:\n\n' + ocrList + '\n\n' +
-        'Run OCR to read their text before embedding?\n\n' +
-        'OK     = Run OCR (recommended)\n' +
-        'Cancel = Embed without it - these files will add no text'
-      )
-      if (doOcr) {
-        let ocrOk = 0
-        for (const item of scannedItems) {
-          try { await ocrQueueItem(item); ocrOk++ }
-          catch (e) { toast('OCR failed for ' + item.name + ': ' + e.message, 'err') }
-        }
-        if (ocrOk) toast('OCR done - read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
-      }
+      const choice = await promptOcr(scannedItems, 'embed')
+      if (choice === 'cancel') { previewQueue = []; previewTarget = null; document.getElementById('file-in').value = ''; if (typeof renderDocPanel === 'function') renderDocPanel(); return }
+      if (choice === 'ocr') await runOcrOnItems(scannedItems)
     }
 
     const items = previewQueue.slice()
@@ -809,9 +840,17 @@ async function confirmFilePreview() {
   const ta = document.getElementById('fp-textarea')
   if (previewQueue[previewTabIdx]) previewQueue[previewTabIdx].extractedText = ta.value
 
+  const target = previewTarget
+  // Offer OCR for scanned files (same 3-way dialog as embed); Cancel keeps the
+  // preview open so the user can adjust.
+  const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
+  if (scannedItems.length) {
+    const choice = await promptOcr(scannedItems, target === 'docs' ? 'embed' : 'attach')
+    if (choice === 'cancel') return
+    if (choice === 'ocr') await runOcrOnItems(scannedItems)
+  }
   const files = previewQueue.slice()
   previewQueue  = []
-  const target = previewTarget
   previewTarget = null
   // Restore the composer + message list IMMEDIATELY. Embedding can take minutes,
   // so it runs in the BACKGROUND (docs show as 'pending') instead of holding the UI
