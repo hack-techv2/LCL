@@ -596,14 +596,16 @@ const CASES = [
     const noBanner = !S.includes('runPreviewOcr') && !src('body.html').includes('fp-scan-banner')
     check('C38 OCR 3-way dialog (same modal for embed + attach) + progress', dialog && prompt && embedWired && attachWired && progress && noBanner, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress + ' noBanner=' + noBanner)
   } },
-  { id: 'C39 health pill omits OCR (chip owns it) + no redundant Ready line', fn: async () => {
+  { id: 'C39 health pill shows + OCR (label only, no progress) + no redundant Ready line', fn: async () => {
     const R = src('70-render.js'); const U = src('80-ui.js'); const F = src('40-files.js')
-    // Connection pill must NOT repeat OCR - the OCR chip already shows it (label + progress).
-    const noOcrLabel = !R.includes("+ OCR") && R.includes("'Chat + embed'")
+    // Pill shows '+ OCR' when the engine is on; the pill refreshes when it toggles.
+    const ocrLabel = R.includes("base += ' + OCR'") && R.includes("ocrState() === 'ready'")
+    const pillRefresh = F.includes("pill.classList.contains('ok')") && F.includes("setHealth('ok', connectedLabel())")
+    // ...but the live 'n/N' progress stays on the chip only, never the pill.
     const noPillProgress = !F.includes("setHealth('warn', 'OCR") && F.includes('setOcrProgress(i + 1, item.emptyPageNums.length)')
     // 'ready' maps to an empty status line (green 'On' toggle is enough), and it's hidden.
     const noReadyWord = U.includes('ready:') && U.includes("statusEl.style.display = label ? '' : 'none'")
-    check('C39 health pill omits OCR label + progress (chip owns it) + no redundant Ready line', noOcrLabel && noPillProgress && noReadyWord, 'noOcrLabel=' + noOcrLabel + ' noPillProgress=' + noPillProgress + ' noReadyWord=' + noReadyWord)
+    check('C39 health pill shows + OCR (label only, no progress) + no redundant Ready line', ocrLabel && pillRefresh && noPillProgress && noReadyWord, 'ocrLabel=' + ocrLabel + ' pillRefresh=' + pillRefresh + ' noPillProgress=' + noPillProgress + ' noReadyWord=' + noReadyWord)
   } },
   { id: 'C40 OCR dialog redesign (stacked + chips + variants) + persist/auto-enable', fn: async () => {
     const U = src('80-ui.js'); const F = src('40-files.js'); const T = src('tail.html')
