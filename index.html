@@ -1095,7 +1095,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div id="ocr-info" class="ocr-info hidden">
         <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
         <p id="ocr-status">Ready when needed</p>
-        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Text is read in your browser - nothing is uploaded to extract it.</p>
+        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Everything happens locally in your browser - nothing is uploaded to extract the text, and you can keep using LCL while OCR runs.</p>
         <div class="ocr-acts"><span class="ocr-eng-lbl">OCR engine <span id="ocr-eng-state">Off</span></span><button type="button" id="ocr-toggle" class="ocr-switch" role="switch" aria-checked="false" aria-label="Toggle OCR engine" onclick="toggleOcrEngine()"><span class="ocr-knob"></span></button></div>
       </div>
     </div>
@@ -3865,7 +3865,18 @@ let _ocrWorker = null            // shared Tesseract worker (created once, reuse
 let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
 
 function ocrState() { return _ocrState }
-function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
+function setOcrState(s) {
+  _ocrState = s
+  if (typeof renderOcrChip === 'function') renderOcrChip()
+  // Keep the health pill's '+ OCR' segment in sync: only refresh when idle-connected
+  // (pill 'ok'), so we don't clobber a 'Reading'/'Embedding' status mid-operation.
+  try {
+    const pill = document.getElementById('health-pill')
+    if (pill && pill.classList.contains('ok') && typeof creds !== 'undefined' && creds && typeof connectedLabel === 'function') {
+      setHealth('ok', connectedLabel())
+    }
+  } catch (e) {}
+}
 
 // Live per-run OCR progress for the chip (separate from engine-load state).
 let _ocrProg = null
@@ -6027,7 +6038,13 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  const base = (creds.embedApiKey && creds.embedModelId) ? 'Chat + OCR + embed' : 'Chat + OCR'
+  // '+ OCR' only when the engine is actually ON (ready); it's an opt-in toggle,
+  // so advertising it while off is misleading.
+  const ocrOn = (typeof ocrState === 'function') && ocrState() === 'ready'
+  const embed = !!(creds.embedApiKey && creds.embedModelId)
+  let base = 'Chat'
+  if (ocrOn) base += ' + OCR'
+  if (embed) base += ' + embed'
   return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
@@ -7532,14 +7549,15 @@ function renderOcrChip() {
     if (dot) dot.className = 'ocr-dot ocr-proc'
     if (lblEl) lblEl.textContent = 'OCR ' + prog.done + '/' + prog.total
     if (chip) chip.setAttribute('data-tip-bottom', p)
-    if (statusEl) statusEl.textContent = p
+    if (statusEl) { statusEl.textContent = p; statusEl.style.display = '' }
   } else {
-    const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: 'Ready', blocked: 'Unavailable \u2014 engine blocked' }
-    const label = labels[st] || labels.idle
+    // 'ready' shows no status line - the green 'On' toggle already says it; a 'Ready' line is redundant.
+    const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: '', blocked: 'Unavailable \u2014 engine blocked' }
+    const label = (st in labels) ? labels[st] : labels.idle
     if (dot) dot.className = 'ocr-dot ocr-' + st
     if (lblEl) lblEl.textContent = 'OCR'
-    if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + label)
-    if (statusEl) statusEl.textContent = label
+    if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + (label || 'On'))
+    if (statusEl) { statusEl.textContent = label; statusEl.style.display = label ? '' : 'none' }
   }
   if (tog) {
     const on = st === 'ready'
