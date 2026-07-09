@@ -581,8 +581,17 @@ const CASES = [
     const U = src('80-ui.js'); const B = src('body.html')
     const fns = U.includes('function renderOcrChip(') && U.includes('function toggleOcrInfo(')
     const chip = B.includes('id="ocr-chip"') && B.includes('onclick="toggleOcrInfo(event)"')
-    const acts = B.includes('onclick="enableOcrEngine()"') && B.includes('onclick="clearOcrEngine()"')
+    const acts = B.includes('onclick="toggleOcrEngine()"') && src('40-files.js').includes('function toggleOcrEngine(')
     check('C37 OCR chip + popover wired (80-ui + body.html)', fns && chip && acts, 'fns=' + fns + ' chip=' + chip + ' acts=' + acts)
+  } },
+  { id: 'C38 OCR 3-way dialog + progress + attach wiring', fn: async () => {
+    const S = src('40-files.js'); const U = src('80-ui.js')
+    const dialog = U.includes('function confirmDialog3(')
+    const prompt = S.includes('async function promptOcr(') && S.includes("value: 'ocr'") && S.includes("value: 'plain'") && S.includes("value: 'cancel'")
+    const embedWired = S.includes("promptOcr(scannedItems, 'embed')")
+    const attachWired = S.includes("target === 'docs' ? 'embed' : 'attach'")
+    const progress = S.includes('function setOcrProgress(') && S.includes('setOcrProgress(i + 1, item.emptyPageNums.length)')
+    check('C38 OCR 3-way dialog + progress + attach wiring', dialog && prompt && embedWired && attachWired && progress, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress)
   } },
 ]
 
