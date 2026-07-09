@@ -150,7 +150,7 @@ async function connect() {
     const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
     const dErr = document.getElementById('modal-err'), dBtn = document.getElementById('connect-btn')
     if (dErr) dErr.classList.remove('show')
-    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting...' }
+    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting…' }
     setHealth('warn','Connecting')
     try {
       const r = await httpPost('/api/chat', { apiKey: DEMOKEY_CLIENT, modelId: model, payload: { messages:[{role:'user',content:'Hi'}], max_tokens:16, stream:false } })
@@ -171,7 +171,7 @@ async function connect() {
   errEl.classList.remove('show'); errEl.textContent = ''
   if (!apiKey) { errEl.textContent='API key required'; errEl.classList.add('show'); return }
 
-  btn.disabled = true; btn.textContent = 'Connecting...'
+  btn.disabled = true; btn.textContent = 'Connecting…'
   setHealth('warn', 'Connecting')
   try {
     // Escalate max_tokens until the model accepts it (1 → 16 → 32).
@@ -194,7 +194,7 @@ async function connect() {
       if (r.status === 401 || r.status === 403) break
       // On last budget, fall through to error reporting below
       if (ti < tokenBudgets.length - 1 && (r.status === 400 || r.status === 422)) {
-        btn.textContent = 'Retrying...'
+        btn.textContent = 'Retrying…'
         continue
       }
       break
@@ -256,7 +256,7 @@ async function disconnect() {
   // prefers /api/config over D.settings, so a stale config would silently
   // auto-reconnect on next launch. Push blank credentials to wipe it.
   await saveSettings({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' })
-  setHealth('off', 'Not connected')
+  setHealth('', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
 }
