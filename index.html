@@ -99,9 +99,9 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 ::selection{background:rgba(232,97,10,.28);color:var(--tx)}
 
 /* ---- Connect overlay ---- */
-#modal-bd{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(8px)}
+#modal-bd{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(6px)}
 #modal-bd.hidden{display:none}
-.modal{background:var(--bg2);border:1px solid var(--bdr2);border-radius:20px;padding:40px;width:440px;box-shadow:0 40px 100px var(--modal-shadow);position:relative}
+.modal{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;padding:40px;width:440px;box-shadow:0 20px 60px var(--modal-shadow);position:relative}
 
 .modal-close{position:absolute !important;top:16px !important;right:16px !important;left:auto !important;width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:10}
 .modal-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
@@ -240,9 +240,9 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 
 /* Search modal */
-#search-bd{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;z-index:150;backdrop-filter:blur(6px);padding-top:12vh}
+#search-bd{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;z-index:150;backdrop-filter:blur(6px);padding-top:12vh}
 #search-bd.hidden{display:none}
-.search-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:14px;width:min(560px,92vw);max-height:70vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px var(--modal-shadow)}
+.search-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:min(560px,92vw);max-height:70vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px var(--modal-shadow)}
 .search-inp{width:100%;padding:14px 16px;border:none;border-bottom:1px solid var(--bdr);background:transparent;color:var(--tx);font-family:var(--sans);font-size:15px;outline:none}
 .search-results{overflow-y:auto;flex:1}
 .search-empty{padding:24px 16px;text-align:center;color:var(--tx3);font-size:12px;font-family:var(--mono)}
@@ -418,13 +418,31 @@ body.sb-collapsed .rail{flex-direction:column;border-top:none;margin-top:6px;pad
 body.sb-collapsed .rail-btn{flex:0 0 38px;width:38px;height:38px}
 body.sb-collapsed .rail-btn[data-tip]:hover::after{bottom:auto;top:50%;left:calc(100% + 9px);right:auto;transform:translateY(-50%)}
 body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
-.cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px}
-.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:14px;padding:22px;width:380px;max-width:100%;box-shadow:0 20px 60px var(--modal-shadow)}
+.cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;backdrop-filter:blur(6px)}
+.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;padding:22px;width:380px;max-width:100%;box-shadow:0 20px 60px var(--modal-shadow)}
 .cd-title{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--tx)}
 .cd-msg{font-size:13px;line-height:1.55;color:var(--tx2);margin-bottom:18px}
-.cd-acts{display:flex;justify-content:flex-end;gap:8px}
+.cd-acts{display:flex;justify-content:flex-end;align-items:center;gap:8px}
 .cd-cancel{font-size:13px;font-family:var(--sans);background:none;border:1px solid var(--bdr2);color:var(--tx2);padding:7px 14px;border-radius:8px;cursor:pointer;transition:all .12s}
 .cd-cancel:hover{background:var(--bg4);color:var(--tx)}
+.cd3-chips{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+.cd3-chip{display:flex;align-items:center;gap:9px;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:9px 11px}
+.cd3-chip-ic{display:flex;align-items:center;color:var(--pin);flex-shrink:0}
+.cd3-chip-name{font-size:12.5px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.cd3-chip-tag{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--pin);background:var(--pinbg);border-radius:5px;padding:2px 7px;flex-shrink:0}
+.cd3-acts{display:flex;flex-direction:column;gap:9px}
+.cd3-btn{width:100%;padding:11px;border-radius:8px;cursor:pointer;font-family:var(--sans);display:flex;flex-direction:column;align-items:center;gap:1px;border:1px solid transparent;transition:all .12s}
+.cd3-btn-t{font-size:14px;font-weight:500}
+.cd3-btn-sub{font-size:11.5px;font-weight:400}
+.cd3-primary{background:var(--ac);color:#fff;border-color:var(--ac)}
+.cd3-primary:hover{background:var(--ac2)}
+.cd3-primary .cd3-btn-sub{opacity:.85}
+.cd3-secondary{background:none;border-color:var(--bdr2);color:var(--tx)}
+.cd3-secondary:hover{background:var(--bg4)}
+.cd3-secondary .cd3-btn-sub{color:var(--tx2)}
+.cd3-ghost{background:none;border:none;color:var(--tx2);padding:9px}
+.cd3-ghost .cd3-btn-t{font-weight:400;font-size:13px}
+.cd3-ghost:hover{color:var(--tx)}
 .btn-p:disabled{opacity:.5;cursor:default}
 .eb-box{width:430px}
 .eb-list{border:1px solid var(--bdr);border-radius:10px;overflow:hidden;margin:2px 0 14px}
@@ -443,9 +461,10 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .eb-cnt{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:1px}
 .eb-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .eb-total{font-size:12px;color:var(--tx2)}
-.eb-acts{display:flex;gap:8px;flex-shrink:0}
-.eb-acts .btn-p{width:auto;margin-top:0}
-.cd-ok{font-size:13px;padding:7px 16px;border-radius:8px;cursor:pointer}
+.eb-acts{display:flex;gap:8px;flex-shrink:0;align-items:center}
+.cd-ok{font-size:13px;font-family:var(--sans);background:var(--ac);border:1px solid var(--ac);color:#fff;padding:7px 16px;border-radius:8px;cursor:pointer;transition:all .12s}
+.cd-ok:hover{background:var(--ac2);border-color:var(--ac2)}
+.cd-ok:disabled{opacity:.5;cursor:default}
 .dp-upload{margin:10px;padding:10px;background:transparent;border:1px dashed var(--bdr2);border-radius:var(--r);color:var(--tx3);font-family:var(--sans);font-size:12px;cursor:pointer;width:calc(100% - 20px);transition:all .15s;text-align:center}
 .dp-upload:hover{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .dp-empty{padding:20px;text-align:center;color:var(--tx3);font-size:12px;line-height:1.7}
@@ -473,13 +492,13 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .input-hint{text-align:center;font-size:11px;color:var(--tx3);font-family:var(--mono);margin-top:7px}
 
 /* Settings */
-#sp{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:150;backdrop-filter:blur(4px)}
+#sp{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:150;backdrop-filter:blur(6px)}
 #sp.hidden{display:none}
-#skills-mgr{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:150;backdrop-filter:blur(4px)}
+#skills-mgr{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:150;backdrop-filter:blur(6px)}
 #skills-mgr.hidden{display:none}
 #skill-edit-bd{position:fixed;inset:0;background:var(--modal-shadow);display:flex;align-items:center;justify-content:center;z-index:1100}
 #skill-edit-bd.hidden{display:none}
-.sp-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:480px;max-height:84vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative;scrollbar-color:var(--ac) transparent;scrollbar-width:thin}
+.sp-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:480px;max-height:84vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px var(--modal-shadow);position:relative;scrollbar-color:var(--ac) transparent;scrollbar-width:thin}
 .sp-box::-webkit-scrollbar{width:6px}
 .sp-box::-webkit-scrollbar-track{background:transparent}
 .sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:3px;background-clip:padding-box}
@@ -3865,18 +3884,7 @@ let _ocrWorker = null            // shared Tesseract worker (created once, reuse
 let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
 
 function ocrState() { return _ocrState }
-function setOcrState(s) {
-  _ocrState = s
-  if (typeof renderOcrChip === 'function') renderOcrChip()
-  // Keep the health pill's '+ OCR' segment in sync: only refresh when idle-connected
-  // (pill 'ok'), so we don't clobber a 'Reading'/'Embedding' status mid-operation.
-  try {
-    const pill = document.getElementById('health-pill')
-    if (pill && pill.classList.contains('ok') && typeof creds !== 'undefined' && creds && typeof connectedLabel === 'function') {
-      setHealth('ok', connectedLabel())
-    }
-  } catch (e) {}
-}
+function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
 
 // Live per-run OCR progress for the chip (separate from engine-load state).
 let _ocrProg = null
@@ -3886,8 +3894,18 @@ function setOcrProgress(done, total) { _ocrProg = total ? { done: done, total: t
 // Single popover toggle: load the engine when idle/blocked, free it when ready.
 function toggleOcrEngine() {
   const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
-  if (st === 'ready') { clearOcrEngine() }
-  else if (st !== 'loading') { enableOcrEngine() }
+  // Remember the user's intent so the engine can auto-enable on the next page load
+  // (the engine bytes can't be cached on this network, but the preference can).
+  if (st === 'ready') { try { localStorage.setItem('lcl_ocr_on', '0') } catch (e) {}; clearOcrEngine() }
+  else if (st !== 'loading') { try { localStorage.setItem('lcl_ocr_on', '1') } catch (e) {}; enableOcrEngine() }
+}
+
+// On startup, if the user previously turned OCR on, quietly re-load the engine so
+// the toggle comes back On by itself. The CDN assets are usually still in the
+// browser HTTP cache, so this is fast after the first-ever load; a blocked network
+// surfaces as the normal 'blocked' state rather than an error.
+function autoEnableOcr() {
+  try { if (localStorage.getItem('lcl_ocr_on') === '1') ensureOcrWorker().catch(function () {}) } catch (e) {}
 }
 
 // Offer OCR for scanned files. verb = 'embed' | 'attach'. Resolves to 'ocr'
@@ -3895,15 +3913,17 @@ function toggleOcrEngine() {
 async function promptOcr(scannedItems, verb) {
   if (!scannedItems.length) return 'plain'
   if (typeof confirmDialog3 !== 'function') { return confirm('Scanned files detected - run OCR before ' + verb + '?') ? 'ocr' : 'plain' }
-  const list = scannedItems.map(f => '- ' + f.name).join('\n')
   const cap = verb.charAt(0).toUpperCase() + verb.slice(1)
+  const multi = scannedItems.length > 1
   return confirmDialog3({
-    title: 'Scanned files detected',
-    message: 'These files are scanned images with no selectable text:\n\n' + list + '\n\nRun OCR to read their text first?',
+    stacked: true,
+    title: multi ? 'Scanned files detected' : 'Scanned file detected',
+    message: (multi ? 'These files have' : 'This file has') + ' no selectable text. Read ' + (multi ? 'them' : 'it') + ' with OCR first so the contents can be used?',
+    chips: scannedItems.map(f => f.name),
     buttons: [
-      { text: 'Run OCR + ' + verb, value: 'ocr', primary: true },
-      { text: cap + ' without OCR', value: 'plain' },
-      { text: 'Cancel', value: 'cancel' }
+      { text: 'Run OCR, then ' + verb, sub: 'reads the scanned text first', value: 'ocr', variant: 'primary' },
+      { text: cap + ' without OCR', sub: 'the scanned text won\u2019t be included', value: 'plain', variant: 'secondary' },
+      { text: 'Cancel', value: 'cancel', variant: 'ghost' }
     ]
   })
 }
@@ -3975,7 +3995,6 @@ async function ocrQueueItem(item) {
       const pageTexts = item.pages.map(p => p.text)   // index 0 = page 1
       for (let i = 0; i < item.emptyPageNums.length; i++) {
         const pageNum  = item.emptyPageNums[i]
-        setHealth('warn', 'OCR ' + (i + 1) + '/' + item.emptyPageNums.length)
         setOcrProgress(i + 1, item.emptyPageNums.length)
         const page     = await pdf.getPage(pageNum)
         const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
@@ -3988,15 +4007,15 @@ async function ocrQueueItem(item) {
       }
       item.extractedText = pageTexts.join('\n').trim()
     } else if (item.ocrFile) {
-      setHealth('warn', 'OCR image')
       setOcrProgress(1, 1)
       const { data: { text } } = await worker.recognize(item.ocrFile)
       item.extractedText = (text || '').trim()
     }
     item.scanWarning = null
   } finally {
+    // OCR progress lives ONLY on the OCR chip (setOcrProgress); the connection
+    // health pill is left untouched so the same 'n/N' isn't shown in two places.
     setOcrProgress(null, 0)
-    setHealth('ok', connectedLabel())
   }
 }
 
@@ -6038,14 +6057,10 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  // '+ OCR' only when the engine is actually ON (ready); it's an opt-in toggle,
-  // so advertising it while off is misleading.
-  const ocrOn = (typeof ocrState === 'function') && ocrState() === 'ready'
+  // OCR is intentionally NOT shown here - the OCR chip already shows its state,
+  // so repeating it in the connection pill is redundant.
   const embed = !!(creds.embedApiKey && creds.embedModelId)
-  let base = 'Chat'
-  if (ocrOn) base += ' + OCR'
-  if (embed) base += ' + embed'
-  return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
+  return (embed ? 'Chat + embed' : 'Chat') + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
 // ---------------------------------------------------------------------------
@@ -7199,7 +7214,7 @@ function confirmDialog(opts) {
     let done = false
     const onKey = e => { if (e.key === 'Escape') finish(false); else if (e.key === 'Enter') finish(true) }
     function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
-    const ok = mkEl('button', { class: 'btn-p cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
+    const ok = mkEl('button', { class: 'cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
     const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(false) }, opts.cancelText || 'Cancel')
     const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
       mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
@@ -7219,20 +7234,40 @@ function confirmDialog(opts) {
 function confirmDialog3(opts) {
   opts = opts || {}
   const cancelValue = (opts.cancelValue !== undefined) ? opts.cancelValue : 'cancel'
+  const stacked = !!opts.stacked
+  const FILE_IC = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5H4A1.5 1.5 0 002.5 3v10A1.5 1.5 0 004 14.5h8a1.5 1.5 0 001.5-1.5V6z"/><path d="M9 1.5V6h4.5"/><path d="M5.5 8.5h5"/><path d="M5.5 11h5"/></svg>'
   return new Promise(resolve => {
     let done = false
     const onKey = e => { if (e.key === 'Escape') finish(cancelValue) }
     function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
-    const btns = (opts.buttons || []).map(b => mkEl('button', { class: b.primary ? 'btn-p' : 'cd-cancel', onclick: () => finish(b.value) }, b.text))
-    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+    // Buttons: stacked layout uses variant classes (primary/secondary/ghost) with
+    // optional sub-label; the legacy row layout keeps btn-p / cd-cancel.
+    const btns = (opts.buttons || []).map(b => {
+      if (stacked) {
+        const variant = b.variant || (b.primary ? 'primary' : 'secondary')
+        const kids = [mkEl('span', { class: 'cd3-btn-t' }, b.text)]
+        if (b.sub) kids.push(mkEl('span', { class: 'cd3-btn-sub' }, b.sub))
+        return mkEl('button', { class: 'cd3-btn cd3-' + variant, onclick: () => finish(b.value) }, kids)
+      }
+      return mkEl('button', { class: b.primary ? 'cd-ok' : 'cd-cancel', onclick: () => finish(b.value) }, b.text)
+    })
+    const kids = [
       mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
-      mkEl('div', { class: 'cd-msg', style: 'white-space:pre-line' }, opts.message || ''),
-      mkEl('div', { class: 'cd-acts' }, btns)
-    ])
+      mkEl('div', { class: 'cd-msg', style: 'white-space:pre-line' + (opts.chips && opts.chips.length ? ';margin-bottom:12px' : '') }, opts.message || '')
+    ]
+    if (opts.chips && opts.chips.length) {
+      kids.push(mkEl('div', { class: 'cd3-chips' }, opts.chips.map(name => mkEl('div', { class: 'cd3-chip' }, [
+        mkEl('span', { class: 'cd3-chip-ic', 'aria-hidden': 'true', html: FILE_IC }),
+        mkEl('span', { class: 'cd3-chip-name' }, name),
+        mkEl('span', { class: 'cd3-chip-tag' }, 'scanned')
+      ]))))
+    }
+    kids.push(mkEl('div', { class: stacked ? 'cd3-acts' : 'cd-acts' }, btns))
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, kids)
     const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(cancelValue) } }, [box])
     document.body.appendChild(ov)
     document.addEventListener('keydown', onKey)
-    setTimeout(() => { try { (box.querySelector('.btn-p') || box.querySelector('button')).focus() } catch {} }, 0)
+    setTimeout(() => { try { (box.querySelector('.cd3-primary') || box.querySelector('.btn-p') || box.querySelector('button')).focus() } catch {} }, 0)
   })
 }
 
@@ -7248,7 +7283,7 @@ function confirmEmbedBatch(plans, caps) {
     function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
 
     const totalLbl = mkEl('span', { class: 'eb-total' })
-    const okBtn = mkEl('button', { class: 'btn-p', onclick: () => { const ids = items.filter(i => i.sel).map(i => i.id); finish(ids.length ? ids : null) } })
+    const okBtn = mkEl('button', { class: 'cd-ok', onclick: () => { const ids = items.filter(i => i.sel).map(i => i.id); finish(ids.length ? ids : null) } })
     const cancelBtn = mkEl('button', { class: 'cd-cancel', onclick: () => finish(null) }, 'Cancel')
 
     function refresh() {
@@ -8565,6 +8600,7 @@ initComposerPlaceholder()
 init()
 initUpdates()
 wireCopySanitizer()
+autoEnableOcr()
 </script>
 </body>
 </html>
