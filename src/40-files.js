@@ -468,7 +468,18 @@ let _ocrWorker = null            // shared Tesseract worker (created once, reuse
 let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
 
 function ocrState() { return _ocrState }
-function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
+function setOcrState(s) {
+  _ocrState = s
+  if (typeof renderOcrChip === 'function') renderOcrChip()
+  // Keep the health pill's '+ OCR' segment in sync: only refresh when idle-connected
+  // (pill 'ok'), so we don't clobber a 'Reading'/'Embedding' status mid-operation.
+  try {
+    const pill = document.getElementById('health-pill')
+    if (pill && pill.classList.contains('ok') && typeof creds !== 'undefined' && creds && typeof connectedLabel === 'function') {
+      setHealth('ok', connectedLabel())
+    }
+  } catch (e) {}
+}
 
 // Live per-run OCR progress for the chip (separate from engine-load state).
 let _ocrProg = null
