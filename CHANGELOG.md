@@ -9,6 +9,10 @@ CL's scanned PDFs never OCR'd. Root cause: tesseract.js defaults its language da
 
 - **Reachable engine:** `createWorker` now overrides only `langPath` -> `https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0` (the SAME language data, mirrored on the already-working jsDelivr CDN). A single PERSISTENT worker is created and reused (was create + terminate per file), with `cacheMethod:'none'` so it never touches IndexedDB — gov Edge "tracking prevention" blocks storage access for the CDN worker (surfaces as an opaque `Script error. 0:0` that broke OCR mid-run), so the language data loads into memory once per session instead of caching. Also: the worker is created and then explicitly `loadLanguage('eng')` + `initialize('eng',1)` — this Tesseract build's one-shot `createWorker('eng',…)` form does NOT initialise the core, so recognize threw `Cannot read properties of null (reading 'SetImageFile')` and OCR never actually ran. Verified end-to-end in-browser (recognises real text now). Follow-up: `langPath` must be passed in createWorker's FIRST-arg options object (`createWorker({ langPath, cacheMethod:'none' })`) - passing it as a later arg was ignored, so it fell back to the default tessdata host which the gov proxy serves without CORS (`No 'Access-Control-Allow-Origin'`); confirmed the traineddata now loads from jsDelivr.
 
+## 9 Jul 2026 - Paste an image into chat (alpha)
+
+You can now paste an image straight into the message box (e.g. a screenshot, Ctrl/Cmd+V) and it goes into the attach flow - the same path drag-and-drop uses. A pasted image lands in the file preview and, being a scanned image, triggers the usual **Run OCR, then attach** dialog, so its text can be read in-browser. Clipboard images are given a unique `pasted-<time>.<ext>` name; non-image pastes fall through to normal text paste untouched. Wired via `initPasteImages()` on the composer. Test **C46**. Build 5/5, client-logic 44/44.
+
 ## 9 Jul 2026 - Codebase consistency pass (alpha)
 
 A sweep for the drift found in a full audit, in three tiers.
