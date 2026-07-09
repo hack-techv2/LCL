@@ -9,6 +9,16 @@ CL's scanned PDFs never OCR'd. Root cause: tesseract.js defaults its language da
 
 - **Reachable engine:** `createWorker` now overrides only `langPath` -> `https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0` (the SAME language data, mirrored on the already-working jsDelivr CDN). A single PERSISTENT worker is created and reused (was create + terminate per file), with `cacheMethod:'none'` so it never touches IndexedDB — gov Edge "tracking prevention" blocks storage access for the CDN worker (surfaces as an opaque `Script error. 0:0` that broke OCR mid-run), so the language data loads into memory once per session instead of caching. Also: the worker is created and then explicitly `loadLanguage('eng')` + `initialize('eng',1)` — this Tesseract build's one-shot `createWorker('eng',…)` form does NOT initialise the core, so recognize threw `Cannot read properties of null (reading 'SetImageFile')` and OCR never actually ran. Verified end-to-end in-browser (recognises real text now). Follow-up: `langPath` must be passed in createWorker's FIRST-arg options object (`createWorker({ langPath, cacheMethod:'none' })`) - passing it as a later arg was ignored, so it fell back to the default tessdata host which the gov proxy serves without CORS (`No 'Access-Control-Allow-Origin'`); confirmed the traineddata now loads from jsDelivr.
 
+## 9 Jul 2026 - Codebase consistency pass (alpha)
+
+A sweep for the drift found in a full audit, in three tiers.
+
+Text: normalized every user-facing ellipsis to `…` (was a mix of `...` and `…` — e.g. "Connecting…", "Reading files…", "Loading OCR engine…"); switched the OCR and rate-limit messages from a hyphen to the house em-dash ("OCR done — read 2 files", "Rate limit — resuming in 5s"); and replaced four stray `*` separators with the middot `·` used everywhere else (chat meta, doc size, search/composer hints). Full-sentence error toasts keep their trailing period by design.
+
+Colour: consolidated ~5 different "success" greens onto `--ok` (OCR ready dot, OCR toggle, gateway dot, doc "ready" pill, the embed connection-test message) and routed the OCR amber dots to `--pin` and the ad-hoc reds (`#e05050`, `#c0392b`, the error status box) to `--red`/`--redbg` — so themes stay coherent in light and dark.
+
+Structure: removed the dead `setHealth('off', …)` state (it set a CSS class that didn't exist); routed the four `'Ready'` label fallbacks through `connectedLabel()` so the resting pill always matches the real connected label; added a shared `.btn-danger` class (used by Disconnect and Delete-skill instead of inline styling); and introduced a `--r-modal` (16px) token for the centered popups. Tests **C44–C45** added; **C42** updated. Build 5/5, client-logic 43/43.
+
 ## 9 Jul 2026 - Fix: health pill stuck on “Preparing to embed…” after cancel (alpha)
 
 Starting an embed set the health pill to “Preparing to embed…”, but cancelling (either the scanned-file OCR prompt or the embed-batch confirmation) left the pill stuck there. A new `healthIdle()` helper returns the pill to its connected state on every exit - both cancel paths, the normal end of `commitDocs`, and preview cancel - and it skips the reset when other embeds are still running so it never wrongly clears a live “Embedding” status. Test **C43** guards it. Build 5/5, client-logic 41/41.
