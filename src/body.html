@@ -93,7 +93,7 @@
     <div class="sp-pane" data-pane="settings"><div class="sp-sec" data-sec="defaults">
       <div class="sp-lbl">Defaults</div>
       <div class="sp-cap">Applied to every message in every chat.</div>
-      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
+      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant…"></textarea></div>
       <div class="sf">
         <div class="sf-head"><label>Max Tokens</label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
@@ -106,7 +106,7 @@
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
       </div>
-      <button class="btn-s" onclick="closeSP(); disconnect()" style="width:100%;border-color:rgba(231,76,60,.35);color:var(--red);display:flex;align-items:center;justify-content:center;gap:6px">
+      <button class="btn-s btn-danger" onclick="closeSP(); disconnect()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
@@ -158,9 +158,9 @@
 <!-- Search overlay -->
 <div id="search-bd" class="hidden" onclick="if(event.target===this)closeSearch()">
   <div class="search-box">
-    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats..." oninput="runSearch()" onkeydown="handleSearchKey(event)">
+    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats…" oninput="runSearch()" onkeydown="handleSearchKey(event)">
     <div id="search-results" class="search-results"></div>
-    <div class="search-foot">Enter to open  *  Esc to close</div>
+    <div class="search-foot">Enter to open  ·  Esc to close</div>
   </div>
 </div>
 
@@ -219,7 +219,7 @@
       <div id="ocr-info" class="ocr-info hidden">
         <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
         <p id="ocr-status">Ready when needed</p>
-        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Everything happens locally in your browser - nothing is uploaded to extract the text, and you can keep using LCL while OCR runs.</p>
+        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF…). Everything happens locally in your browser — nothing is uploaded to extract the text, and you can keep using LCL while OCR runs.</p>
         <div class="ocr-acts"><span class="ocr-eng-lbl">OCR engine <span id="ocr-eng-state">Off</span></span><button type="button" id="ocr-toggle" class="ocr-switch" role="switch" aria-checked="false" aria-label="Toggle OCR engine" onclick="toggleOcrEngine()"><span class="ocr-knob"></span></button></div>
       </div>
     </div>
@@ -266,7 +266,7 @@
           <div class="skill-chip" id="skill-chip"></div>
           <div class="chips" id="chips"></div>
           <div class="input-box">
-            <textarea id="msg-in" placeholder="Message LCL..." rows="1"
+            <textarea id="msg-in" placeholder="Message LCL…" rows="1"
               onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
             <div class="in-row">
               <label class="ib" data-tip="Attach file to this message">
@@ -282,7 +282,7 @@
               </button>
             </div>
           </div>
-          <div class="input-hint">Enter to send  *  Shift+Enter for newline</div>
+          <div class="input-hint">Enter to send  ·  Shift+Enter for newline</div>
         </div>
       </div>
     </div>
