@@ -372,7 +372,7 @@ function renderSpSkillsList() {
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
-      <button class="tb-btn" onclick="deleteSkillUI('${esc(s.id)}')" style="color:var(--red)">Delete</button>
+      <button class="tb-btn btn-danger" onclick="deleteSkillUI('${esc(s.id)}')">Delete</button>
     </div>
   `).join('')
 }
