@@ -37,7 +37,7 @@ function runSearch() {
         const idx = t.toLowerCase().indexOf(q)
         if (idx !== -1) {
           const start = Math.max(0, idx-30)
-          const snip = (start>0?'...':'') + t.slice(start, idx+q.length+60) + (idx+q.length+60<t.length?'...':'')
+          const snip = (start>0?'…':'') + t.slice(start, idx+q.length+60) + (idx+q.length+60<t.length?'…':'')
           searchResults.push({ chatId: c.id, title: c.title, snippet: snip, msgIdx: i, matchField: 'body', role: m.role })
           if (searchResults.length > 100) break
         }
