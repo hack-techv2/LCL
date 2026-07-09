@@ -474,7 +474,7 @@ async function embedBatch(texts, onProgress, shouldAbort) {
               onProgress({ state: 'embedding', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal })
             } else {
               const prefix = groupTotal > 1 ? ('Group ' + groupNum + '/' + groupTotal + ' - ') : ''
-              toast(prefix + 'Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
+              toast(prefix + 'Embedding… batch ' + evt.batchDone + '/' + evt.batchTotal
                 + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
             }
             if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
@@ -482,10 +482,10 @@ async function embedBatch(texts, onProgress, shouldAbort) {
             if (onProgress) {
               onProgress({ state: 'pacing', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
             } else {
-              toast('API rate limit reached - resuming batch embedding in ~' + evt.waitSec + 's'
+              toast('API rate limit reached — resuming batch embedding in ~' + evt.waitSec + 's'
                 + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
             }
-            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit - resuming in ' + evt.waitSec + 's')
+            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
           } else if (evt.type === 'done') {
             settled = true
             const embeddings = extractEmbeddingsFromAnyJson(evt)
@@ -1116,7 +1116,7 @@ async function retrieveRagChunks(query, docs, topK, stickyChunks) {
     best = packContextChunks([...selected, ...carried], CFG.CONTEXT_MAX_CHARS)
 
     if (round >= maxRounds || contextLooksSufficient(query, best)) break
-    toast('Retrieved context looks thin — pulling more chunks...', 'info')
+    toast('Retrieved context looks thin — pulling more chunks…', 'info')
   }
   return best
 }
