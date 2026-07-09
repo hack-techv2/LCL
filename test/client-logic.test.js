@@ -674,6 +674,14 @@ const CASES = [
     const wired = T.includes('initPasteImages()')
     check('C46 paste image into composer routes to the attach flow', fn && wired, 'fn=' + fn + ' wired=' + wired)
   } },
+  { id: 'C47 flush chats to disk before an update restart', fn: async () => {
+    const U = src('97-update-ui.js')
+    const helper = U.includes('async function flushBeforeRestart(') && U.includes('await persist()')
+    // Every server-restart request is preceded by a flush, so a Node restart can't drop the most recent chat.
+    const restartCalls = (U.match(/httpPost\('\/api\/update\/restart'\)/g) || []).length
+    const flushes = (U.match(/await flushBeforeRestart\(\)/g) || []).length
+    check('C47 flush chats to disk before an update restart', helper && restartCalls >= 3 && flushes >= restartCalls, 'helper=' + helper + ' restartCalls=' + restartCalls + ' flushes=' + flushes)
+  } },
 ]
 
 ;(async () => {
