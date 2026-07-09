@@ -4119,7 +4119,7 @@ async function queueFilesForPreview(files, target) {
     const scannedItems = previewQueue.filter(f => f.scanWarning && (f.pdfDoc || f.ocrFile))
     if (scannedItems.length) {
       const choice = await promptOcr(scannedItems, 'embed')
-      if (choice === 'cancel') { previewQueue = []; previewTarget = null; document.getElementById('file-in').value = ''; if (typeof renderDocPanel === 'function') renderDocPanel(); return }
+      if (choice === 'cancel') { previewQueue = []; previewTarget = null; document.getElementById('file-in').value = ''; healthIdle(); if (typeof renderDocPanel === 'function') renderDocPanel(); return }
       if (choice === 'ocr') await runOcrOnItems(scannedItems)
     }
 
@@ -4278,6 +4278,7 @@ function cancelFilePreview() {
   document.getElementById('messages').style.display = ''
   document.getElementById('input-wrap').style.display = ''
   document.getElementById('file-in').value = ''
+  healthIdle()
 }
 
 async function confirmFilePreview() {
@@ -4426,6 +4427,16 @@ function embedTrayFiles() {
   commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
 }
 
+// Return the health pill to its steady connected state - used when an embed is
+// cancelled or finished. Skips if other embeds are still running (that loop owns
+// the pill), so we never wrongly flip a live 'Embedding' back to idle.
+function healthIdle() {
+  try {
+    if (typeof embedsActive === 'function' && embedsActive()) return
+    if (typeof setHealth === 'function') setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+  } catch (e) {}
+}
+
 async function commitDocs(files) {
   const chat = curChat(); if (!chat) return
   if (!Array.isArray(chat.docs)) chat.docs = []
@@ -4468,7 +4479,7 @@ async function commitDocs(files) {
           for (const ch of Object.values(D.chats || {})) if (Array.isArray(ch.docs)) ch.docs = ch.docs.filter(d => d.id !== p.doc.id)
         }
         toast('Embedding cancelled', 'info')
-        renderDocPanel(); updateDocsBtn(); await persist(); return
+        healthIdle(); renderDocPanel(); updateDocsBtn(); await persist(); return
       }
     }
     const sel = new Set(selectedIds || plans.map(p => p.doc.id))
@@ -4488,7 +4499,7 @@ async function commitDocs(files) {
     toast(added.length > 1 ? (added.length + ' files added (connect to embed for RAG)')
                            : ((added[0] ? added[0].name : 'File') + ' added (connect to embed for RAG)'), 'info')
   }
-  await persist(); renderDocPanel(); updateDocsBtn()
+  await persist(); renderDocPanel(); updateDocsBtn(); healthIdle()
 }
 // File-input change handlers: attachments go to the preview panel, doc
 // uploads go straight to the embed flow.
