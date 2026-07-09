@@ -636,6 +636,16 @@ const CASES = [
       && C.includes('z-index:10000;padding:20px;backdrop-filter:blur(6px)')
     check('C42 centered popups share one spec (16px corners, .5/6px backdrop)', corners && backdrops, 'corners=' + corners + ' backdrops=' + backdrops)
   } },
+  { id: 'C43 cancelling an embed resets the health pill (no stuck Preparing to embed)', fn: async () => {
+    const F = src('40-files.js')
+    // A helper returns the pill to connected, guarded by embedsActive.
+    const helper = F.includes('function healthIdle(') && F.includes('embedsActive()') && F.includes("setHealth('ok'")
+    // Called on the OCR-cancel path, the embed-batch cancel path, the commitDocs end, and preview cancel.
+    const ocrCancel = /choice === 'cancel'[^}]*healthIdle\(\)/.test(F)
+    const batchCancel = /Embedding cancelled[\s\S]{0,40}healthIdle\(\)/.test(F)
+    const commitEnd = F.includes('updateDocsBtn(); healthIdle()')
+    check('C43 cancelling an embed resets the health pill (no stuck Preparing to embed)', helper && ocrCancel && batchCancel && commitEnd, 'helper=' + helper + ' ocrCancel=' + ocrCancel + ' batchCancel=' + batchCancel + ' commitEnd=' + commitEnd)
+  } },
 ]
 
 ;(async () => {
