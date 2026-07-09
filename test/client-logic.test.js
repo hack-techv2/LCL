@@ -596,13 +596,43 @@ const CASES = [
     const noBanner = !S.includes('runPreviewOcr') && !src('body.html').includes('fp-scan-banner')
     check('C38 OCR 3-way dialog (same modal for embed + attach) + progress', dialog && prompt && embedWired && attachWired && progress && noBanner, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress + ' noBanner=' + noBanner)
   } },
-  { id: 'C39 health label: + OCR only when engine on + no redundant Ready line', fn: async () => {
-    const R = src('70-render.js'); const F = src('40-files.js'); const U = src('80-ui.js')
-    const cond = R.includes("ocrState() === 'ready'") && R.includes("base += ' + OCR'") && R.includes("let base = 'Chat'")
-    const refresh = F.includes("pill.classList.contains('ok')") && F.includes("setHealth('ok', connectedLabel())")
+  { id: 'C39 health pill omits OCR (chip owns it) + no redundant Ready line', fn: async () => {
+    const R = src('70-render.js'); const U = src('80-ui.js'); const F = src('40-files.js')
+    // Connection pill must NOT repeat OCR - the OCR chip already shows it (label + progress).
+    const noOcrLabel = !R.includes("+ OCR") && R.includes("'Chat + embed'")
+    const noPillProgress = !F.includes("setHealth('warn', 'OCR") && F.includes('setOcrProgress(i + 1, item.emptyPageNums.length)')
     // 'ready' maps to an empty status line (green 'On' toggle is enough), and it's hidden.
     const noReadyWord = U.includes('ready:') && U.includes("statusEl.style.display = label ? '' : 'none'")
-    check('C39 health label: + OCR only when engine on + no redundant Ready line', cond && refresh && noReadyWord, 'cond=' + cond + ' refresh=' + refresh + ' noReadyWord=' + noReadyWord)
+    check('C39 health pill omits OCR label + progress (chip owns it) + no redundant Ready line', noOcrLabel && noPillProgress && noReadyWord, 'noOcrLabel=' + noOcrLabel + ' noPillProgress=' + noPillProgress + ' noReadyWord=' + noReadyWord)
+  } },
+  { id: 'C40 OCR dialog redesign (stacked + chips + variants) + persist/auto-enable', fn: async () => {
+    const U = src('80-ui.js'); const F = src('40-files.js'); const T = src('tail.html')
+    // confirmDialog3 grows a stacked layout with variant buttons, sub-labels and a file chip.
+    const dialog = U.includes('cd3-btn cd3-') && U.includes('cd3-btn-sub') && U.includes('cd3-chip')
+    // promptOcr uses the new structure (stacked, chips, primary/secondary/ghost).
+    const prompt = F.includes('stacked: true') && F.includes('chips: scannedItems.map') && F.includes("variant: 'primary'") && F.includes("variant: 'ghost'")
+    // Preference persists + auto-enables on boot.
+    const persist = F.includes("localStorage.setItem('lcl_ocr_on', '1')") && F.includes("localStorage.setItem('lcl_ocr_on', '0')")
+    const autoEnable = F.includes('function autoEnableOcr(') && F.includes("localStorage.getItem('lcl_ocr_on') === '1'") && T.includes('autoEnableOcr()')
+    check('C40 OCR dialog redesign (stacked + chips + variants) + persist/auto-enable', dialog && prompt && persist && autoEnable, 'dialog=' + dialog + ' prompt=' + prompt + ' persist=' + persist + ' autoEnable=' + autoEnable)
+  } },
+  { id: 'C41 popup buttons share sizing (cd-ok primary, no full-width btn-p)', fn: async () => {
+    const U = src('80-ui.js'); const C = src('styles.css')
+    // Dialog primaries use the cd-ok chip (matches cd-cancel height), never the full-width btn-p.
+    const noBtnPInDialogs = !U.includes("'btn-p cd-ok'") && !U.includes("b.primary ? 'btn-p'") && U.includes("class: 'cd-ok'")
+    const cdOkStyled = C.includes('.cd-ok{') && C.includes('border:1px solid var(--ac)') && C.includes('.cd-acts{display:flex;justify-content:flex-end;align-items:center')
+    check('C41 popup buttons share sizing (cd-ok primary, no full-width btn-p)', noBtnPInDialogs && cdOkStyled, 'noBtnP=' + noBtnPInDialogs + ' cdOk=' + cdOkStyled)
+  } },
+  { id: 'C42 centered popups share one spec (16px corners, .5/6px backdrop)', fn: async () => {
+    const C = src('styles.css')
+    // Every centered box uses 16px corners + the shared modal shadow.
+    const corners = C.includes('border-radius:16px;padding:40px;width:440px;box-shadow:0 20px 60px var(--modal-shadow)') // .modal
+      && C.includes('border-radius:16px;padding:22px;width:380px') // .cd-box
+      && C.includes('border-radius:16px;width:min(560px,92vw)') // .search-box
+    // No more 55%/65% backdrops; the confirm overlay is now blurred like the rest.
+    const backdrops = !C.includes('background:rgba(0,0,0,.65)') && !C.includes('background:rgba(0,0,0,.55)')
+      && C.includes('z-index:10000;padding:20px;backdrop-filter:blur(6px)')
+    check('C42 centered popups share one spec (16px corners, .5/6px backdrop)', corners && backdrops, 'corners=' + corners + ' backdrops=' + backdrops)
   } },
 ]
 
