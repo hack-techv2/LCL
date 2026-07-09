@@ -655,6 +655,29 @@ function confirmDialog(opts) {
   })
 }
 
+// Themed multi-choice dialog. opts.buttons = [{ text, value, primary }]; resolves
+// to the chosen value, or opts.cancelValue on overlay-click / Escape. Reuses the
+// .cd-* styling; the message renders with line breaks (white-space:pre-line).
+function confirmDialog3(opts) {
+  opts = opts || {}
+  const cancelValue = (opts.cancelValue !== undefined) ? opts.cancelValue : 'cancel'
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(cancelValue) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    const btns = (opts.buttons || []).map(b => mkEl('button', { class: b.primary ? 'btn-p' : 'cd-cancel', onclick: () => finish(b.value) }, b.text))
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
+      mkEl('div', { class: 'cd-msg', style: 'white-space:pre-line' }, opts.message || ''),
+      mkEl('div', { class: 'cd-acts' }, btns)
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(cancelValue) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { (box.querySelector('.btn-p') || box.querySelector('button')).focus() } catch {} }, 0)
+  })
+}
+
 // Consolidated batch embed confirmation (alpha). One dialog for a multi-file
 // drop: per-file size + estimated time, all selected by default, live total.
 // Resolves to an array of selected doc ids, or null if cancelled.
@@ -957,14 +980,31 @@ function toggleRagInfo(e) {
 // dot; the click popover offers Test engine + Clear engine.
 function renderOcrChip() {
   const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
-  const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: 'Ready \u2014 engine cached', blocked: 'Unavailable \u2014 engine blocked' }
-  const label = labels[st] || labels.idle
+  const prog = (typeof ocrProgress === 'function') ? ocrProgress() : null
   const dot = document.getElementById('ocr-dot')
-  if (dot) dot.className = 'ocr-dot ocr-' + st
   const chip = document.getElementById('ocr-chip')
-  if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + label)
+  const lblEl = document.getElementById('ocr-chip-label')
   const statusEl = document.getElementById('ocr-status')
-  if (statusEl) statusEl.textContent = label
+  const tog = document.getElementById('ocr-toggle')
+  if (prog && prog.total) {
+    const p = 'Running OCR \u2014 ' + prog.done + '/' + prog.total
+    if (dot) dot.className = 'ocr-dot ocr-proc'
+    if (lblEl) lblEl.textContent = 'OCR ' + prog.done + '/' + prog.total
+    if (chip) chip.setAttribute('data-tip-bottom', p)
+    if (statusEl) statusEl.textContent = p
+  } else {
+    const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: 'Ready', blocked: 'Unavailable \u2014 engine blocked' }
+    const label = labels[st] || labels.idle
+    if (dot) dot.className = 'ocr-dot ocr-' + st
+    if (lblEl) lblEl.textContent = 'OCR'
+    if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + label)
+    if (statusEl) statusEl.textContent = label
+  }
+  if (tog) {
+    if (st === 'ready') { tog.textContent = 'Disable OCR'; tog.disabled = false }
+    else if (st === 'loading') { tog.textContent = 'Enabling\u2026'; tog.disabled = true }
+    else { tog.textContent = 'Enable OCR'; tog.disabled = false }
+  }
 }
 
 function toggleOcrInfo(e) {
