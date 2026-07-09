@@ -58,7 +58,7 @@ async function testEmbedConnection() {
     if (resultEl) { resultEl.style.color='var(--red)'; resultEl.textContent='Enter API key and model ID first.' }
     return
   }
-  if (resultEl) { resultEl.style.color='var(--tx3)'; resultEl.textContent='Testing...' }
+  if (resultEl) { resultEl.style.color='var(--tx3)'; resultEl.textContent='Testing…' }
   try {
     // /api/embed (single-shot) returns plain JSON. /api/embed/batch is SSE
     // and would make resp.json() throw — that was the previous bug here.
@@ -66,7 +66,7 @@ async function testEmbedConnection() {
     const data = await resp.json().catch(() => ({}))
     const vec = data.data?.[0]?.embedding || data.embedding
     if (resp.ok && Array.isArray(vec) && vec.length) {
-      if (resultEl) { resultEl.style.color='#4caf50'; resultEl.textContent='✓ Connected — '+vec.length+' dims' }
+      if (resultEl) { resultEl.style.color='var(--ok)'; resultEl.textContent='✓ Connected — '+vec.length+' dims' }
     } else {
       const msg = data.error?.message || data.error || ('HTTP '+resp.status)
       if (resultEl) { resultEl.style.color='var(--red)'; resultEl.textContent='✗ '+msg }
@@ -530,7 +530,7 @@ async function runOcrOnItems(scannedItems) {
     try { await ocrQueueItem(item); ocrOk++ }
     catch (e) { toast('OCR failed for ' + item.name + ': ' + e.message, 'err') }
   }
-  if (ocrOk) toast('OCR done - read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
+  if (ocrOk) toast('OCR done — read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
 }
 
 // Load the script + create ONE worker, reused across files and OCR runs.
@@ -539,7 +539,7 @@ async function ensureOcrWorker() {
   setOcrState('loading')
   try {
     if (!window.Tesseract) {
-      toast('Loading OCR engine (first use downloads it, ~15 MB)...', 'info')
+      toast('Loading OCR engine (first use downloads it, ~15 MB)…', 'info')
       await loadScript(TESSERACT_CDN)
     }
     // This tesseract.js (v4.1.x) createWorker takes a SINGLE options object as its
@@ -569,13 +569,13 @@ async function clearOcrEngine() {
   let cleared = false
   try { if (window.indexedDB) { indexedDB.deleteDatabase('keyval-store'); cleared = true } } catch (e) {}
   setOcrState('idle')
-  if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared - it re-downloads on next use' : 'OCR engine reset', 'ok')
+  if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared — it re-downloads on next use' : 'OCR engine reset', 'ok')
 }
 
 // Force the engine to load now (chip popover "Enable engine") so a blocked
 // download is surfaced before the user relies on it.
 async function enableOcrEngine() {
-  if (typeof toast === 'function') toast('Enabling OCR engine...', 'info')
+  if (typeof toast === 'function') toast('Enabling OCR engine…', 'info')
   try { await ensureOcrWorker(); if (typeof toast === 'function') toast('OCR engine ready', 'ok') }
   catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
 }
@@ -648,7 +648,7 @@ async function queueFilesForPreview(files, target) {
     previewQueue = valid.map(f => ({ name: f.name, size: f.size, extractedText: '', _extracting: true }))
     showFilePreview()
   } else {
-    if (typeof setHealth === 'function') setHealth('warn', 'Reading files...')
+    if (typeof setHealth === 'function') setHealth('warn', 'Reading files…')
   }
   for (let _i = 0; _i < valid.length; _i++) {
     const f = valid[_i]
@@ -688,7 +688,7 @@ async function queueFilesForPreview(files, target) {
   // Attach: back to ok. Docs: hand off to the embed flow without flashing green
   // ("Extracting 5/5" -> ok -> "Embedding" read as "done, usable" - it is not).
   if (typeof setHealth === 'function') {
-    if (progressive) setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    if (progressive) setHealth('ok', connectedLabel())
     else setHealth('warn', 'Preparing to embed…')
   }
   if (progressive && !previewQueue.length) { cancelFilePreview(); return }
@@ -1017,7 +1017,7 @@ function embedTrayFiles() {
 function healthIdle() {
   try {
     if (typeof embedsActive === 'function' && embedsActive()) return
-    if (typeof setHealth === 'function') setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    if (typeof setHealth === 'function') setHealth('ok', connectedLabel())
   } catch (e) {}
 }
 
@@ -1157,7 +1157,7 @@ async function embedDoc(doc, opts) {
     const { records, chunks, toEmbed, toEmbedIdx } = plan
     if (!records.length) {
       doc.chunks = []; doc.status = 'ready'
-      toast(doc.name + ' embedded - no text found', 'ok')
+      toast(doc.name + ' embedded — no text found', 'ok')
       renderDocPanel(); return
     }
     setHealth('warn', 'Embedding 0/' + records.length)
