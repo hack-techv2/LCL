@@ -18,10 +18,14 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  // OCR is intentionally NOT shown here - the OCR chip already shows its state,
-  // so repeating it in the connection pill is redundant.
+  // '+ OCR' shows when the engine is ON (ready). The live 'n/N' progress stays on
+  // the OCR chip only - the pill shows the steady on/off state, not the count.
+  const ocrOn = (typeof ocrState === 'function') && ocrState() === 'ready'
   const embed = !!(creds.embedApiKey && creds.embedModelId)
-  return (embed ? 'Chat + embed' : 'Chat') + (typeof endpointBadge === 'function' ? endpointBadge() : '')
+  let base = 'Chat'
+  if (ocrOn) base += ' + OCR'
+  if (embed) base += ' + embed'
+  return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
 // ---------------------------------------------------------------------------
