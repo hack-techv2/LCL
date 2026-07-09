@@ -627,10 +627,11 @@ const CASES = [
   } },
   { id: 'C42 centered popups share one spec (16px corners, .5/6px backdrop)', fn: async () => {
     const C = src('styles.css')
-    // Every centered box uses 16px corners + the shared modal shadow.
-    const corners = C.includes('border-radius:16px;padding:40px;width:440px;box-shadow:0 20px 60px var(--modal-shadow)') // .modal
-      && C.includes('border-radius:16px;padding:22px;width:380px') // .cd-box
-      && C.includes('border-radius:16px;width:min(560px,92vw)') // .search-box
+    // Every centered box uses the shared --r-modal (16px) corner token + modal shadow.
+    const corners = C.includes('--r-modal: 16px')
+      && C.includes('.modal{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);padding:40px') // .modal
+      && C.includes('.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);padding:22px') // .cd-box
+      && C.includes('.search-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);') // .search-box
     // No more 55%/65% backdrops; the confirm overlay is now blurred like the rest.
     const backdrops = !C.includes('background:rgba(0,0,0,.65)') && !C.includes('background:rgba(0,0,0,.55)')
       && C.includes('z-index:10000;padding:20px;backdrop-filter:blur(6px)')
@@ -645,6 +646,26 @@ const CASES = [
     const batchCancel = /Embedding cancelled[\s\S]{0,40}healthIdle\(\)/.test(F)
     const commitEnd = F.includes('updateDocsBtn(); healthIdle()')
     check('C43 cancelling an embed resets the health pill (no stuck Preparing to embed)', helper && ocrCancel && batchCancel && commitEnd, 'helper=' + helper + ' ocrCancel=' + ocrCancel + ' batchCancel=' + batchCancel + ' commitEnd=' + commitEnd)
+  } },
+  { id: 'C44 text polish: ellipsis + em-dash + middot separators', fn: async () => {
+    const F = src('40-files.js'); const Ra = src('15-rag.js'); const Rn = src('70-render.js'); const B = src('body.html')
+    // No three-dot ellipsis left in the touched user-facing strings.
+    const noDots = !F.includes("'Reading files...'") && !F.includes("'Testing...'") && !F.includes("Enabling OCR engine...'") && !Ra.includes("'Embedding... batch")
+    // Em-dash (not hyphen) in OCR + rate-limit messages.
+    const emdash = F.includes('OCR done — read') && Ra.includes('Rate limit — resuming in')
+    // Middot separators, not literal asterisks.
+    const middot = Rn.includes(" + ' · ' + fmtDate") && B.includes('Enter to send  ·  Shift+Enter')
+    check('C44 text polish: ellipsis + em-dash + middot separators', noDots && emdash && middot, 'noDots=' + noDots + ' emdash=' + emdash + ' middot=' + middot)
+  } },
+  { id: 'C45 colour tokens + danger class + modal radius token + no dead off state', fn: async () => {
+    const C = src('styles.css'); const A = src('20-auth.js'); const F = src('40-files.js')
+    // Ad-hoc greens/olive/pin/red literals consolidated onto tokens.
+    const noLiterals = !C.includes('#2ea44f') && !C.includes('#3B6D11') && !C.includes('.ocr-dot.ocr-loading{background:#f0a500}') && !C.includes('#e05050') && !F.includes("'#4caf50'")
+    // Shared danger button + modal radius token.
+    const struct = C.includes('.btn-danger{') && C.includes('--r-modal: 16px')
+    // Dead 'off' health state removed (it added a CSS class with no rule).
+    const noOff = !A.includes("setHealth('off'")
+    check('C45 colour tokens + danger class + modal radius token + no dead off state', noLiterals && struct && noOff, 'noLiterals=' + noLiterals + ' struct=' + struct + ' noOff=' + noOff)
   } },
 ]
 
