@@ -827,6 +827,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .ocr-dot.ocr-loading{background:#f0a500}
 .ocr-dot.ocr-ready{background:#2ea44f}
 .ocr-dot.ocr-blocked{background:var(--red)}
+.ocr-dot.ocr-proc{background:#f0a500;animation:ocrpulse 1s ease-in-out infinite}
+@keyframes ocrpulse{0%,100%{opacity:1}50%{opacity:.3}}
 .ocr-info{position:absolute;right:12px;top:52px;width:290px;z-index:60;margin:0;padding:13px 15px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12.5px;line-height:1.6;color:var(--tx2)}
 .ocr-info.hidden{display:none}
 .ocr-info p{margin:6px 0}
