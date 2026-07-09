@@ -3884,7 +3884,18 @@ let _ocrWorker = null            // shared Tesseract worker (created once, reuse
 let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
 
 function ocrState() { return _ocrState }
-function setOcrState(s) { _ocrState = s; if (typeof renderOcrChip === 'function') renderOcrChip() }
+function setOcrState(s) {
+  _ocrState = s
+  if (typeof renderOcrChip === 'function') renderOcrChip()
+  // Refresh the health pill's '+ OCR' segment when the engine flips on/off, but only
+  // while idle-connected (pill 'ok') so we never clobber a 'Reading'/'Embedding' status.
+  try {
+    const pill = document.getElementById('health-pill')
+    if (pill && pill.classList.contains('ok') && typeof creds !== 'undefined' && creds && typeof connectedLabel === 'function') {
+      setHealth('ok', connectedLabel())
+    }
+  } catch (e) {}
+}
 
 // Live per-run OCR progress for the chip (separate from engine-load state).
 let _ocrProg = null
@@ -6057,10 +6068,14 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  // OCR is intentionally NOT shown here - the OCR chip already shows its state,
-  // so repeating it in the connection pill is redundant.
+  // '+ OCR' shows when the engine is ON (ready). The live 'n/N' progress stays on
+  // the OCR chip only - the pill shows the steady on/off state, not the count.
+  const ocrOn = (typeof ocrState === 'function') && ocrState() === 'ready'
   const embed = !!(creds.embedApiKey && creds.embedModelId)
-  return (embed ? 'Chat + embed' : 'Chat') + (typeof endpointBadge === 'function' ? endpointBadge() : '')
+  let base = 'Chat'
+  if (ocrOn) base += ' + OCR'
+  if (embed) base += ' + embed'
+  return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
 // ---------------------------------------------------------------------------
