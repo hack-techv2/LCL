@@ -637,17 +637,17 @@ async function queueFilesForPreview(files, target) {
     if (gen !== _previewGen) return            // cancelled / superseded mid-extraction
     try {
       const extracted = await extractText(f)
-      const { text, scanWarning, pdfDoc, emptyPageNums, pages, structure, parseWarning } = extracted
+      const { text, scanWarning, pdfDoc, ocrFile, emptyPageNums, pages, structure, parseWarning } = extracted
       if (gen !== _previewGen) return
       if (progressive) {
         const idx = previewQueue.indexOf(rec)
         if (idx < 0) continue   // removed mid-extraction
-        Object.assign(rec, { extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure, _extracting: false })
+        Object.assign(rec, { extractedText: text, scanWarning, parseWarning, pdfDoc, ocrFile, emptyPageNums, pages, structure, _extracting: false })
         renderPreviewTabs()
         if (idx === previewTabIdx) selectPreviewTab(previewTabIdx)
         updateFpHint()
       } else {
-        previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, parseWarning, pdfDoc, emptyPageNums, pages, structure })
+        previewQueue.push({ name: f.name, size: f.size, extractedText: text, scanWarning, parseWarning, pdfDoc, ocrFile, emptyPageNums, pages, structure })
       }
       if (parseWarning) toast(f.name + ': ' + parseWarning, 'info')
     } catch (err) {
