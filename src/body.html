@@ -220,7 +220,7 @@
         <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
         <p id="ocr-status">Ready when needed</p>
         <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Text is read in your browser - nothing is uploaded to extract it.</p>
-        <div class="ocr-acts"><button type="button" class="btn-s" id="ocr-toggle" onclick="toggleOcrEngine()">Enable OCR</button></div>
+        <div class="ocr-acts"><span class="ocr-eng-lbl">OCR engine <span id="ocr-eng-state">Off</span></span><button type="button" id="ocr-toggle" class="ocr-switch" role="switch" aria-checked="false" aria-label="Toggle OCR engine" onclick="toggleOcrEngine()"><span class="ocr-knob"></span></button></div>
       </div>
     </div>
   </div>
