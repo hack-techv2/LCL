@@ -596,6 +596,14 @@ const CASES = [
     const noBanner = !S.includes('runPreviewOcr') && !src('body.html').includes('fp-scan-banner')
     check('C38 OCR 3-way dialog (same modal for embed + attach) + progress', dialog && prompt && embedWired && attachWired && progress && noBanner, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress + ' noBanner=' + noBanner)
   } },
+  { id: 'C39 health label: + OCR only when engine on + no redundant Ready line', fn: async () => {
+    const R = src('70-render.js'); const F = src('40-files.js'); const U = src('80-ui.js')
+    const cond = R.includes("ocrState() === 'ready'") && R.includes("base += ' + OCR'") && R.includes("let base = 'Chat'")
+    const refresh = F.includes("pill.classList.contains('ok')") && F.includes("setHealth('ok', connectedLabel())")
+    // 'ready' maps to an empty status line (green 'On' toggle is enough), and it's hidden.
+    const noReadyWord = U.includes('ready:') && U.includes("statusEl.style.display = label ? '' : 'none'")
+    check('C39 health label: + OCR only when engine on + no redundant Ready line', cond && refresh && noReadyWord, 'cond=' + cond + ' refresh=' + refresh + ' noReadyWord=' + noReadyWord)
+  } },
 ]
 
 ;(async () => {
