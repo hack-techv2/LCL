@@ -667,6 +667,13 @@ const CASES = [
     const noOff = !A.includes("setHealth('off'")
     check('C45 colour tokens + danger class + modal radius token + no dead off state', noLiterals && struct && noOff, 'noLiterals=' + noLiterals + ' struct=' + struct + ' noOff=' + noOff)
   } },
+  { id: 'C46 paste image into composer routes to the attach flow', fn: async () => {
+    const X = src('90-extras.js'); const T = src('tail.html')
+    // A paste listener pulls image files off the clipboard and hands them to handleAttach.
+    const fn = X.includes('function initPasteImages(') && X.includes("addEventListener('paste'") && X.includes("indexOf('image/') === 0") && X.includes('handleAttach(files)')
+    const wired = T.includes('initPasteImages()')
+    check('C46 paste image into composer routes to the attach flow', fn && wired, 'fn=' + fn + ' wired=' + wired)
+  } },
 ]
 
 ;(async () => {
