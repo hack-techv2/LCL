@@ -131,7 +131,7 @@ function chatItemEl(c) {
 
   const text = mkEl('div', { class: 'chat-item-text', title: title }, [
     mkEl('div', { class: 'chat-title' }, mkEl('span', { class: 'chat-title-inner' }, title)),
-    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' * ' + fmtDate(c.updatedAt))
+    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' · ' + fmtDate(c.updatedAt))
   ])
 
   const inner = mkEl('div', { class: 'chat-item-inner' }, [
@@ -438,7 +438,7 @@ function renderDocPanel() {
     const status = d.status || 'pending'
     const infKids = [
       mkEl('div', { class: 'doc-name' }, [ mkEl('span', { class: 'doc-name-inner' }, d.name) ]),
-      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
+      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' · ' + (d.chunks?.length || 0) + ' chunks'),
     ]
     if (status === 'embedding') {
       // Live progress bar driven by doc.embedProgress (set from embedBatch SSE).
