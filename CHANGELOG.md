@@ -9,6 +9,14 @@ CL's scanned PDFs never OCR'd. Root cause: tesseract.js defaults its language da
 
 - **Reachable engine:** `createWorker` now overrides only `langPath` -> `https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0` (the SAME language data, mirrored on the already-working jsDelivr CDN). A single PERSISTENT worker is created and reused (was create + terminate per file), with `cacheMethod:'none'` so it never touches IndexedDB — gov Edge "tracking prevention" blocks storage access for the CDN worker (surfaces as an opaque `Script error. 0:0` that broke OCR mid-run), so the language data loads into memory once per session instead of caching. Also: the worker is created and then explicitly `loadLanguage('eng')` + `initialize('eng',1)` — this Tesseract build's one-shot `createWorker('eng',…)` form does NOT initialise the core, so recognize threw `Cannot read properties of null (reading 'SetImageFile')` and OCR never actually ran. Verified end-to-end in-browser (recognises real text now). Follow-up: `langPath` must be passed in createWorker's FIRST-arg options object (`createWorker({ langPath, cacheMethod:'none' })`) - passing it as a later arg was ignored, so it fell back to the default tessdata host which the gov proxy serves without CORS (`No 'Access-Control-Allow-Origin'`); confirmed the traineddata now loads from jsDelivr.
 
+## 9 Jul 2026 - OCR UX: attach-flow OCR, 3-way dialog, one-button toggle, chip progress (alpha)
+
+- **OCR on file upload (attach), not just embed:** the attach preview's Confirm now offers OCR for scanned files, same as the embed flow (previously attach never OCR'd, so an attached scan carried no text).
+- **3-way OCR dialog** (new themed `confirmDialog3`): **Run OCR + embed/attach** / **Embed (Attach) without OCR** / **Cancel** (a real abort) - replaces the native OK/Cancel where "Cancel" ambiguously meant "embed without OCR".
+- **One OCR toggle** in the chip popover - `Enable OCR` / `Disable OCR` / `Enabling…` (state-aware `toggleOcrEngine()`) - replacing the separate Enable + Clear buttons.
+- **Live OCR progress on the chip:** while OCR runs, the dot pulses amber and the chip reads `OCR 3/19` (in addition to the health pill), clearing when done.
+- Tests **C37** (toggle) + **C38** (3-way dialog + progress + attach wiring). Suites 40/40 + 36/36, build 5/5. Verified live in #demo.
+
 ## 9 Jul 2026 - Streamlined upload / OCR / embed messages (alpha)
 
 Cut the toast noise in the file flow: dropped the per-OCR-page toast (a 19-page scan spammed 19 toasts) and the per-file embed start/done toasts in favour of the health-pill progress plus one summary each (`OCR done - read N file(s)`, `Embedded N file(s), M chunks`). Standardised the extraction verb to "Reading", simplified + de-staled the OCR prompt, and reworded the empty-scan case to `<file> embedded - no text found`. Per-file doc-panel status rows are unchanged. A 19-page scan now shows ~4 messages instead of ~40. Suites 40/40 + 35/35, build 5/5.
