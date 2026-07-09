@@ -641,7 +641,7 @@ function confirmDialog(opts) {
     let done = false
     const onKey = e => { if (e.key === 'Escape') finish(false); else if (e.key === 'Enter') finish(true) }
     function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
-    const ok = mkEl('button', { class: 'btn-p cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
+    const ok = mkEl('button', { class: 'cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
     const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(false) }, opts.cancelText || 'Cancel')
     const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
       mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
@@ -661,20 +661,40 @@ function confirmDialog(opts) {
 function confirmDialog3(opts) {
   opts = opts || {}
   const cancelValue = (opts.cancelValue !== undefined) ? opts.cancelValue : 'cancel'
+  const stacked = !!opts.stacked
+  const FILE_IC = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5H4A1.5 1.5 0 002.5 3v10A1.5 1.5 0 004 14.5h8a1.5 1.5 0 001.5-1.5V6z"/><path d="M9 1.5V6h4.5"/><path d="M5.5 8.5h5"/><path d="M5.5 11h5"/></svg>'
   return new Promise(resolve => {
     let done = false
     const onKey = e => { if (e.key === 'Escape') finish(cancelValue) }
     function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
-    const btns = (opts.buttons || []).map(b => mkEl('button', { class: b.primary ? 'btn-p' : 'cd-cancel', onclick: () => finish(b.value) }, b.text))
-    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+    // Buttons: stacked layout uses variant classes (primary/secondary/ghost) with
+    // optional sub-label; the legacy row layout keeps btn-p / cd-cancel.
+    const btns = (opts.buttons || []).map(b => {
+      if (stacked) {
+        const variant = b.variant || (b.primary ? 'primary' : 'secondary')
+        const kids = [mkEl('span', { class: 'cd3-btn-t' }, b.text)]
+        if (b.sub) kids.push(mkEl('span', { class: 'cd3-btn-sub' }, b.sub))
+        return mkEl('button', { class: 'cd3-btn cd3-' + variant, onclick: () => finish(b.value) }, kids)
+      }
+      return mkEl('button', { class: b.primary ? 'cd-ok' : 'cd-cancel', onclick: () => finish(b.value) }, b.text)
+    })
+    const kids = [
       mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
-      mkEl('div', { class: 'cd-msg', style: 'white-space:pre-line' }, opts.message || ''),
-      mkEl('div', { class: 'cd-acts' }, btns)
-    ])
+      mkEl('div', { class: 'cd-msg', style: 'white-space:pre-line' + (opts.chips && opts.chips.length ? ';margin-bottom:12px' : '') }, opts.message || '')
+    ]
+    if (opts.chips && opts.chips.length) {
+      kids.push(mkEl('div', { class: 'cd3-chips' }, opts.chips.map(name => mkEl('div', { class: 'cd3-chip' }, [
+        mkEl('span', { class: 'cd3-chip-ic', 'aria-hidden': 'true', html: FILE_IC }),
+        mkEl('span', { class: 'cd3-chip-name' }, name),
+        mkEl('span', { class: 'cd3-chip-tag' }, 'scanned')
+      ]))))
+    }
+    kids.push(mkEl('div', { class: stacked ? 'cd3-acts' : 'cd-acts' }, btns))
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, kids)
     const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(cancelValue) } }, [box])
     document.body.appendChild(ov)
     document.addEventListener('keydown', onKey)
-    setTimeout(() => { try { (box.querySelector('.btn-p') || box.querySelector('button')).focus() } catch {} }, 0)
+    setTimeout(() => { try { (box.querySelector('.cd3-primary') || box.querySelector('.btn-p') || box.querySelector('button')).focus() } catch {} }, 0)
   })
 }
 
@@ -690,7 +710,7 @@ function confirmEmbedBatch(plans, caps) {
     function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
 
     const totalLbl = mkEl('span', { class: 'eb-total' })
-    const okBtn = mkEl('button', { class: 'btn-p', onclick: () => { const ids = items.filter(i => i.sel).map(i => i.id); finish(ids.length ? ids : null) } })
+    const okBtn = mkEl('button', { class: 'cd-ok', onclick: () => { const ids = items.filter(i => i.sel).map(i => i.id); finish(ids.length ? ids : null) } })
     const cancelBtn = mkEl('button', { class: 'cd-cancel', onclick: () => finish(null) }, 'Cancel')
 
     function refresh() {
