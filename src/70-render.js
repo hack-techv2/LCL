@@ -18,7 +18,13 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  const base = (creds.embedApiKey && creds.embedModelId) ? 'Chat + OCR + embed' : 'Chat + OCR'
+  // '+ OCR' only when the engine is actually ON (ready); it's an opt-in toggle,
+  // so advertising it while off is misleading.
+  const ocrOn = (typeof ocrState === 'function') && ocrState() === 'ready'
+  const embed = !!(creds.embedApiKey && creds.embedModelId)
+  let base = 'Chat'
+  if (ocrOn) base += ' + OCR'
+  if (embed) base += ' + embed'
   return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
