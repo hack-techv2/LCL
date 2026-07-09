@@ -590,9 +590,11 @@ const CASES = [
     const dialog = U.includes('function confirmDialog3(')
     const prompt = S.includes('async function promptOcr(') && S.includes("value: 'ocr'") && S.includes("value: 'plain'") && S.includes("value: 'cancel'")
     const embedWired = S.includes("promptOcr(scannedItems, 'embed')")
-    const attachWired = S.includes("target === 'docs' ? 'embed' : 'attach'")
+    const attachWired = S.includes("promptOcr(scannedItems, 'attach')")
     const progress = S.includes('function setOcrProgress(') && S.includes('setOcrProgress(i + 1, item.emptyPageNums.length)')
-    check('C38 OCR 3-way dialog + progress + attach wiring', dialog && prompt && embedWired && attachWired && progress, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress)
+    // Same modal for embed AND upload: OCR offered up-front on extraction; no confirm-time prompt, no banner.
+    const noBanner = !S.includes('runPreviewOcr') && !src('body.html').includes('fp-scan-banner')
+    check('C38 OCR 3-way dialog (same modal for embed + attach) + progress', dialog && prompt && embedWired && attachWired && progress && noBanner, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress + ' noBanner=' + noBanner)
   } },
 ]
 
