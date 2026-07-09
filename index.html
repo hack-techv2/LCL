@@ -29,6 +29,7 @@
   --r-input: 10px;
   --r-card:  14px;
   --r-pill:  999px;
+  --r-modal: 16px;
   --mono:    'JetBrains Mono', monospace;
   --sans:    'Inter', sans-serif;
   --display: 'Space Grotesk', 'Inter', sans-serif;
@@ -101,7 +102,7 @@ body{font-family:var(--sans);background:var(--body-gradient),var(--bg);backgroun
 /* ---- Connect overlay ---- */
 #modal-bd{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(6px)}
 #modal-bd.hidden{display:none}
-.modal{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;padding:40px;width:440px;box-shadow:0 20px 60px var(--modal-shadow);position:relative}
+.modal{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);padding:40px;width:440px;box-shadow:0 20px 60px var(--modal-shadow);position:relative}
 
 .modal-close{position:absolute !important;top:16px !important;right:16px !important;left:auto !important;width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:10}
 .modal-close:hover{background:var(--bg4);color:var(--tx);border-color:var(--bdr2)}
@@ -242,7 +243,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 /* Search modal */
 #search-bd{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;z-index:150;backdrop-filter:blur(6px);padding-top:12vh}
 #search-bd.hidden{display:none}
-.search-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:min(560px,92vw);max-height:70vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px var(--modal-shadow)}
+.search-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);width:min(560px,92vw);max-height:70vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px var(--modal-shadow)}
 .search-inp{width:100%;padding:14px 16px;border:none;border-bottom:1px solid var(--bdr);background:transparent;color:var(--tx);font-family:var(--sans);font-size:15px;outline:none}
 .search-results{overflow-y:auto;flex:1}
 .search-empty{padding:24px 16px;text-align:center;color:var(--tx3);font-size:12px;font-family:var(--mono)}
@@ -255,7 +256,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 
 /* Send-button stop state */
 .ib.send.stopping{background:var(--red)!important}
-.ib.send.stopping:hover{background:#c0392b!important}
+.ib.send.stopping:hover{background:color-mix(in srgb, var(--red) 82%, #000)!important}
 
 /* Msg-level action buttons (regen/edit) */
 .msg-acts .mact.danger:hover{color:var(--red)}
@@ -365,7 +366,7 @@ body.sb-collapsed .chat-item.active .chat-avatar{color:var(--ac)}
 .doc-name{font-size:11.5px;font-weight:500;color:var(--ac-tx);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .doc-sz{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-top:2px}
 .doc-st{font-size:10px;font-family:var(--mono);margin-top:3px;display:inline-block;padding:2px 8px;border-radius:999px}
-.doc-st.ready{background:rgba(99,153,34,.14);color:#3B6D11}
+.doc-st.ready{background:color-mix(in srgb, var(--ok) 15%, transparent);color:var(--ok)}
 .doc-st.pending{background:rgba(255,200,0,.1);color:var(--pin-tx)}
 .doc-st.error{background:var(--redbg);color:var(--red)}
 .doc-del{font-size:12px;color:var(--tx3);cursor:pointer;padding:2px 4px;border-radius:3px;transition:all .12s;background:none;border:none;flex-shrink:0}
@@ -419,7 +420,7 @@ body.sb-collapsed .rail-btn{flex:0 0 38px;width:38px;height:38px}
 body.sb-collapsed .rail-btn[data-tip]:hover::after{bottom:auto;top:50%;left:calc(100% + 9px);right:auto;transform:translateY(-50%)}
 body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;backdrop-filter:blur(6px)}
-.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;padding:22px;width:380px;max-width:100%;box-shadow:0 20px 60px var(--modal-shadow)}
+.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);padding:22px;width:380px;max-width:100%;box-shadow:0 20px 60px var(--modal-shadow)}
 .cd-title{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--tx)}
 .cd-msg{font-size:13px;line-height:1.55;color:var(--tx2);margin-bottom:18px}
 .cd-acts{display:flex;justify-content:flex-end;align-items:center;gap:8px}
@@ -498,7 +499,7 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 #skills-mgr.hidden{display:none}
 #skill-edit-bd{position:fixed;inset:0;background:var(--modal-shadow);display:flex;align-items:center;justify-content:center;z-index:1100}
 #skill-edit-bd.hidden{display:none}
-.sp-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;width:480px;max-height:84vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px var(--modal-shadow);position:relative;scrollbar-color:var(--ac) transparent;scrollbar-width:thin}
+.sp-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);width:480px;max-height:84vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px var(--modal-shadow);position:relative;scrollbar-color:var(--ac) transparent;scrollbar-width:thin}
 .sp-box::-webkit-scrollbar{width:6px}
 .sp-box::-webkit-scrollbar-track{background:transparent}
 .sp-box::-webkit-scrollbar-thumb{background:var(--ac);border-radius:3px;background-clip:padding-box}
@@ -572,6 +573,8 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .btn-s:hover{color:var(--tx)}
 .btn-sv{padding:8px 16px;background:var(--ac);border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:background .12s}
 .btn-sv:hover{background:var(--ac2)}
+.btn-danger{color:var(--red);border-color:rgba(231,76,60,.35)}
+.btn-danger:hover{background:var(--redbg);color:var(--red);border-color:var(--red)}
 
 /* Rename input inline */
 .rename-input{background:var(--bg4);border:1px solid var(--ac);border-radius:4px;color:var(--tx);font-family:var(--sans);font-size:13px;padding:2px 6px;outline:none;width:100%}
@@ -651,7 +654,7 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .fp-row-name{flex:1;overflow-wrap:anywhere}
 .fp-row-meta{font-size:10px;color:var(--tx2);white-space:nowrap}
 .fp-row-x{color:var(--tx3);cursor:pointer;padding:0 2px;flex-shrink:0}
-.fp-row-x:hover{color:#e05050}
+.fp-row-x:hover{color:var(--red)}
 .fp-oversize{padding:8px 14px;border-bottom:1px solid var(--bdr);background:var(--bg3);flex-shrink:0}
 .fp-oversize.hidden{display:none}
 #fp-embed-btn.hidden{display:none}
@@ -670,7 +673,7 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 #attach-tray.over .at-chip{color:var(--pin);border-color:rgba(240,165,0,.45)}
 .at-tok{opacity:.65}
 .at-x{cursor:pointer;font-weight:600;padding:0 2px}
-.at-x:hover{color:#e05050}
+.at-x:hover{color:var(--red)}
 .at-add{display:inline-flex;align-items:center;font-size:11px;color:var(--info);border:1px dashed color-mix(in srgb, var(--info) 50%, transparent);border-radius:999px;padding:3px 10px;cursor:pointer}
 .at-embed{font-size:11px;padding:3px 12px}
 .at-clear{font-size:10px;font-weight:400;color:var(--tx2);cursor:pointer;text-decoration:underline dotted;margin-right:2px}
@@ -679,7 +682,7 @@ body.not-connected #input-wrap{opacity:.5;pointer-events:none}
 .at-min{cursor:pointer;font-weight:700;font-size:13px;line-height:1;padding:0 4px;user-select:none}
 .at-min:hover{color:var(--tx)}
 #attach-tray.min .at-head{margin-bottom:0}
-.at-clear:hover{color:#e05050}
+.at-clear:hover{color:var(--red)}
 .dp-count{font-family:var(--mono);font-size:10px;color:var(--ac-tx);background:var(--acbg);border-radius:999px;padding:1px 7px;flex-shrink:0}
 .dp-upload-sm{width:20px;height:20px;border:1px solid var(--bdr2);color:var(--ac);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;margin:0 2px;flex-shrink:0}
 .dp-upload-sm:hover{border-color:var(--ac)}
@@ -755,7 +758,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .gw-note{font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.5}
 #gw-emb-banner{display:flex;align-items:center;gap:12px;border-radius:10px;padding:12px 14px;margin:-2px 0 14px;border:1px solid var(--bdr2);background:var(--bg3)}
 #gw-emb-banner.hidden{display:none}
-.gwb-dot{width:10px;height:10px;border-radius:50%;background:#2ea44f;flex-shrink:0}
+.gwb-dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex-shrink:0}
 .gwb-title{font-size:14px;font-weight:700;color:var(--tx)}
 .gwb-url{font-family:var(--mono);font-size:11.5px;color:var(--tx2);word-break:break-all;margin-top:2px}
 #gw-emb-banner.gw-kepler{background:var(--acbg);border-color:color-mix(in srgb, var(--ac) 40%, transparent)}
@@ -863,10 +866,10 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .tb-ocr svg{opacity:.85}
 .ocr-dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);display:inline-block}
 .ocr-dot.ocr-idle{background:var(--tx3)}
-.ocr-dot.ocr-loading{background:#f0a500}
-.ocr-dot.ocr-ready{background:#2ea44f}
+.ocr-dot.ocr-loading{background:var(--pin)}
+.ocr-dot.ocr-ready{background:var(--ok)}
 .ocr-dot.ocr-blocked{background:var(--red)}
-.ocr-dot.ocr-proc{background:#f0a500;animation:ocrpulse 1s ease-in-out infinite}
+.ocr-dot.ocr-proc{background:var(--pin);animation:ocrpulse 1s ease-in-out infinite}
 @keyframes ocrpulse{0%,100%{opacity:1}50%{opacity:.3}}
 .ocr-info{position:absolute;right:12px;top:52px;width:290px;z-index:60;margin:0;padding:13px 15px;background:var(--bg3);border:1px solid var(--bdr);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-size:12.5px;line-height:1.6;color:var(--tx2)}
 .ocr-info.hidden{display:none}
@@ -874,10 +877,10 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .ocr-acts{display:flex;gap:8px;margin-top:12px;align-items:center;justify-content:space-between;border-top:1px solid var(--bdr);padding-top:10px}
 .ocr-eng-lbl{font-size:12.5px;color:var(--tx)}
 .ocr-eng-lbl #ocr-eng-state{color:var(--tx3);font-size:11px;margin-left:4px}
-.ocr-eng-lbl #ocr-eng-state.on{color:#2ea44f}
+.ocr-eng-lbl #ocr-eng-state.on{color:var(--ok)}
 .ocr-switch{width:40px;height:22px;border-radius:999px;background:var(--bdr2);border:none;position:relative;cursor:pointer;padding:0;flex-shrink:0;transition:background .15s}
 .ocr-switch .ocr-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#c7cdd8;transition:left .15s}
-.ocr-switch.on{background:#2ea44f}
+.ocr-switch.on{background:var(--ok)}
 .ocr-switch.on .ocr-knob{left:20px;background:#fff}
 .ocr-switch:disabled{opacity:.6;cursor:default}
 
@@ -988,7 +991,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
     <div class="sp-pane" data-pane="settings"><div class="sp-sec" data-sec="defaults">
       <div class="sp-lbl">Defaults</div>
       <div class="sp-cap">Applied to every message in every chat.</div>
-      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
+      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant…"></textarea></div>
       <div class="sf">
         <div class="sf-head"><label>Max Tokens</label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
@@ -1001,7 +1004,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
       </div>
-      <button class="btn-s" onclick="closeSP(); disconnect()" style="width:100%;border-color:rgba(231,76,60,.35);color:var(--red);display:flex;align-items:center;justify-content:center;gap:6px">
+      <button class="btn-s btn-danger" onclick="closeSP(); disconnect()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
@@ -1053,9 +1056,9 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 <!-- Search overlay -->
 <div id="search-bd" class="hidden" onclick="if(event.target===this)closeSearch()">
   <div class="search-box">
-    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats..." oninput="runSearch()" onkeydown="handleSearchKey(event)">
+    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats…" oninput="runSearch()" onkeydown="handleSearchKey(event)">
     <div id="search-results" class="search-results"></div>
-    <div class="search-foot">Enter to open  *  Esc to close</div>
+    <div class="search-foot">Enter to open  ·  Esc to close</div>
   </div>
 </div>
 
@@ -1114,7 +1117,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
       <div id="ocr-info" class="ocr-info hidden">
         <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
         <p id="ocr-status">Ready when needed</p>
-        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF...). Everything happens locally in your browser - nothing is uploaded to extract the text, and you can keep using LCL while OCR runs.</p>
+        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF…). Everything happens locally in your browser — nothing is uploaded to extract the text, and you can keep using LCL while OCR runs.</p>
         <div class="ocr-acts"><span class="ocr-eng-lbl">OCR engine <span id="ocr-eng-state">Off</span></span><button type="button" id="ocr-toggle" class="ocr-switch" role="switch" aria-checked="false" aria-label="Toggle OCR engine" onclick="toggleOcrEngine()"><span class="ocr-knob"></span></button></div>
       </div>
     </div>
@@ -1161,7 +1164,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
           <div class="skill-chip" id="skill-chip"></div>
           <div class="chips" id="chips"></div>
           <div class="input-box">
-            <textarea id="msg-in" placeholder="Message LCL..." rows="1"
+            <textarea id="msg-in" placeholder="Message LCL…" rows="1"
               onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
             <div class="in-row">
               <label class="ib" data-tip="Attach file to this message">
@@ -1177,7 +1180,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
               </button>
             </div>
           </div>
-          <div class="input-hint">Enter to send  *  Shift+Enter for newline</div>
+          <div class="input-hint">Enter to send  ·  Shift+Enter for newline</div>
         </div>
       </div>
     </div>
@@ -2230,7 +2233,7 @@ async function embedBatch(texts, onProgress, shouldAbort) {
               onProgress({ state: 'embedding', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal })
             } else {
               const prefix = groupTotal > 1 ? ('Group ' + groupNum + '/' + groupTotal + ' - ') : ''
-              toast(prefix + 'Embedding... batch ' + evt.batchDone + '/' + evt.batchTotal
+              toast(prefix + 'Embedding… batch ' + evt.batchDone + '/' + evt.batchTotal
                 + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
             }
             if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
@@ -2238,10 +2241,10 @@ async function embedBatch(texts, onProgress, shouldAbort) {
             if (onProgress) {
               onProgress({ state: 'pacing', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
             } else {
-              toast('API rate limit reached - resuming batch embedding in ~' + evt.waitSec + 's'
+              toast('API rate limit reached — resuming batch embedding in ~' + evt.waitSec + 's'
                 + ' (' + evt.done + '/' + evt.total + ' done)', 'info')
             }
-            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit - resuming in ' + evt.waitSec + 's')
+            if (typeof setHealth === 'function') setHealth('warn', 'Rate limit — resuming in ' + evt.waitSec + 's')
           } else if (evt.type === 'done') {
             settled = true
             const embeddings = extractEmbeddingsFromAnyJson(evt)
@@ -2872,7 +2875,7 @@ async function retrieveRagChunks(query, docs, topK, stickyChunks) {
     best = packContextChunks([...selected, ...carried], CFG.CONTEXT_MAX_CHARS)
 
     if (round >= maxRounds || contextLooksSufficient(query, best)) break
-    toast('Retrieved context looks thin — pulling more chunks...', 'info')
+    toast('Retrieved context looks thin — pulling more chunks…', 'info')
   }
   return best
 }
@@ -3161,7 +3164,7 @@ async function connect() {
     const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
     const dErr = document.getElementById('modal-err'), dBtn = document.getElementById('connect-btn')
     if (dErr) dErr.classList.remove('show')
-    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting...' }
+    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting…' }
     setHealth('warn','Connecting')
     try {
       const r = await httpPost('/api/chat', { apiKey: DEMOKEY_CLIENT, modelId: model, payload: { messages:[{role:'user',content:'Hi'}], max_tokens:16, stream:false } })
@@ -3182,7 +3185,7 @@ async function connect() {
   errEl.classList.remove('show'); errEl.textContent = ''
   if (!apiKey) { errEl.textContent='API key required'; errEl.classList.add('show'); return }
 
-  btn.disabled = true; btn.textContent = 'Connecting...'
+  btn.disabled = true; btn.textContent = 'Connecting…'
   setHealth('warn', 'Connecting')
   try {
     // Escalate max_tokens until the model accepts it (1 → 16 → 32).
@@ -3205,7 +3208,7 @@ async function connect() {
       if (r.status === 401 || r.status === 403) break
       // On last budget, fall through to error reporting below
       if (ti < tokenBudgets.length - 1 && (r.status === 400 || r.status === 422)) {
-        btn.textContent = 'Retrying...'
+        btn.textContent = 'Retrying…'
         continue
       }
       break
@@ -3267,7 +3270,7 @@ async function disconnect() {
   // prefers /api/config over D.settings, so a stale config would silently
   // auto-reconnect on next launch. Push blank credentials to wipe it.
   await saveSettings({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' })
-  setHealth('off', 'Not connected')
+  setHealth('', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
 }
@@ -3474,7 +3477,7 @@ async function testEmbedConnection() {
     if (resultEl) { resultEl.style.color='var(--red)'; resultEl.textContent='Enter API key and model ID first.' }
     return
   }
-  if (resultEl) { resultEl.style.color='var(--tx3)'; resultEl.textContent='Testing...' }
+  if (resultEl) { resultEl.style.color='var(--tx3)'; resultEl.textContent='Testing…' }
   try {
     // /api/embed (single-shot) returns plain JSON. /api/embed/batch is SSE
     // and would make resp.json() throw — that was the previous bug here.
@@ -3482,7 +3485,7 @@ async function testEmbedConnection() {
     const data = await resp.json().catch(() => ({}))
     const vec = data.data?.[0]?.embedding || data.embedding
     if (resp.ok && Array.isArray(vec) && vec.length) {
-      if (resultEl) { resultEl.style.color='#4caf50'; resultEl.textContent='✓ Connected — '+vec.length+' dims' }
+      if (resultEl) { resultEl.style.color='var(--ok)'; resultEl.textContent='✓ Connected — '+vec.length+' dims' }
     } else {
       const msg = data.error?.message || data.error || ('HTTP '+resp.status)
       if (resultEl) { resultEl.style.color='var(--red)'; resultEl.textContent='✗ '+msg }
@@ -3946,7 +3949,7 @@ async function runOcrOnItems(scannedItems) {
     try { await ocrQueueItem(item); ocrOk++ }
     catch (e) { toast('OCR failed for ' + item.name + ': ' + e.message, 'err') }
   }
-  if (ocrOk) toast('OCR done - read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
+  if (ocrOk) toast('OCR done — read ' + ocrOk + ' file' + (ocrOk > 1 ? 's' : ''), 'ok')
 }
 
 // Load the script + create ONE worker, reused across files and OCR runs.
@@ -3955,7 +3958,7 @@ async function ensureOcrWorker() {
   setOcrState('loading')
   try {
     if (!window.Tesseract) {
-      toast('Loading OCR engine (first use downloads it, ~15 MB)...', 'info')
+      toast('Loading OCR engine (first use downloads it, ~15 MB)…', 'info')
       await loadScript(TESSERACT_CDN)
     }
     // This tesseract.js (v4.1.x) createWorker takes a SINGLE options object as its
@@ -3985,13 +3988,13 @@ async function clearOcrEngine() {
   let cleared = false
   try { if (window.indexedDB) { indexedDB.deleteDatabase('keyval-store'); cleared = true } } catch (e) {}
   setOcrState('idle')
-  if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared - it re-downloads on next use' : 'OCR engine reset', 'ok')
+  if (typeof toast === 'function') toast(cleared ? 'OCR engine cleared — it re-downloads on next use' : 'OCR engine reset', 'ok')
 }
 
 // Force the engine to load now (chip popover "Enable engine") so a blocked
 // download is surfaced before the user relies on it.
 async function enableOcrEngine() {
-  if (typeof toast === 'function') toast('Enabling OCR engine...', 'info')
+  if (typeof toast === 'function') toast('Enabling OCR engine…', 'info')
   try { await ensureOcrWorker(); if (typeof toast === 'function') toast('OCR engine ready', 'ok') }
   catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
 }
@@ -4064,7 +4067,7 @@ async function queueFilesForPreview(files, target) {
     previewQueue = valid.map(f => ({ name: f.name, size: f.size, extractedText: '', _extracting: true }))
     showFilePreview()
   } else {
-    if (typeof setHealth === 'function') setHealth('warn', 'Reading files...')
+    if (typeof setHealth === 'function') setHealth('warn', 'Reading files…')
   }
   for (let _i = 0; _i < valid.length; _i++) {
     const f = valid[_i]
@@ -4104,7 +4107,7 @@ async function queueFilesForPreview(files, target) {
   // Attach: back to ok. Docs: hand off to the embed flow without flashing green
   // ("Extracting 5/5" -> ok -> "Embedding" read as "done, usable" - it is not).
   if (typeof setHealth === 'function') {
-    if (progressive) setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    if (progressive) setHealth('ok', connectedLabel())
     else setHealth('warn', 'Preparing to embed…')
   }
   if (progressive && !previewQueue.length) { cancelFilePreview(); return }
@@ -4433,7 +4436,7 @@ function embedTrayFiles() {
 function healthIdle() {
   try {
     if (typeof embedsActive === 'function' && embedsActive()) return
-    if (typeof setHealth === 'function') setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    if (typeof setHealth === 'function') setHealth('ok', connectedLabel())
   } catch (e) {}
 }
 
@@ -4573,7 +4576,7 @@ async function embedDoc(doc, opts) {
     const { records, chunks, toEmbed, toEmbedIdx } = plan
     if (!records.length) {
       doc.chunks = []; doc.status = 'ready'
-      toast(doc.name + ' embedded - no text found', 'ok')
+      toast(doc.name + ' embedded — no text found', 'ok')
       renderDocPanel(); return
     }
     setHealth('warn', 'Embedding 0/' + records.length)
@@ -4977,7 +4980,7 @@ async function send() {
 
   // auto-title after first message
   if (!chat.messages.length) {
-    chat.title = text.slice(0,42)+(text.length>42?'...':'')
+    chat.title = text.slice(0,42)+(text.length>42?'…':'')
   }
 
   const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
@@ -5773,14 +5776,14 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   }
   for (let p = 0; p < parts.length; p++) {
     if (signal && signal.aborted) return null
-    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' - ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '..._')
+    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' \u2014 ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '…_')
     const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], partInstr, liveEl, signal, depth + 1)
     if (s == null) return null
     partSummaries.push('Part ' + (p + 1) + ': ' + s)
     if (doneEl) doneEl.innerHTML = fmt(partSummaries.join('\n\n'))
     if (liveEl) liveEl.innerHTML = ''
   }
-  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + (summaryAsk ? ' part-summaries..._' : ' part-extracts..._'))
+  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + (summaryAsk ? ' part-summaries…_' : ' part-extracts…_'))
   // Reduce: answer the ORIGINAL request from the extracts (or combine summaries).
   const combineInstr = summaryAsk
     ? 'Combine these part-summaries into one cohesive summary of the whole document.'
@@ -5825,7 +5828,7 @@ async function runSplitSummaries(chat, docs, instruction) {
       const header = '**' + doc.name + '** - ' + kindWord + ' (' + (i + 1) + ' of ' + docs.length + ')\n\n'
       const bubble = appendMsg('ai', '', null, [doc.name])
       const bodyEl = bubble.querySelector('.msg-body')
-      if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising..._' : '_Working..._'))
+      if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising…_' : '_Working…_'))
       await waitForEmbedsIdle(bodyEl, header, signal)
       let summary = null
       try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
@@ -5841,7 +5844,7 @@ async function runSplitSummaries(chat, docs, instruction) {
       try { await persist() } catch (e) {}
       if (!signal.aborted && i < docs.length - 1) await abortableSleep(1200, signal)
     }
-    setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+    setHealth('ok', connectedLabel())
   } catch (e) {
     setHealth('err', 'Summary failed')
   } finally {
@@ -5926,7 +5929,7 @@ async function continueTruncated(event) {
         msg.truncated = (r.finish === 'length')
         chat.updatedAt = Date.now()
         try { await persist() } catch (e) {}
-        setHealth('ok', (typeof connectedLabel === 'function') ? connectedLabel() : 'Ready')
+        setHealth('ok', connectedLabel())
         return
       }
       if (r.kind === 'ratelimit') {
@@ -5960,7 +5963,7 @@ function statusBox(tone, title, bodyHtml, opts) {
   opts = opts || {}
   const c = tone === 'warn'
     ? { bg: 'var(--pinbg)',            border: 'rgba(240,165,0,.35)', fg: 'var(--pin)' }
-    : { bg: 'rgba(220,60,60,.08)',     border: 'rgba(220,60,60,.3)',  fg: '#e05050'   }
+    : { bg: 'var(--redbg)',            border: 'rgba(231,76,60,.35)', fg: 'var(--red)' }
   const icon = STATUS_ICON[opts.icon || (tone === 'warn' ? 'clock' : 'err')] || ''
   const cancel = opts.cancel
     ? '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px" onclick="' + opts.cancel + '">Cancel retry</button></div>'
@@ -6011,7 +6014,7 @@ function runSearch() {
         const idx = t.toLowerCase().indexOf(q)
         if (idx !== -1) {
           const start = Math.max(0, idx-30)
-          const snip = (start>0?'...':'') + t.slice(start, idx+q.length+60) + (idx+q.length+60<t.length?'...':'')
+          const snip = (start>0?'…':'') + t.slice(start, idx+q.length+60) + (idx+q.length+60<t.length?'…':'')
           searchResults.push({ chatId: c.id, title: c.title, snippet: snip, msgIdx: i, matchField: 'body', role: m.role })
           if (searchResults.length > 100) break
         }
@@ -6192,7 +6195,7 @@ function chatItemEl(c) {
 
   const text = mkEl('div', { class: 'chat-item-text', title: title }, [
     mkEl('div', { class: 'chat-title' }, mkEl('span', { class: 'chat-title-inner' }, title)),
-    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' * ' + fmtDate(c.updatedAt))
+    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' · ' + fmtDate(c.updatedAt))
   ])
 
   const inner = mkEl('div', { class: 'chat-item-inner' }, [
@@ -6499,7 +6502,7 @@ function renderDocPanel() {
     const status = d.status || 'pending'
     const infKids = [
       mkEl('div', { class: 'doc-name' }, [ mkEl('span', { class: 'doc-name-inner' }, d.name) ]),
-      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
+      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' · ' + (d.chunks?.length || 0) + ' chunks'),
     ]
     if (status === 'embedding') {
       // Live progress bar driven by doc.embedProgress (set from embedBatch SSE).
@@ -6971,7 +6974,7 @@ function renderSpSkillsList() {
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
-      <button class="tb-btn" onclick="deleteSkillUI('${esc(s.id)}')" style="color:var(--red)">Delete</button>
+      <button class="tb-btn btn-danger" onclick="deleteSkillUI('${esc(s.id)}')">Delete</button>
     </div>
   `).join('')
 }
@@ -8544,7 +8547,7 @@ async function applyAlphaNow(){
     return
   }
   try{
-    toast('Downloading alpha update...','info')
+    toast('Downloading alpha update…','info')
     const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){ toast('Update failed: '+d.error,'err'); return }
