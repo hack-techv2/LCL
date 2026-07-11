@@ -21,6 +21,10 @@ browser interface at `http://localhost:3000`.
 - **Chat over your files (RAG):** drop in `docx`, `pdf` (incl. OCR for scanned
   pages), `xlsx`, `pptx`, `html`, `txt` — files are chunked and embedded locally
   with a persistent embedding cache, and answers cite their source files.
+- **Attach or paste for one-off context:** drag a file into the chat, or **paste a
+  screenshot** (Ctrl/Cmd+V) straight into the message box. Scanned PDFs and image
+  files are read locally with in-browser OCR (Tesseract.js) — nothing is uploaded
+  to extract the text.
 - **Rate-limit aware by design:** the shared per-minute token window is paced
   proactively — large documents summarise via adaptive map-reduce, embeddings
   wait out 429s instead of failing, and long replies that hit the token cap get
