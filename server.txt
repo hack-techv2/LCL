@@ -501,6 +501,29 @@ function previewErr(raw) {
   return s.length > 1500 ? s.slice(0, 1500) + '…(' + Buffer.byteLength(s) + ' bytes)' : s
 }
 
+// Detect a non-200 that came from a forward/interception proxy (Squid/Zscaler)
+// rather than the upstream app: an empty body whose only routing header is a
+// proxy 'via', with none of the app's own markers (json content-type,
+// x-models-call-id, x-ratelimit-*). Returns a one-line diagnostic for the log,
+// or '' when the response looks like a genuine app reply. This turns the
+// otherwise-blank "non-200 body (403) =" line into an actionable message.
+function proxyBlockNote(statusCode, headers, body) {
+  try {
+    const h = headers || {}
+    const blen = Buffer.byteLength(String(body == null ? '' : body))
+    const via = h['via'] || h['Via']
+    const appMarker = !!(h['x-models-call-id'] ||
+      /json/i.test(h['content-type'] || '') ||
+      Object.keys(h).some(k => /^x-ratelimit/i.test(k)))
+    if (via && /squid|zscaler|proxy/i.test(String(via)) && blen === 0 && !appMarker) {
+      return 'NOTE: HTTP ' + statusCode + ' with an EMPTY body and only a forward-proxy header (via: ' +
+        via + ') - blocked at the network egress proxy, not by the upstream app. ' +
+        'The destination host is likely not allowlisted for egress. This is a network/proxy issue.'
+    }
+  } catch {}
+  return ''
+}
+
 // ---------------------------------------------------------------------------
 // Rate-limit header parser
 // PlatformAI returns x-ratelimit-api_key-* headers on every response. We parse
@@ -635,7 +658,11 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
     upstreamRes.on('end', () => {
       dlog('[api] response body   | ' + chunkCount + ' chunks | ' + body.length + ' bytes')
       logSensitive('[api] response body =', body)
-      if (upstreamRes.statusCode !== 200) log.warn('[api] error body (' + upstreamRes.statusCode + ') = ' + previewErr(body))
+      if (upstreamRes.statusCode !== 200) {
+        log.warn('[api] error body (' + upstreamRes.statusCode + ', ' + Buffer.byteLength(body) + ' bytes) = ' + (previewErr(body) || '(empty)'))
+        const _pnote = proxyBlockNote(upstreamRes.statusCode, upstreamRes.headers, body)
+        if (_pnote) log.warn('[api] ' + _pnote)
+      }
       const rlTag = '[api ' + (/embed/i.test(pathName) ? 'embed' : 'chat') + ']'
       const rlHdrKeys = Object.keys(upstreamRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
       log.debug(rlTag + ' x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
@@ -879,7 +906,10 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       let body = ''
       upRes.on('data', c => body += c)
       upRes.on('end', () => {
-        log.warn('[stream] non-200 body (' + upRes.statusCode + ') = ' + previewErr(body))
+        const _blen = Buffer.byteLength(body)
+        log.warn('[stream] non-200 body (' + upRes.statusCode + ', ' + _blen + ' bytes) = ' + (previewErr(body) || '(empty)'))
+        const _pnote = proxyBlockNote(upRes.statusCode, upRes.headers, body)
+        if (_pnote) log.warn('[stream] ' + _pnote)
         if (!res.headersSent) {
           res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' })
         }
