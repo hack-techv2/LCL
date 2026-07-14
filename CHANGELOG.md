@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 15 Jul 2026 - Gateway switch now sticks + browser-console capture on alpha (alpha)
+
+**Fix — switching gateway (e.g. NC3 (Dev) -> PlatformAI) didn't stick.** `setGateway` correctly changed the endpoint via `/api/endpoint`, but the debounced settings save that follows (`/api/config` + `/api/data`) still carried the *previous* endpoint and re-wrote it milliseconds later, so the switch silently reverted (and a restart came back on the old gateway). The endpoint override is now fully **server-owned**: `/api/config` ignores any `endpoint` a client sends, and `/api/data` always keeps the server's current endpoint (previously it was only guarded when the client *omitted* it). Only the gateway picker (`/api/endpoint`) can change it now. Regression test **T41**.
+
+**Alpha diagnostics — browser console capture.** On the alpha channel, `console.log` / `console.info` are now mirrored into `debug_logs.txt` (tagged `[console]`), alongside the existing `console.error` / `console.warn` and the action breadcrumbs — so a tester's bug report captures the full browser side, not just errors. Gated server-side to the alpha channel only, so stable users' terminals stay clean. Local only; no remote telemetry.
+
+Suites: demo-api 41/41, client-logic 45/45, build 5/5. server.txt changed -> restart Node.
+
 ## 14 Jul 2026 - NC3 (Dev) chat path aligned to /chat/completions (alpha)
 
 The NC3 (Dev) gateway preset's chat URL now uses the plural `/kepler/v1/chat/completions` (was singular `/chat/completion`), to match the PlatformAI convention that kepler proxies. Embeddings URL unchanged. Note: an instance that previously saved the singular URL as an endpoint override keeps it until the NC3 (Dev) gateway is re-selected in Settings, which re-applies the corrected preset. T36 updated.
