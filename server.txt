@@ -64,7 +64,7 @@ const ENDPOINT_PRESETS = [
   { name: 'PlatformAI', modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions', embedUrl: 'https://api.ai.tech.gov.sg/platform/models/embeddings', model: '' },
   // Second preset = the second USER gateway. Currently the kepler DEV box so
   // stable users can test (CL, 7 Jul); swap to prod Kepler (nc3.gov.sg) when live.
-  { name: 'NC3 (Dev)',  modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings', model: '' }
+  { name: 'NC3 (Dev)',  modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions', embedUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings', model: '' }
 ]
 function validEndpointUrl(u, allowEmpty) {
   if (u == null || String(u).trim() === '') return !!allowEmpty
