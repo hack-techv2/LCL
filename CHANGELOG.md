@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 14 Jul 2026 - NC3 (Dev) chat path aligned to /chat/completions (alpha)
+
+The NC3 (Dev) gateway preset's chat URL now uses the plural `/kepler/v1/chat/completions` (was singular `/chat/completion`), to match the PlatformAI convention that kepler proxies. Embeddings URL unchanged. Note: an instance that previously saved the singular URL as an endpoint override keeps it until the NC3 (Dev) gateway is re-selected in Settings, which re-applies the corrected preset. T36 updated.
+
 ## 14 Jul 2026 - Clearer logs when the network proxy blocks a request (alpha)
 
 When a chat or embed request is refused by the corporate forward proxy (Squid / Zscaler) *before* it reaches the upstream gateway, the reply is an HTTP error with an empty body carrying only a proxy `via` header. The log line previously read `non-200 body (403) =` with nothing after it, giving no hint as to why. Both upstream paths (streaming chat and buffered chat/embed) now log the response body **byte count**, and — when the response is an empty-bodied non-200 whose only routing header is a forward-proxy `via` (and which carries none of the gateway's own markers: a JSON content-type, `x-models-call-id`, or `x-ratelimit-*`) — a one-line NOTE stating the request was blocked at the network egress proxy (the destination host is likely not allowlisted for egress) rather than by the upstream app. Diagnostics only: no behaviour change, and the new `proxyBlockNote()` helper returns an empty string for genuine app responses so normal errors are logged exactly as before. Suites unchanged (demo-api 40/40, client-logic 45/45).
