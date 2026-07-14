@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 14 Jul 2026 - Clearer logs when the network proxy blocks a request (alpha)
+
+When a chat or embed request is refused by the corporate forward proxy (Squid / Zscaler) *before* it reaches the upstream gateway, the reply is an HTTP error with an empty body carrying only a proxy `via` header. The log line previously read `non-200 body (403) =` with nothing after it, giving no hint as to why. Both upstream paths (streaming chat and buffered chat/embed) now log the response body **byte count**, and — when the response is an empty-bodied non-200 whose only routing header is a forward-proxy `via` (and which carries none of the gateway's own markers: a JSON content-type, `x-models-call-id`, or `x-ratelimit-*`) — a one-line NOTE stating the request was blocked at the network egress proxy (the destination host is likely not allowlisted for egress) rather than by the upstream app. Diagnostics only: no behaviour change, and the new `proxyBlockNote()` helper returns an empty string for genuine app responses so normal errors are logged exactly as before. Suites unchanged (demo-api 40/40, client-logic 45/45).
+
 ## 8 Jul 2026 — OCR that actually works: reachable engine, image OCR, status chip (alpha)
 
 CL's scanned PDFs never OCR'd. Root cause: tesseract.js defaults its language data to `tessdata.projectnaptha.com`, which the gov proxy blocks (worker + core already default to jsDelivr, so they were fine). Also OCR only ran on scanned PDF *pages*, not image uploads, and there was no way to see or manage the engine.
