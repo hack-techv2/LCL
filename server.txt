@@ -803,6 +803,12 @@ function handleGetConfig(req, res) {
 function handleSaveConfig(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
+    // The endpoint override is SERVER-owned — only /api/endpoint may set or clear
+    // it. A gateway switch clears/sets it via /api/endpoint, then the client fires
+    // a debounced settings save whose D.settings still carries the OLD endpoint;
+    // if we merged that, the switch would be reverted milliseconds later. So never
+    // let /api/config change the endpoint.
+    if (body && Object.prototype.hasOwnProperty.call(body, 'endpoint')) delete body.endpoint
     appData.settings = Object.assign(appData.settings || {}, body)
     saveData(appData)
     json(res, { ok: true })
@@ -1758,8 +1764,12 @@ function handleSaveData(req, res) {
     // settings copy never carries it, so a full /api/data save must not wipe it.
     // (7 Jul log: Kepler set, then a debounced persist() replaced settings and the
     // very next stream silently went back to PlatformAI.)
-    if (body.settings && !body.settings.endpoint && appData.settings && appData.settings.endpoint) {
-      body.settings.endpoint = appData.settings.endpoint
+    // endpoint is SERVER-owned (only /api/endpoint may change it). ALWAYS take the
+    // server's current value and IGNORE any (possibly stale) endpoint the client
+    // sent, so a full /api/data save can neither wipe NOR revert a gateway switch.
+    if (body.settings) {
+      if (appData.settings && appData.settings.endpoint) body.settings.endpoint = appData.settings.endpoint
+      else delete body.settings.endpoint
     }
     // Strip full embedding vectors — only embHash is needed on disk
     if (body && body.chats) {
@@ -2399,6 +2409,10 @@ function handleClientLog(req, res) {
       try {
         const level = body.level === 'error' ? 'error' : body.level === 'warn' ? 'warn' : 'info'
         const msg = String(body.msg == null ? '' : body.msg).slice(0, 2000)
+        // Captured browser console.log/info lines are tagged [console] and are
+        // verbose; only record them on the alpha channel so stable users' server
+        // terminals (and debug_logs.txt) aren't flooded. Errors/warns always log.
+        if (msg.indexOf('[console]') === 0 && !(typeof readChannel === 'function' && readChannel() === 'alpha')) { json(res, { ok: true }); return }
         log[level]('[client] ' + msg)
       } catch {}
     }
