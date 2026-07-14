@@ -247,7 +247,7 @@ const CASES = [
   { id: 'T36 endpoint: default + URL presets', tags: ['gate'], fn: async () => {
     const r = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
     const ok = r.active && r.active.modelUrl === "https://api.ai.tech.gov.sg/platform/models/chat/completions" && r.active.embedUrl === "https://api.ai.tech.gov.sg/platform/models/embeddings" && r.isDefault === true &&
-      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].name === 'NC3 (Dev)' && r.presets[1].modelUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion' && r.presets[1].embedUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
+      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].name === 'NC3 (Dev)' && r.presets[1].modelUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions' && r.presets[1].embedUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
     check('T36 endpoint: default + URL presets', ok, 'active=' + (r.active && r.active.modelUrl) + ' presets=' + (r.presets && r.presets.length))
   } },
   { id: 'T37 endpoint: set kepler URL, persists, reset clears', tags: ['gate'], fn: async () => {
@@ -288,6 +288,28 @@ const CASES = [
     await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions' }))
     const ok = g.active && g.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completion' && g.isDefault === false
     check('T40 persist (/api/data) must NOT wipe the endpoint override', ok, 'after-persist=' + (g.active && g.active.modelUrl) + '/' + g.isDefault)
+  } },
+  { id: 'T41 client-sent endpoint cannot override the server endpoint', tags: ['gate'], fn: async () => {
+    // Gateway-switch revert bug: after /api/endpoint set the endpoint, the client's
+    // debounced /api/config + /api/data saves still carried the OLD endpoint and
+    // re-wrote it. endpoint is server-owned: only /api/endpoint may change it.
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'Kepler', modelUrl: 'https://nc3.gov.sg/kepler/v1/chat/completions', embedUrl: 'https://nc3.gov.sg/kepler/v1/embeddings' }))
+    // /api/config carrying a stale endpoint must be ignored.
+    await req({ method: 'POST', path: '/api/config', headers: H }, JSON.stringify({ endpoint: { name: 'Stale', modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions', embedUrl: '' }, maxTokens: 4096 }))
+    const afterCfg = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    // /api/data carrying a stale endpoint must be ignored.
+    const cur = json((await req({ method: 'GET', path: '/api/data' })).body)
+    const clientCopy = Object.assign({}, cur, { settings: Object.assign({}, cur.settings || {}, { endpoint: { name: 'Stale2', modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: '' } }) })
+    await req({ method: 'POST', path: '/api/data', headers: H }, JSON.stringify(clientCopy))
+    const afterData = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    // Switch to PlatformAI (clears override); a following config save must not resurrect it.
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions' }))
+    await req({ method: 'POST', path: '/api/config', headers: H }, JSON.stringify({ endpoint: { name: 'Zombie', modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions', embedUrl: '' } }))
+    const afterClear = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const ok = afterCfg.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completions' &&
+               afterData.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completions' &&
+               afterClear.isDefault === true
+    check('T41 client-sent endpoint cannot override the server endpoint', ok, 'cfg=' + (afterCfg.active && afterCfg.active.modelUrl) + ' data=' + (afterData.active && afterData.active.modelUrl) + ' cleared=' + afterClear.isDefault)
   } },
   { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
     const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
