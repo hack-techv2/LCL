@@ -1579,17 +1579,24 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 ;(function () {
   const _cerr = console.error.bind(console)
   const _cwarn = console.warn.bind(console)
-  function ship(level, args) {
+  const _clog = console.log.bind(console)
+  const _cinfo = (console.info || console.log).bind(console)
+  function ship(level, args, tag) {
     try {
-      const msg = (args || []).map(a => {
+      const body = (args || []).map(a => {
         try { return typeof a === 'string' ? a : (a && a.message) || JSON.stringify(a) }
         catch { return String(a) }
-      }).join(' ').slice(0, 2000)
+      }).join(' ')
+      const msg = ((tag ? tag + ' ' : '') + body).slice(0, 2000)
       fetch((typeof proxyUrl === 'function') ? proxyUrl('/api/clientlog') : '/api/clientlog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: level, msg: msg }) }).catch(function () {})
     } catch (e) {}
   }
   console.error = function () { const a = [].slice.call(arguments); _cerr.apply(console, a); ship('error', a) }
   console.warn  = function () { const a = [].slice.call(arguments); _cwarn.apply(console, a); ship('warn', a) }
+  // console.log/info are tagged [console] and shipped too; the SERVER only records
+  // them on the alpha channel (see handleClientLog) so stable terminals stay clean.
+  console.log   = function () { const a = [].slice.call(arguments); _clog.apply(console, a); ship('info', a, '[console]') }
+  console.info  = function () { const a = [].slice.call(arguments); _cinfo.apply(console, a); ship('info', a, '[console]') }
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('error', function (e) { ship('error', [(e && e.message) || 'window error', e && e.filename, e && (e.lineno + ':' + e.colno)]) })
     window.addEventListener('unhandledrejection', function (e) { ship('error', ['unhandledrejection', (e && e.reason && e.reason.message) || String(e && e.reason)]) })
