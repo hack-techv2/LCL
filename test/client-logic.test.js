@@ -93,6 +93,17 @@ const CASES = [
     check('C2 postClassified kinds: 502 transient, 400 terminal', a.kind === 'transient' && b.kind === 'terminal', a.kind + '/' + b.kind)
   } },
 
+  { id: 'C48 budget(s) exceeded 429 -> terminal, no reset (never auto-retry)', fn: async () => {
+    // 15 Jul log: overall API-key budget exhaustion is a flat 429 body (string,
+    // NO reset/limit/remaining). Must classify TERMINAL so the chat path shows a
+    // plain error and never enters the 60s retry-forever loop.
+    const budget429 = { ok: false, status: 429, headers: { get: () => null }, text: async () => JSON.stringify({ error: '1 budget(s) exceeded' }) }
+    const { get } = mkCtx([budget429])
+    const r = await get('postClassified')('/api/chat', {})
+    const ok = r.kind === 'terminal' && r.status === 429 && r.resetMs == null && r.limit429 == null && r.remaining429 == null
+    check('C48 budget(s) exceeded 429 -> terminal, no reset (never auto-retry)', ok, 'kind=' + r.kind + ' reset=' + r.resetMs)
+  } },
+
   { id: 'C3 truncation guard: mid-stream error frame -> transient', fn: async () => {
     // The 21:47 stall shape: deltas, then the proxy error frame, NO finish/[DONE].
     const die = sseResp([
