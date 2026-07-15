@@ -122,6 +122,16 @@ const CASES = [
     const okHdr = r.headers && r.headers['retry-after'] === '60' && !!r.headers['reset_at'] && r.headers['rate_limit_type'] === 'tokens'
     check('T25 [[toobig]] unwinnable 429', okBody && okHdr, 'status=' + r.status + ' hdr=' + okHdr)
   } },
+  { id: 'T42 [[budgetexceeded]] flat 429, no rate-limit fields', tags: ['errors'], fn: async () => {
+    // Overall API-key budget exhaustion (15 Jul log): a bare-string 429 body with NO
+    // reset/limit/remaining. The client classifies this TERMINAL (see client-logic
+    // C48) and must NOT auto-retry; here we assert the demo reproduces the shape.
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[budgetexceeded]] hello', true))
+    const body = json(r.body)
+    const okBody = r.status === 429 && /budget\(s\) exceeded/.test(r.body) && typeof (body && body.error) === 'string'
+    const noRlFields = !/Limit resets at:/.test(r.body) && !/Current limit:/.test(r.body) && !/Remaining:/.test(r.body)
+    check('T42 [[budgetexceeded]] flat 429, no rate-limit fields', okBody && noRlFields, 'status=' + r.status + ' flat=' + (typeof (body && body.error) === 'string'))
+  } },
   { id: 'T26 oversize payload 429', tags: ['errors'], fn: async () => {
     const big = 'x '.repeat(500000)   // ~1MB -> ~250k tokens, over the 200k cap
     const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat(big, true))
