@@ -395,10 +395,33 @@ async function send() {
 async function runStream(chat, payload, ragSources) {
   payload.stream = true   // enable server-side streaming proxy
 
-  const typingEl = appendTyping()
+  // "Finish in background" (switch-chat fix): a run belongs to the chat it started
+  // in. While the user is viewing a DIFFERENT chat, this run must NOT write to the
+  // live message view or the health pill (both target whichever chat is on screen) -
+  // it keeps accumulating into chat.messages and the view rebuilds from there when
+  // its chat is active again. Without this, a (stopped)/error bubble and a red pill
+  // leaked into the chat you switched TO mid-generation, which looked like a crash.
+  const runChatId = chat.id
+  const isActive = () => typeof chatId === 'undefined' || chatId === runChatId
+  const uiMsg = (...a) => isActive() ? appendMsg(...a) : null
+  const uiHealth = (...a) => { if (isActive()) setHealth(...a) }
+  // When this run's chat is on screen at the end, rebuild it from chat.messages so
+  // the final state shows even if the live bubble was never created (started/ended
+  // while the chat was in the background).
+  const uiSync = () => { if (isActive() && typeof renderMessages === 'function') renderMessages() }
+  // Background auto-retry (finish-in-background): re-run this same turn after a
+  // delay when the 429/5xx happened while its chat was NOT on screen, so no
+  // countdown bubble lands in the chat the user is looking at. Skips if the chat
+  // was deleted or another run is already active (never clobbers a live request).
+  const bgRetry = (ms) => setTimeout(() => {
+    if (!D.chats[runChatId] || busy || inflightCtl) return
+    runStream(chat, payload, ragSources)
+  }, Math.max(1000, ms))
+
+  const typingEl = isActive() ? appendTyping() : null
   busy = true
   updateSendBtn()
-  setHealth('warn', 'Thinking')
+  uiHealth('warn', 'Thinking')
 
   inflightCtl = new AbortController()
   let stopped = false
@@ -413,11 +436,11 @@ async function runStream(chat, payload, ragSources) {
   const swapBubble = () => {
     if (firstToken) return
     firstToken = true
-    setHealth('warn', 'Replying — Stop to interrupt')   // consistent with 'Summarising i/N'
-    try { typingEl.remove() } catch {}
+    uiHealth('warn', 'Replying — Stop to interrupt')   // consistent with 'Summarising i/N'
+    if (typingEl) try { typingEl.remove() } catch {}
     msgObj = { role:'assistant', content:'', sources: ragSources, ts: Date.now() }
     chat.messages.push(msgObj)
-    bubble = appendMsg('ai', '', null, ragSources)
+    bubble = uiMsg('ai', '', null, ragSources)
   }
 
   try {
@@ -430,7 +453,7 @@ async function runStream(chat, payload, ragSources) {
     if (!r.ok) {
       const errData = r.errData
       if (typeof lclCrumb === 'function') lclCrumb('chat_error', { status: r.status, kind: r.kind, reset: r.resetMs ? 'parsed' : 'none' })
-      try { typingEl.remove() } catch {}
+      if (typingEl) try { typingEl.remove() } catch {}
 
       // A 429 that reports a FULL remaining budget means the request itself is
       // bigger than the token cap — waiting can't help, so don't auto-retry (this
@@ -441,13 +464,13 @@ async function runStream(chat, payload, ragSources) {
       if (r.kind === 'ratelimit' && _tooBig429) {
         if ((chat.attachedFiles || []).length && typeof offerAttachEmbed === 'function') {
           offerAttachEmbed(chat.attachedFiles.slice(), _est429, r.limit429 || 200000)
-          setHealth('err', 'Request too large')
+          uiHealth('err', 'Request too large')
           return
         }
         const note = 'Error 429: this request is larger than the model\u2019s token limit, so waiting won\u2019t help. Reduce the documents in context (switch Search mode to Auto or Specific, or ask about fewer files) and try again.'
         chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
-        appendMsg('ai', note, null, ragSources, null, true)
-        setHealth('err', 'Request too large')
+        uiMsg('ai', note, null, ragSources, null, true)
+        uiHealth('err', 'Request too large')
         return
       }
 
@@ -455,14 +478,31 @@ async function runStream(chat, payload, ragSources) {
       // reset when present, else a default 60s backoff (covers a 429 from embeddings
       // using the shared budget, or a 429 whose reset time did not parse).
       if (r.kind === 'ratelimit') {
-        handleRateLimitWait(chat, payload, ragSources, r.resetMs || (Date.now() + 60000), errData?.error?.message || '')
+        if (isActive()) {
+          handleRateLimitWait(chat, payload, ragSources, r.resetMs || (Date.now() + 60000), errData?.error?.message || '')
+        } else {
+          bgRetry(r.resetMs ? (r.resetMs - Date.now()) : 60000)   // finish-in-background: silent wait+retry, no bubble in the on-screen chat
+        }
         return
       }
 
       // Any 5xx is transient — auto-retry with backoff (up to 3 times). 429 with a
       // reset is handled above; everything else falls through to a clean box.
       if (r.kind === 'transient' && retry5xxCount < 3) {
-        handle5xxRetry(chat, payload, ragSources, r.status, r.message)
+        if (isActive()) { handle5xxRetry(chat, payload, ragSources, r.status, r.message) }
+        else { retry5xxCount++; bgRetry(RETRY_STEPS_MS[Math.min(retry5xxCount, 2)] || 5000) }   // finish-in-background
+        return
+      }
+      // API-key BUDGET exhaustion (terminal 429): a flat "budget(s) exceeded" body
+      // with no reset/limit fields. It never clears on a timer, so NO countdown /
+      // auto-retry - tell the user their key's overall spend cap is reached (15 Jul:
+      // this was misread as a rate limit and retried every ~63s for 10+ hours).
+      if (r.status === 429 && r.kind === 'terminal') {
+        retry5xxCount = 0
+        const note = 'API key budget exhausted — your key’s overall spend limit has been reached. This is not the per-minute rate limit and will not clear on its own; check your key’s quota or switch to another key, then try again.'
+        chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
+        uiMsg('ai', note, null, ragSources, null, true)
+        uiHealth('err', 'Budget exhausted')
         return
       }
       retry5xxCount = 0
@@ -471,8 +511,8 @@ async function runStream(chat, payload, ragSources) {
         ? ('Error ' + r.status + ': ' + labels[r.status] + ' — The model service is temporarily unreachable. Please try again in a moment.')
         : ('Error ' + r.status + ': ' + cleanErrMsg(r.message))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', labels[r.status] ? 'Service unavailable' : ('Error ' + r.status))
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', labels[r.status] ? 'Service unavailable' : ('Error ' + r.status))
       return
     }
     const resp = r.resp
@@ -499,13 +539,18 @@ async function runStream(chat, payload, ragSources) {
 
       if (delta || choice.finish_reason) swapBubble()
 
-      if (delta && msgObj && bubble) {
+      if (delta && msgObj) {
         accumulated += delta
         msgObj.content = accumulated
-        bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
-        const bodyEl = bubble.querySelector('.msg-body')
-        if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
-        if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
+        // Live DOM update only while this chat is on screen and the bubble is still
+        // attached (switching away detaches it via renderAll). Content is preserved
+        // on msgObj regardless, so switching back re-renders the latest text.
+        if (bubble && bubble.isConnected) {
+          bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
+          const bodyEl = bubble.querySelector('.msg-body')
+          if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
+          if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
+        }
       }
       if (choice.finish_reason === 'content_filter') filtered = true
       if (choice.finish_reason === 'length') truncated = true
@@ -522,11 +567,11 @@ async function runStream(chat, payload, ragSources) {
           if (bodyEl) bodyEl.innerHTML = fmt(msgObj.content)
         }
       } else {
-        try { typingEl.remove() } catch {}
+        if (typingEl) try { typingEl.remove() } catch {}
         chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true })
-        appendMsg('ai', '(stopped)', null, ragSources)
+        uiMsg('ai', '(stopped)', null, ragSources)
       }
-      setHealth('ok', 'Stopped')
+      uiHealth('ok', 'Stopped')
       return
     }
     if (streamErr && msgObj) {
@@ -534,29 +579,33 @@ async function runStream(chat, payload, ragSources) {
       // complete answer (silent truncation - the [[streamdie]] / 21:47 stall case).
       // Discard the partial and route through the standard transient auto-retry.
       if (chat.messages[chat.messages.length - 1] === msgObj) chat.messages.pop()
-      try { bubble.remove() } catch (e) {}
+      if (bubble) try { bubble.remove() } catch (e) {}
       if (typeof lclCrumb === 'function') lclCrumb('stream_died_midreply', { chars: accumulated.length, err: String(streamErr).slice(0, 60) })
-      if (retry5xxCount < 3) { handle5xxRetry(chat, payload, ragSources, 0, String(streamErr)); return }
+      if (retry5xxCount < 3) {
+        if (isActive()) { handle5xxRetry(chat, payload, ragSources, 0, String(streamErr)) }
+        else { retry5xxCount++; bgRetry(RETRY_STEPS_MS[Math.min(retry5xxCount, 2)] || 5000) }   // finish-in-background
+        return
+      }
       retry5xxCount = 0
       const note = 'Stream error: ' + cleanErrMsg(String(streamErr)) + ' — the reply was cut off mid-stream. Please try again.'
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', 'Stream died')
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', 'Stream died')
       return
     }
     if (streamErr && !msgObj) {
-      try { typingEl.remove() } catch {}
+      if (typingEl) try { typingEl.remove() } catch {}
       const note = 'Stream error: '+streamErr
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', 'Unreachable')
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', 'Unreachable')
       return
     }
     if (!firstToken) {
-      try { typingEl.remove() } catch {}
+      if (typingEl) try { typingEl.remove() } catch {}
       chat.messages.push({ role:'assistant', content:'(no response)', ts:Date.now(), errored:true })
-      appendMsg('ai', '(no response)', null, ragSources)
-      setHealth('err', 'Empty')
+      uiMsg('ai', '(no response)', null, ragSources)
+      uiHealth('err', 'Empty')
       return
     }
 
@@ -564,24 +613,24 @@ async function runStream(chat, payload, ragSources) {
     if (truncated) msgObj.truncated = true
     if (bubble) attachMsgFlags(bubble, msgObj)
     retry5xxCount = 0
-    setHealth('ok', connectedLabel())
+    uiHealth('ok', connectedLabel())
   } catch (err) {
-    try { typingEl.remove() } catch {}
+    if (typingEl) try { typingEl.remove() } catch {}
     if (err.name === 'AbortError') {
       if (msgObj) msgObj.stopped = true
       else {
         chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true })
-        appendMsg('ai', '(stopped)', null, ragSources)
+        uiMsg('ai', '(stopped)', null, ragSources)
       }
-      setHealth('ok', 'Stopped')
+      uiHealth('ok', 'Stopped')
     } else {
       const isSsl = /certificate|CERT|SSL|TLS|issuer/i.test(err.message)
       const note = isSsl
         ? 'SSL certificate error — Please try restarting your Zscaler connection, then retry.'
         : 'Network error: '+err.message
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', 'Unreachable')
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', 'Unreachable')
     }
   } finally {
     chat.updatedAt = Date.now()
@@ -590,6 +639,12 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
+    uiSync()   // finish-in-background: if this chat is back on screen, show its final state
+    // If the run finished while its chat was OFF screen, its uiHealth calls were
+    // guarded, so the global pill can be stuck on 'Replying'. Nothing is generating
+    // now, so clear it to the idle connected label (the on-screen path already set
+    // its own ok/err/stopped label when active).
+    if (!isActive() && typeof setHealth === 'function' && typeof connectedLabel === 'function' && typeof creds !== 'undefined' && creds) setHealth('ok', connectedLabel())
     // If this was the first successful exchange in the chat, fire off an
     // auto-title call in the background. Doesn't block; runs at most once
     // per chat (guarded by chat.titledByAI).
@@ -1121,6 +1176,11 @@ async function runSplitSummaries(chat, docs, instruction) {
   busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
   inflightCtl = new AbortController()
   const signal = inflightCtl.signal
+  // Finish-in-background: this run is scoped to its origin chat. Only touch the live
+  // view / health pill while that chat is on screen; per-doc results are pushed to
+  // chat.messages regardless, so switching back shows completed docs.
+  const runChatId = chat.id
+  const isActive = () => typeof chatId === 'undefined' || chatId === runChatId
   const rs = await resolveSystemPrompt(chat)
   const sys = rs && rs.sys
   if (typeof lclCrumb === 'function') lclCrumb('split_run', { docs: docs.length })
@@ -1131,10 +1191,10 @@ async function runSplitSummaries(chat, docs, instruction) {
       if (signal.aborted) break
       if (chat && chat.id && !D.chats[chat.id]) break   // chat deleted mid-run - don't append into another chat
       const doc = docs[i]
-      setHealth('warn', (summaryAsk ? 'Summarising ' : 'Processing ') + (i + 1) + '/' + docs.length)
+      if (isActive()) setHealth('warn', (summaryAsk ? 'Summarising ' : 'Processing ') + (i + 1) + '/' + docs.length)
       const header = '**' + doc.name + '** - ' + kindWord + ' (' + (i + 1) + ' of ' + docs.length + ')\n\n'
-      const bubble = appendMsg('ai', '', null, [doc.name])
-      const bodyEl = bubble.querySelector('.msg-body')
+      const bubble = isActive() ? appendMsg('ai', '', null, [doc.name]) : null
+      const bodyEl = bubble ? bubble.querySelector('.msg-body') : null
       if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising…_' : '_Working…_'))
       await waitForEmbedsIdle(bodyEl, header, signal)
       let summary = null
@@ -1146,17 +1206,20 @@ async function runSplitSummaries(chat, docs, instruction) {
       }
       const finalText = header + (summary != null ? summary : '_Could not ' + (summaryAsk ? 'summarise' : 'process') + ' this document (over the limit or an error). Try Specific search for it._')
       if (bodyEl) bodyEl.innerHTML = fmt(finalText)
-      bubble.dataset.raw = finalText
+      if (bubble) bubble.dataset.raw = finalText
       chat.messages.push({ role: 'assistant', content: finalText, ts: Date.now(), sources: [doc.name] })
       try { await persist() } catch (e) {}
       if (!signal.aborted && i < docs.length - 1) await abortableSleep(1200, signal)
     }
-    setHealth('ok', connectedLabel())
+    if (isActive()) setHealth('ok', connectedLabel())
+    else if (typeof renderChatList === 'function') renderChatList()
   } catch (e) {
-    setHealth('err', 'Summary failed')
+    if (isActive()) setHealth('err', 'Summary failed')
   } finally {
     busy = false; if (typeof updateSendBtn === 'function') updateSendBtn()
     inflightCtl = null
+    if (isActive() && typeof renderMessages === 'function') renderMessages()
+    else if (typeof setHealth === 'function' && typeof connectedLabel === 'function' && typeof creds !== 'undefined' && creds) setHealth('ok', connectedLabel())   // background split run ended: clear stale 'Summarising' pill
   }
 }
 
