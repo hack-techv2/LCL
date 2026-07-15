@@ -115,15 +115,28 @@ async function postClassified(path, body, opts) {
   if (resp.status === 429) {
     kind = 'ratelimit'
     const msg = String((errData.error && (errData.error.message || errData.error)) || '')
-    const m = msg.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
-    if (m) { const t = Date.parse(m[1].replace(' ', 'T') + 'Z'); if (!isNaN(t) && t > Date.now()) resetMs = t }
-    // Parse the gateway's real-time limit + remaining from the 429 body. If it had
-    // room for this request yet still rejected it, the request is genuinely too big;
-    // if Remaining is ~0 the budget is just exhausted (wait for the window).
-    const lim = msg.match(/Current limit:\s*(\d+)/i)
-    if (lim) limit429 = Number(lim[1])
-    const rem = msg.match(/Remaining:\s*(\d+)/i)
-    if (rem) remaining429 = Number(rem[1])
+    // Overall API-KEY BUDGET exhaustion (the key's total spend cap) comes back as a
+    // flat 429 like {"error":"1 budget(s) exceeded"} with NO reset time / limit /
+    // remaining fields. It is NOT the per-minute token window and will NEVER clear on
+    // a timer, so auto-retrying is pure spam (15 Jul log: the identical 429 retried
+    // every ~63s for 10+ hours). Classify it terminal so the caller shows a plain
+    // error with no countdown / auto-retry. Match the known shape, and also treat a
+    // marker-less "budget" 429 the same way (defensive against minor wording drift).
+    const budgetExhausted = /budget\(s\)\s+exceeded/i.test(msg) ||
+      (/budget/i.test(msg) && !/Limit resets at:/i.test(msg) && !/Current limit:/i.test(msg) && !/Remaining:/i.test(msg))
+    if (budgetExhausted) {
+      kind = 'terminal'
+    } else {
+      const m = msg.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*UTC/i)
+      if (m) { const t = Date.parse(m[1].replace(' ', 'T') + 'Z'); if (!isNaN(t) && t > Date.now()) resetMs = t }
+      // Parse the gateway's real-time limit + remaining from the 429 body. If it had
+      // room for this request yet still rejected it, the request is genuinely too big;
+      // if Remaining is ~0 the budget is just exhausted (wait for the window).
+      const lim = msg.match(/Current limit:\s*(\d+)/i)
+      if (lim) limit429 = Number(lim[1])
+      const rem = msg.match(/Remaining:\s*(\d+)/i)
+      if (rem) remaining429 = Number(rem[1])
+    }
   } else if (resp.status >= 500 && resp.status < 600) {
     kind = 'transient'
   }
