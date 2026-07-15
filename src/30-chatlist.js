@@ -10,7 +10,9 @@ function sortedChats() {
 
 function newChat() {
   if (typeof lclCrumb === 'function') lclCrumb('new_chat')
-  stopStreaming(true)
+  // Finish-in-background: an in-flight reply keeps generating into its origin chat
+  // (which has messages, so it is never the reused blank). Stop it explicitly with
+  // the Stop button / Esc if you want to cancel.
   // A chat is "blank" only with no messages AND no embedded docs. Reuse an
   // existing blank instead of piling up empties, and prune any extra blanks.
   const isBlank = c => !c.messages.length && !(c.docs && c.docs.length)
@@ -27,16 +29,33 @@ function newChat() {
   ragStickyChunks = []
   persist()
   renderAll()
+  // Resync the health pill (see switchChat): don't leave a stale 'Replying' from a
+  // reply that finished in the background.
+  if (typeof setHealth === 'function' && typeof creds !== 'undefined' && creds) {
+    if (busy) setHealth('warn', 'Replying — Stop to interrupt')
+    else if (typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+  }
   const inp = document.getElementById('msg-in')
   inp.value = ''; autoResize(inp); inp.focus()
 }
 
 function switchChat(id) {
   if (typeof lclCrumb === 'function') lclCrumb('switch_chat')
-  stopStreaming(true)
+  // Finish-in-background: do NOT abort an in-flight reply on switch. runStream is
+  // chat-scoped (writes to the live view only while its own chat is on screen), so
+  // the reply keeps generating into its origin chat and is there when you switch
+  // back. Use Stop (button / Esc) to actually cancel. (Was: stopStreaming(true),
+  // which aborted and then leaked a (stopped)/error bubble into the chat you opened.)
   chatId = id
   ragStickyChunks = []
   renderAll()
+  // Resync the health pill to the chat you're now viewing. A reply that finished in
+  // the background left the pill on 'Replying' (its uiHealth was guarded while off
+  // screen), so reflect reality: 'Replying' only while something is still generating.
+  if (typeof setHealth === 'function' && typeof creds !== 'undefined' && creds) {
+    if (busy) setHealth('warn', 'Replying — Stop to interrupt')
+    else if (typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+  }
   const inp = document.getElementById('msg-in')
   inp.value = ''; autoResize(inp); inp.focus()
 }
