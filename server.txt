@@ -1143,6 +1143,12 @@ function demoErrorFor(text) {
     if (n <= 1) return { status: 429, headers: { 'retry-after': '2', rate_limit_type: 'tokens' }, body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo partial). Limit type: tokens. Current limit: 200000, Remaining: 58944. Limit resets at: ' + demoResetStamp(2), type: 'None', param: 'None', code: '429' } } }
     return null
   }
+  if (/\[\[budgetexceeded\]\]/.test(text)) {
+    // Overall API-key BUDGET exhaustion (15 Jul log): a flat 429 whose body is a bare
+    // string with NO reset/limit/remaining fields. Fails EVERY time (never clears) so
+    // the client must classify it TERMINAL and NOT auto-retry.
+    return { status: 429, body: { error: '1 budget(s) exceeded' } }
+  }
   return null
 }
 
