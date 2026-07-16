@@ -235,7 +235,20 @@ function renderMessages() {
 
   const inner = document.createElement('div')
   inner.className = 'msgs-inner'
-  chat.messages.forEach(m => {
+  // Compaction affordance: while a summary call is in flight show the spinner; once
+  // compacted show a collapsed 'Earlier messages compacted' pill that hides the folded
+  // messages (click to expand them back in place - they are never deleted).
+  const _cp = chat.compaction
+  const _isCompacting = (typeof compacting !== 'undefined' && compacting)
+  const _open = !!(typeof compactOpen !== 'undefined' && compactOpen[chat.id])
+  let _startRender = 0
+  if (_isCompacting && typeof compactingIndicatorEl === 'function') {
+    inner.appendChild(compactingIndicatorEl())
+  } else if (_cp && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length && typeof compactionPillEl === 'function') {
+    inner.appendChild(compactionPillEl(chat, _open))
+    if (!_open) _startRender = _cp.uptoIndex
+  }
+  chat.messages.slice(_startRender).forEach(m => {
     const t = typeof m.content === 'string' ? m.content : m.content?.find?.(b => b.type === 'text')?.text || '[attachment]'
     const div = buildMsgEl(m.role === 'user' ? 'user' : 'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
     // Persisted truncation/filter notes (incl. the Continue button) - previously
@@ -248,6 +261,39 @@ function renderMessages() {
   el.scrollTop = el.scrollHeight
   refreshTailActions()
   if (typeof renderAttachTray === 'function') renderAttachTray()
+}
+
+// Collapsed 'Earlier messages compacted' pill. Click/Enter toggles whether the
+// folded (summarised) messages are shown in place. The messages are never
+// deleted - collapsing just hides them from the view; expanding renders them all.
+function compactionPillEl(chat, open) {
+  const n = (chat.compaction && chat.compaction.uptoIndex) || 0
+  const pill = mkEl('div', {
+    class: 'compact-pill' + (open ? ' open' : ''),
+    role: 'button', tabindex: '0',
+    title: open ? 'Hide the earlier messages again' : 'Show the earlier messages'
+  }, [
+    mkEl('span', { class: 'compact-caret', 'aria-hidden': 'true' }, open ? '\u25be' : '\u25b8'),
+    mkEl('span', { class: 'compact-title' }, 'Earlier messages compacted'),
+    mkEl('span', { class: 'compact-meta' }, open ? 'showing all \u2014 click to collapse' : (n + ' messages \u2014 click to expand'))
+  ])
+  const toggle = function () {
+    try { compactOpen[chat.id] = !compactOpen[chat.id] } catch (e) {}
+    if (typeof lclCrumb === 'function') lclCrumb('compact_toggle', { open: !open })
+    renderMessages()
+  }
+  pill.addEventListener('click', toggle)
+  pill.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
+  return pill
+}
+
+// Transient in-progress indicator shown while the compaction summary call runs.
+function compactingIndicatorEl() {
+  return mkEl('div', { class: 'compact-pill compacting' }, [
+    mkEl('span', { class: 'compact-spin', 'aria-hidden': 'true' }),
+    mkEl('span', { class: 'compact-title' }, 'Compacting earlier messages'),
+    mkEl('span', { class: 'compact-meta' }, 'summarising to keep this chat fast\u2026')
+  ])
 }
 
 function appendMsg(role, text, date, sources, fileNames, errored) {
