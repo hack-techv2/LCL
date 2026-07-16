@@ -768,7 +768,11 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
-    uiSync()   // finish-in-background: if this chat is back on screen, show its final state
+    // finish-in-background: if this chat is back on screen, rebuild it to show the
+    // final state. BUT skip it when a retry is pending - handleRateLimitWait /
+    // handle5xxRetry just appended a transient countdown bubble that is NOT in
+    // chat.messages, so re-rendering here would wipe the visible countdown.
+    if (!pendingRetry) uiSync()
     // If the run finished while its chat was OFF screen, its uiHealth calls were
     // guarded, so the global pill can be stuck on 'Replying'. Nothing is generating
     // now, so clear it to the idle connected label (the on-screen path already set
