@@ -873,3 +873,23 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .dp-seg-btn:first-child{border-left:none}
 .dp-seg-btn.on{background:var(--ac);color:#fff;font-weight:500}
 .dp-scope{margin-top:2px}
+
+/* --- Conversation compaction: collapsed summary pill + compacting spinner --- */
+.compact-pill {
+  display: flex; align-items: center; gap: 8px;
+  margin: 4px 0 14px; padding: 7px 14px;
+  background: var(--bg2); border: 1px solid var(--bdr, var(--bdr2));
+  border-radius: 999px; cursor: pointer; user-select: none;
+}
+.compact-pill:hover { border-color: var(--bdr2); }
+.compact-pill:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+.compact-pill.compacting { cursor: default; border-color: var(--ac); }
+.compact-caret { color: var(--tx2); font-size: 12px; width: 12px; text-align: center; flex: none; }
+.compact-title { font-size: 13px; font-weight: 600; color: var(--tx); }
+.compact-meta { font-size: 12px; color: var(--tx2); margin-left: auto; }
+.compact-spin {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  border: 2px solid var(--bdr2); border-top-color: var(--ac);
+  animation: compact-spin 0.8s linear infinite;
+}
+@keyframes compact-spin { to { transform: rotate(360deg); } }
