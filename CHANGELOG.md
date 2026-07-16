@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 16 Jul 2026 - Large prompts no longer spuriously time out (two-phase upstream timeout) (alpha)
+
+**Fix — big turns were being killed by the 10s first-byte timeout.** The upstream streaming call used a single inactivity timer set to the client's retry-escalation value (10s on the first attempt). Because it was armed before the first byte, it doubled as a time-to-first-token budget — and a large turn (16 Jul log: ~100k-token payloads with full history) can take longer than 10s for the model to start streaming, so a perfectly good request was destroyed with `inactivity timeout (10s)` → 502 and then re-sent (burning the whole prompt again). It's now **two-phase**: the FIRST byte gets a generous budget (≥90s, clamped 180s), and only once streaming starts does it tighten to the short per-token inactivity window (which resets on every chunk, so a genuine mid-stream stall is still caught quickly). Test **C51**. server.txt changed → restart Node.
+
+**Also — clearer "still retrying" toast.** The block-on-resend toast (added yesterday) always said "Rate-limited" even when the pending retry was actually a 5xx server error; it now says "still retrying after a server hiccup" for transient errors and reserves "Rate-limited" for a real 429.
+
+Suites: client-logic 49/49 (+C51), demo-api 42/42, build 5/5.
+
 ## 16 Jul 2026 - API key never hits the debug log + graceful rate-limit handling (alpha)
 
 **Security fix — the API key was being written to `debug_logs.txt` in clear.** A 429 throttling body from the gateway echoes the full `api_key: <key>` in its message, and that body was logged verbatim (`[stream] non-200 body (429, …) = …`) to the console AND persisted to `debug_logs.txt` — the file testers upload to report bugs. Redaction is now **centralised at the log sink**: a single `sanitizeSecrets()` scrubs `api_key`/`Bearer`/`sk-…` tokens and long hex secrets from every line written by `dbgWrite` (file) and the `console.log/warn/error` tee (terminal), so no key or token can reach the terminal or the file regardless of which call site logged it — no per-call-site discipline required. Diagnostics (limit type, remaining, reset time) are preserved. Test **C49**. **Anyone who has shared a debug log should rotate that key.** server.txt changed → restart Node.
