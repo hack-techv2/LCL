@@ -104,6 +104,25 @@ const CASES = [
     check('C48 budget(s) exceeded 429 -> terminal, no reset (never auto-retry)', ok, 'kind=' + r.kind + ' reset=' + r.resetMs)
   } },
 
+  { id: 'C50 re-send during a rate-limit countdown is blocked, not re-fired (2c)', fn: async () => {
+    // With a 429 countdown pending, a manual re-send used to cancel it and fire straight
+    // into the still-drained window (another 429). Now it blocks with a toast and leaves
+    // the auto-retry running (Stop cancels). No fetch, pendingRetry survives.
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const toasts = []; sb.toast = (m, ty) => toasts.push({ m, ty })
+    sb.document.getElementById = id => (id === 'msg-in' ? { value: 'try again' } : null)
+    let cancelled = false
+    sb.__markCancel = () => { cancelled = true }
+    vm.runInContext('busy = false; chatId = "c1"; pendingRetry = { cancel(){ __markCancel() } }; rlWindowUntil = Date.now() + 42000', ctx)
+    await get('send')()
+    const blocked = crumbs.some(c => c.k === 'send_blocked_ratelimit')
+    const toastOk = toasts.some(x => /retry automatically/i.test(x.m))
+    const notCancelled = cancelled === false
+    const stillPending = vm.runInContext('!!pendingRetry', ctx)
+    check('C50 re-send during a rate-limit countdown blocked, not re-fired (2c)', blocked && toastOk && notCancelled && stillPending,
+      'blocked=' + blocked + ' toast=' + toastOk + ' notCancelled=' + notCancelled + ' stillPending=' + stillPending)
+  } },
+
   { id: 'C3 truncation guard: mid-stream error frame -> transient', fn: async () => {
     // The 21:47 stall shape: deltas, then the proxy error frame, NO finish/[DONE].
     const die = sseResp([
@@ -568,6 +587,25 @@ const CASES = [
     const friendly = !!msg && /temporarily unavailable/.test(msg) && /HTTP 503/.test(msg) && /network proxy/.test(msg) && !/DOCTYPE/i.test(msg)
     const jsonNull = fn({ statusCode: 400, body: '{"error":"bad model"}' }, 'embeddings') === null
     check('C34 gatewayErrorMessage: 503/HTML proxy page -> friendly (server.txt)', friendly && jsonNull, 'msg=' + JSON.stringify(msg) + ' jsonNull=' + jsonNull)
+  } },
+  { id: 'C49 sanitizeSecrets scrubs api_key from any log line (server.txt)', fn: async () => {
+    // Centralised log sink scrubber: a 429 throttling body echoes the FULL api_key and
+    // was persisted to debug_logs.txt in clear (16 Jul log). sanitizeSecrets must strip
+    // it while keeping the useful diagnostics (limit type / remaining / reset).
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const m = S.match(/function sanitizeSecrets\(s\) \{[\s\S]*?\n\}/)
+    if (!m) return check('C49 sanitizeSecrets', false, 'function not found in server.txt')
+    const ctx = vm.createContext({}); vm.runInContext(m[0], ctx)
+    const fn = vm.runInContext('sanitizeSecrets', ctx)
+    const KEY = 'deadbeefcafef00ddeadbeefcafef00ddeadbeefcafef00ddeadbeefcafef00d'   // fake 64-hex fixture (never a real key)
+    const body = '[stream] non-200 body (429, 276 bytes) = {"error":{"message":"Rate limit exceeded for api_key: ' + KEY + '. Limit type: tokens. Current limit: 200000, Remaining: 18861. Limit resets at: 2026-07-16 01:33:13 UTC"}}'
+    const out = fn(body)
+    const keyGone = out.indexOf(KEY) === -1 && /\[redacted\]/.test(out)
+    const kept = /Limit type: tokens/.test(out) && /Remaining: 18861/.test(out) && /resets at/.test(out)
+    const benign = fn('[stream] upstream end | 19 events | 3998 bytes | finish stop') === '[stream] upstream end | 19 events | 3998 bytes | finish stop'
+    const bearerGone = fn('Authorization: Bearer sk-abcdef0123456789xyz').indexOf('sk-abcdef0123456789xyz') === -1
+    check('C49 sanitizeSecrets scrubs api_key, keeps diagnostics (server.txt)', keyGone && kept && benign && bearerGone,
+      'keyGone=' + keyGone + ' kept=' + kept + ' benign=' + benign + ' bearerGone=' + bearerGone)
   } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
