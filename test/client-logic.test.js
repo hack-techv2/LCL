@@ -655,6 +655,15 @@ const CASES = [
     const noFold = !r2.aborted && !tiny.compaction
     check('C53 no compaction under threshold, and none when only recent turns remain', under && noFold, 'under=' + under + ' noFold=' + noFold)
   } },
+
+  { id: 'C54 retry countdown survives: runStream finally gates uiSync on !pendingRetry', fn: async () => {
+    // Regression: the finish-in-background uiSync() rebuilt the message list from
+    // chat.messages in runStream\u2019s finally, wiping the transient 429/5xx countdown
+    // bubble (which is NOT a stored message) the instant it was shown.
+    const S = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const guarded = /if \(!pendingRetry\) uiSync\(\)/.test(S)
+    check('C54 retry countdown survives: uiSync gated by !pendingRetry', guarded, 'guarded=' + guarded)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
