@@ -251,9 +251,100 @@ async function buildPayload(chat, queryText) {
   if (_att) {
     sys = 'The user has ATTACHED these working files (their current set - it can change between turns). Use them to answer:\n\n' + _att + (sys ? '\n\n' + sys : '')
   }
-  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
+  // Compaction: when this chat has been compacted, send the summary of the older
+  // turns (folded into the system context) + only the messages AFTER the compaction
+  // point, instead of the whole transcript. chat.messages is untouched - the full
+  // history is preserved and still shown in the UI; this only changes what the model
+  // receives, which is what keeps each turn small.
+  const _cp = chat.compaction
+  let _history = chat.messages
+  if (_cp && _cp.summary && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length) {
+    _history = chat.messages.slice(_cp.uptoIndex)
+    const _sumBlock = 'Summary of the earlier part of this conversation (older messages were compacted to save space):\n\n' + _cp.summary
+    sys = sys ? (sys + '\n\n' + _sumBlock) : _sumBlock
+  }
+  const baseMessages = _history.map(m=>({role:m.role,content:m.content}))
   const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
   return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
+}
+
+// ===========================================================================
+// Conversation compaction. Long chats re-send the whole transcript every turn,
+// which drains the shared per-minute token budget (repeated 429s) and can
+// approach the model context window. When the history that WOULD be sent grows
+// past the threshold, summarise the OLDER turns into chat.compaction and send
+// that summary + the most recent turns instead. chat.messages is never mutated
+// - the full history stays on disk and in the UI; only what the model receives
+// shrinks. Like the "compacting conversation" behaviour of the main apps.
+// ===========================================================================
+function setCompacting(on) {
+  compacting = !!on
+  if (on && typeof setHealth === 'function') setHealth('warn', 'Compacting\u2026')
+  if (typeof renderMessages === 'function') renderMessages()
+}
+
+// Estimate the tokens the NEXT send would carry (summary, if any, + messages
+// after the compaction point). Cheap char/4 estimate, same basis as elsewhere.
+function estSentHistoryTokens(chat) {
+  const cp = chat && chat.compaction
+  const startIdx = (cp && cp.uptoIndex) || 0
+  const sendable = (chat.messages || []).slice(startIdx)
+  const summaryTok = (cp && cp.summary) ? estTokens(cp.summary) : 0
+  return summaryTok + estTokens(sendable.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
+}
+
+// Summarise a run of older messages (optionally folding a prior summary in) into
+// one compact "conversation so far" block. Reuses summariseText so a very large
+// first compaction is split/paced rather than 429ing. Returns text or null.
+async function summariseConversation(prevSummary, msgs, signal) {
+  const transcript = msgs.map(function (m) {
+    const who = m.role === 'user' ? 'User' : 'Assistant'
+    const t = typeof m.content === 'string' ? m.content
+      : (m.content && m.content.find && (m.content.find(function (b) { return b.type === 'text' }) || {}).text) || ''
+    return who + ':\n' + t
+  }).join('\n\n')
+  const seed = (prevSummary ? 'Summary of the conversation so far:\n' + prevSummary + '\n\n--- Newer messages to fold into the summary ---\n\n' : '') + transcript
+  const sysPrompt = 'You are compacting a long chat conversation to save space. Write a faithful, concise summary that preserves the user\u2019s goals, key decisions and conclusions, important facts, names/identifiers/code, and any open questions \u2014 enough that the assistant can continue seamlessly. Prefer tight prose or short bullet points. Output only the summary.'
+  const instruction = 'Summarise this conversation so it can continue seamlessly, preserving goals, decisions, facts, identifiers and open questions.'
+  try {
+    const text = await summariseText(sysPrompt, 'conversation', seed, instruction, null, signal, 0)
+    return (text && String(text).trim()) || null
+  } catch (e) { return null }
+}
+
+// Compact the chat in place if the next send would exceed the threshold (or the
+// context-window safety cap). Runs BEFORE buildPayload in send(). Returns
+// { aborted } so send() can bail if the user pressed Stop mid-compaction.
+async function compactChatIfNeeded(chat) {
+  if (!chat || !Array.isArray(chat.messages) || !creds) return { aborted: false }
+  if (typeof demoOn === 'function' && demoOn()) return { aborted: false }   // leave #demo seeds intact
+  const KEEP = CFG.COMPACT_KEEP_RECENT || 8
+  const threshold = (creds && Number(creds.compactTokens) > 0 ? Number(creds.compactTokens) : (CFG.COMPACT_TOKENS || 50000))
+  const cp = chat.compaction
+  const startIdx = (cp && cp.uptoIndex) || 0
+  const sentTok = estSentHistoryTokens(chat)
+  const win = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
+  const safetyCap = win ? Math.floor(win * (CFG.COMPACT_WINDOW_SHARE || 0.8)) : Infinity
+  if (sentTok <= threshold && sentTok <= safetyCap) return { aborted: false }
+  const foldEnd = chat.messages.length - KEEP
+  if (foldEnd <= startIdx) return { aborted: false }   // only recent turns remain; can't shrink without dropping recent context
+  const toFold = chat.messages.slice(startIdx, foldEnd)
+  if (!toFold.length) return { aborted: false }
+  if (typeof lclCrumb === 'function') lclCrumb('compact_start', { upto: foldEnd, sentTok: sentTok, threshold: threshold })
+  const ctl = new AbortController(); inflightCtl = ctl
+  setCompacting(true)
+  let summary = null
+  try { summary = await summariseConversation(cp && cp.summary, toFold, ctl.signal) } catch (e) { summary = null }
+  setCompacting(false)
+  const aborted = ctl.signal.aborted
+  inflightCtl = null
+  if (aborted) { if (typeof lclCrumb === 'function') lclCrumb('compact_aborted', {}); return { aborted: true } }
+  if (summary) {
+    chat.compaction = { summary: summary, uptoIndex: foldEnd, createdAt: Date.now(), model: creds.model }
+    if (typeof lclCrumb === 'function') lclCrumb('compacted', { upto: foldEnd, kept: chat.messages.length - foldEnd })
+    try { await persist() } catch (e) {}
+  } else if (typeof lclCrumb === 'function') { lclCrumb('compact_failed', {}) }
+  return { aborted: false }
 }
 
 
@@ -346,6 +437,17 @@ async function send() {
   const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
   const disp = typeof content==='string'?content:content.find(b=>b.type==='text')?.text||'[attachment]'
   appendMsg('user', disp, null, null, sentFileNames)
+
+  // Auto-compact older turns first, so a long chat sends a summary + the recent
+  // turns instead of the whole transcript. Runs at most a short summary call; the
+  // 'Compacting\u2026' spinner shows while it does. Bail cleanly if Stop is pressed.
+  const _cmp = await compactChatIfNeeded(chat)
+  if (_cmp && _cmp.aborted) {
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
+    if (typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+    return
+  }
 
   const built = await buildPayload(chat, text)
   if (built.skillErr) {
