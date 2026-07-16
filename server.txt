@@ -166,6 +166,23 @@ function _logStamp(d) {
          p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' +
          p(d.getMilliseconds(), 3) + sign + oh + ':' + om
 }
+// Central secret scrubber for ALL log output. Upstream error envelopes echo secrets
+// back — notably a 429 throttling body carries the FULL api_key in clear — and these
+// lines are logged verbatim AND persisted to debug_logs.txt (which testers share). By
+// scrubbing HERE, at the shared sink, no key/token reaches the terminal or the file no
+// matter which call site logged it — no per-call-site discipline required.
+function sanitizeSecrets(s) {
+  return String(s == null ? '' : s)
+    .replace(/(api[_-]?key["'\s:=]*)[A-Za-z0-9._\-]{8,}/gi, '$1[redacted]')
+    .replace(/\b(sk-[A-Za-z0-9_\-]{2,4})[A-Za-z0-9_\-]{6,}/g, '$1…[redacted]')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._\-]{6,}/gi, '$1[redacted]')
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, '[redacted]')
+}
+// Format one console arg to a string the same way the file sink does, then scrub — so
+// the terminal and debug_logs.txt read identically and both are secret-free.
+function _sanitizeParts(args) {
+  return args.map(a => sanitizeSecrets(typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity })))
+}
 function dbgWrite(level, args, ts) {
   if (!fileLogActive()) return
   try {
@@ -175,7 +192,7 @@ function dbgWrite(level, args, ts) {
       try { _dbgBytes = fs.existsSync(DEBUG_LOG_FILE) ? fs.statSync(DEBUG_LOG_FILE).size : 0 } catch { _dbgBytes = 0 }
     }
     const body = args.map(a => (typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity }))).join(' ')
-    const line = (ts || _logStamp()) + ' [' + level + '] ' + _stripAnsi(body) + '\n'
+    const line = (ts || _logStamp()) + ' [' + level + '] ' + sanitizeSecrets(_stripAnsi(body)) + '\n'
     _dbgStream.write(line)
     _dbgBytes += Buffer.byteLength(line)
   } catch {}
@@ -186,9 +203,11 @@ const _origConsoleWarn  = console.warn.bind(console)
 const _origConsoleError = console.error.bind(console)
 // Console lines carry the SAME '<iso> [level]' prefix as the file sink (one shared
 // timestamp per call) so the terminal and debug_logs.txt read identically.
-console.log   = (...a) => { const ts = _logStamp(); _origConsoleLog(ts + ' [log]', ...a);     dbgWrite('log',  a, ts) }
-console.warn  = (...a) => { const ts = _logStamp(); _origConsoleWarn(ts + ' [warn]', ...a);   dbgWrite('warn', a, ts) }
-console.error = (...a) => { const ts = _logStamp(); _origConsoleError(ts + ' [error]', ...a); dbgWrite('error', a, ts) }
+// Scrub secrets ONCE per call, then feed the SAME cleaned parts to both the terminal
+// and the file sink, so neither can carry a key/token (e.g. a 429 body's api_key).
+console.log   = (...a) => { const ts = _logStamp(); const p = _sanitizeParts(a); _origConsoleLog(ts + ' [log]', ...p);     dbgWrite('log',  p, ts) }
+console.warn  = (...a) => { const ts = _logStamp(); const p = _sanitizeParts(a); _origConsoleWarn(ts + ' [warn]', ...p);   dbgWrite('warn', p, ts) }
+console.error = (...a) => { const ts = _logStamp(); const p = _sanitizeParts(a); _origConsoleError(ts + ' [error]', ...p); dbgWrite('error', p, ts) }
 
 // ---------------------------------------------------------------------------
 // Update channel TLS. A TLS-intercepting proxy (Zscaler) re-signs the GitHub
