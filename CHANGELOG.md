@@ -3,6 +3,17 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 16 Jul 2026 - Automatic conversation compaction (long chats stay fast) (alpha)
+
+Long chats re-send the whole transcript every turn (16 Jul logs: ~100k-token sends), which drains the shared 200k/min budget and stresses the proxy. LCL now **compacts** a chat like the main apps do: when the history that would be sent crosses a threshold, the older turns are summarised into a compact "conversation so far" block and only that summary plus the most recent turns are sent to the model. Each turn stays small, so several fit per minute without 429s.
+
+- **Automatic**, on send: `compactChatIfNeeded()` runs before the payload is built. Trigger = the sent-history estimate exceeds `CFG.COMPACT_TOKENS` (default 50k, ~25% of the per-minute budget; overridable via `creds.compactTokens`), or a safety backstop at 80% of the model context window. Keeps the last `CFG.COMPACT_KEEP_RECENT` (8) messages verbatim and folds the rest, incrementally (a later compaction folds the previous summary + newer turns). Reuses the existing map-reduce summariser so a huge first compaction is split/paced, not 429'd.
+- **Nothing is lost.** `chat.messages` is never mutated — the full transcript stays on disk and in the UI. Compaction only changes what the model receives (`buildPayload` sends the summary folded into the system context + messages after the compaction point).
+- **UI.** A transient "Compacting earlier messages" spinner (health pill reads "Compacting…") shows while the summary call runs; afterwards a collapsed "Earlier messages compacted · N messages" pill sits where the folded turns were — click to expand them back in place, click to collapse. Stop cancels an in-flight compaction and the send bails cleanly.
+- **#demo** is left uncompacted so seeds/tests stay intact. Tests **C52** (folds old, keeps recent, preserves history, shrinks the send) and **C53** (no-op under threshold / when only recent turns remain). Verified live in `#demo`: collapsed pill hides folded turns, expands to all, spinner + "Compacting…" render, no console errors.
+
+Suites: client-logic 51/51 (+C52, +C53), demo-api 42/42, build 5/5.
+
 ## 16 Jul 2026 - Large prompts no longer spuriously time out (two-phase upstream timeout) (alpha)
 
 **Fix — big turns were being killed by the 10s first-byte timeout.** The upstream streaming call used a single inactivity timer set to the client's retry-escalation value (10s on the first attempt). Because it was armed before the first byte, it doubled as a time-to-first-token budget — and a large turn (16 Jul log: ~100k-token payloads with full history) can take longer than 10s for the model to start streaming, so a perfectly good request was destroyed with `inactivity timeout (10s)` → 502 and then re-sent (burning the whole prompt again). It's now **two-phase**: the FIRST byte gets a generous budget (≥90s, clamped 180s), and only once streaming starts does it tighten to the short per-token inactivity window (which resets on every chunk, so a genuine mid-stream stall is still caught quickly). Test **C51**. server.txt changed → restart Node.
