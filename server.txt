@@ -963,6 +963,9 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       if (firstByteMs === null) {
         firstByteMs = Date.now() - streamStart
         log.debug('[stream] first byte  =', firstByteMs + 'ms')
+        // Streaming has started — tighten from the first-byte budget to the per-token
+        // inactivity window (which resets on every subsequent chunk).
+        try { upReq.setTimeout(inactivityMs, () => onStreamTimeout('inactivity', inactivityMs)) } catch (e) {}
       }
       sseBytes += Buffer.byteLength(chunk)
       const s = chunk.toString('utf8')
@@ -1007,14 +1010,20 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
     })
   })
 
-  // Inactivity timeout (no NEW bytes for this long) escalates per client retry
-  // attempt (10s -> 20s -> 60s), passed in via streamTimeoutMs. The socket timer
-  // resets on every token, so it only fires on a genuine stall. Clamped 5s-120s.
+  // Two-phase timeout. BEFORE the first byte, a large prompt can take tens of seconds
+  // for the model to start streaming, so a short cutoff here spuriously 502s a good
+  // request (16 Jul log: ~100k-token turns tripped the old 10s window). Give the FIRST
+  // byte a generous budget, then switch to the tighter per-token inactivity window once
+  // streaming has started (a mid-stream stall IS a real failure). The socket timer
+  // resets on every byte. timeoutMs (client escalation 10/20/60s) is the inter-token
+  // value; the first-byte budget floors well above it. Both clamped.
   const inactivityMs = Math.min(120000, Math.max(5000, Number(timeoutMs) || 60000))
-  upReq.setTimeout(inactivityMs, () => {
-    log.warn('[stream] inactivity timeout (' + Math.round(inactivityMs / 1000) + 's)')
+  const firstByteMsBudget = Math.min(180000, Math.max(inactivityMs, 90000))
+  const onStreamTimeout = (phase, ms) => {
+    log.warn('[stream] ' + phase + ' timeout (' + Math.round(ms / 1000) + 's)')
     upReq.destroy(new Error('Upstream inactivity timeout'))
-  })
+  }
+  upReq.setTimeout(firstByteMsBudget, () => onStreamTimeout('first-byte', firstByteMsBudget))
 
   upReq.on('error', err => {
     log.error('[stream] request error =', err.message)
