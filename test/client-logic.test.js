@@ -607,6 +607,17 @@ const CASES = [
     check('C49 sanitizeSecrets scrubs api_key, keeps diagnostics (server.txt)', keyGone && kept && benign && bearerGone,
       'keyGone=' + keyGone + ' kept=' + kept + ' benign=' + benign + ' bearerGone=' + bearerGone)
   } },
+  { id: 'C51 two-phase upstream timeout: generous first byte, tighter inter-token (server.txt)', fn: async () => {
+    // 16 Jul log: ~100k-token turns took >10s to first token and were killed by the old
+    // single 10s inactivity window (502). Now the FIRST byte gets a generous budget and
+    // the tight per-token window is armed only once streaming starts.
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const hasBudget = /const firstByteMsBudget = Math\.min\(180000, Math\.max\(inactivityMs, 90000\)\)/.test(S)
+    const armsFirst = S.includes("onStreamTimeout('first-byte'")
+    const tightens = S.includes("onStreamTimeout('inactivity'")
+    check('C51 two-phase upstream timeout (server.txt)', hasBudget && armsFirst && tightens,
+      'budget=' + hasBudget + ' armsFirst=' + armsFirst + ' tightens=' + tightens)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
