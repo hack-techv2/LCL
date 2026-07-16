@@ -199,3 +199,26 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
       "+ other chats" (caption gains suffix when on), file cards match sidebar
       chat cards. Send during embed → "still embedding" toast; pending badge
       reads "waiting to embed…"; no green health flash after extraction.
+
+## 16 Jul 2026 additions
+- [ ] Switch chats mid-reply (finish-in-background): send a `[[slow]]` message, switch
+      to another chat before it finishes. The other chat shows NO stray `(stopped)`/error
+      bubble and no red pill; the reply keeps generating into its origin chat and is there
+      (complete) when you switch back. Stop (button/Esc) still cancels. Health pill isn't
+      left stuck on "Replying" once the background run ends.
+- [ ] Budget-exceeded 429 (`[[budgetexceeded]]`): send it → a plain terminal error
+      "API key budget exhausted …" with NO countdown and NO auto-retry (not the 60s
+      rate-limit box).
+- [ ] Rate-limit UX: after a real 429 countdown is showing, re-sending is blocked with a
+      toast ("retry automatically in ~Ns / press Stop") instead of firing another 429; the
+      live `rl_wait` countdown still ticks. A 5xx pending-retry toast says "server hiccup",
+      not "Rate-limited".
+- [ ] Log scrub: trigger a 429, open `debug_logs.txt` (alpha) → the non-200 body reads
+      `api_key: [redacted]` (never the real key); limit/remaining/reset still shown.
+- [ ] Conversation compaction: in a long chat past the threshold, sending shows the
+      "Compacting earlier messages" spinner at the BOTTOM of the thread + "Compacting…" on
+      the health pill; then a collapsed "Earlier messages compacted · N messages" pill
+      sits above the recent turns — click expands the folded messages in place, click
+      collapses. Full transcript is preserved (expand shows every original message).
+      Stop during compaction cancels the send cleanly. (#demo is not compacted — inject a
+      fake `chat.compaction` to exercise the pill, as in the session smoke test.)
