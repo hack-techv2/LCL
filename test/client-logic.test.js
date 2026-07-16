@@ -618,6 +618,43 @@ const CASES = [
     check('C51 two-phase upstream timeout (server.txt)', hasBudget && armsFirst && tightens,
       'budget=' + hasBudget + ' armsFirst=' + armsFirst + ' tightens=' + tightens)
   } },
+
+  { id: 'C52 compaction folds old turns, keeps recent, preserves full history + shrinks the send', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([ okStream('COMPACTED SUMMARY', { total_tokens: 50 }, 'stop') ])
+    sb.persist = async () => {}
+    sb.creds = { model: 'demo', apiKey: 'K', maxTokens: 8192, compactTokens: 100 }   // tiny threshold to trigger
+    const msgs = []
+    for (let i = 0; i < 6; i++) { msgs.push({ role:'user', content:'question ' + i + ' ' + 'x'.repeat(60), ts:i*2 }); msgs.push({ role:'assistant', content:'answer ' + i + ' ' + 'y'.repeat(60), ts:i*2+1 }) }
+    const chat = { id:'c1', messages: msgs }
+    sb.D = { chats: { c1: chat } }
+    vm.runInContext('chatId = "c1"', ctx)
+    const before = chat.messages.length
+    const sentBefore = get('estSentHistoryTokens')(chat)
+    const res = await get('compactChatIfNeeded')(chat)
+    const sentAfter = get('estSentHistoryTokens')(chat)
+    const ok = !res.aborted && chat.compaction && chat.compaction.summary === 'COMPACTED SUMMARY'
+      && chat.compaction.uptoIndex === before - 8 && chat.messages.length === before && sentAfter < sentBefore
+      && crumbs.some(c => c.k === 'compacted')
+    check('C52 compaction folds old turns, keeps recent, preserves full history + shrinks the send', ok,
+      'upto=' + (chat.compaction && chat.compaction.uptoIndex) + ' kept=' + chat.messages.length + ' sent ' + sentBefore + '->' + sentAfter)
+  } },
+
+  { id: 'C53 no compaction under threshold, and none when only recent turns remain', fn: async () => {
+    const { ctx, get, sb } = mkCtx([])   // empty fetch queue: any summary call would throw
+    sb.persist = async () => {}
+    sb.creds = { model:'demo', apiKey:'K', maxTokens:8192 }   // default ~50k threshold
+    const small = { id:'c2', messages: [ {role:'user',content:'hi',ts:1}, {role:'assistant',content:'hello',ts:2} ] }
+    sb.D = { chats: { c2: small } }
+    vm.runInContext('chatId = "c2"', ctx)
+    const r1 = await get('compactChatIfNeeded')(small)
+    const under = !r1.aborted && !small.compaction
+    sb.creds.compactTokens = 1   // force over-threshold, but too few messages to fold (< keep-recent)
+    const tiny = { id:'c2', messages: [ {role:'user',content:'x'.repeat(60),ts:1}, {role:'assistant',content:'y'.repeat(60),ts:2} ] }
+    sb.D.chats.c2 = tiny
+    const r2 = await get('compactChatIfNeeded')(tiny)
+    const noFold = !r2.aborted && !tiny.compaction
+    check('C53 no compaction under threshold, and none when only recent turns remain', under && noFold, 'under=' + under + ' noFold=' + noFold)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
