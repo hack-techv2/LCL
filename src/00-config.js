@@ -53,6 +53,12 @@ const CFG = {
   SCAN_MIN_SHARE: 0.15,
   OCR_SCALE: 2.0,
 
+  // Conversation compaction (auto-summarise old turns to keep each send small)
+  COMPACT_TOKENS: 50000,     // trigger: compact when the history that WOULD be sent exceeds this (~25% of the 200k/min budget, so several turns fit per minute)
+  COMPACT_KEEP_RECENT: 8,    // messages kept verbatim after a compaction (~4 user/assistant exchanges)
+  COMPACT_WINDOW_SHARE: 0.8, // safety backstop: also compact if the send approaches this fraction of the model context window
+  COMPACT_SUMMARY_MAX_TOKENS: 1024, // cap on the generated summary reply
+
   // Misc
   DEMO_SENTINEL: 'demo',
 }
