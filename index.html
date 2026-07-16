@@ -1505,6 +1505,7 @@ let lastBudget = { tokLimit: null, tokRemaining: null, ts: 0 }   // latest /api/
 let embedTally = []    // [{ ts, tokens }] rolling 60s record of embeds for the cumulative budget gate
 let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
+let rlWindowUntil = 0  // ms epoch the shared token window is expected to reset (set from the last 429; self-expires). Drives the pre-send rate-limit guard.
 const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
 let ragStickyChunks = []
 let ragKeywordIndexCache = { signature: '', index: null, records: [] }   // v0.67e: MiniSearch keyword-index cache (invalidated on embed/remove)
@@ -5002,9 +5003,32 @@ async function send() {
     return
   }
 
-  // If a 429 retry was pending from a previous send, cancel it. The user
-  // is starting fresh; the old payload shouldn't auto-fire later.
-  if (pendingRetry) { pendingRetry.cancel(); pendingRetry = null }
+  // Anti-churn (rate-limit): a pending 429 countdown will auto-retry the SAME turn
+  // when the window resets. Re-sending now would cancel it and fire straight into the
+  // still-drained window (another 429), so block with a clear toast instead. Press
+  // Stop to cancel the wait and send a fresh message.
+  if (pendingRetry) {
+    const _secs = Math.max(0, Math.round(((rlWindowUntil || 0) - Date.now()) / 1000))
+    if (typeof lclCrumb === 'function') lclCrumb('send_blocked_ratelimit', { secs: _secs })
+    toast(_secs > 0
+      ? ('Rate-limited \u2014 it\u2019ll retry automatically in ~' + _secs + 's. Press Stop to cancel and send this instead.')
+      : ('Rate-limited \u2014 retrying automatically. Press Stop to cancel and send this instead.'), 'info')
+    return
+  }
+
+  // Pre-send guard: if we recently hit a 429 and the shared token window has NOT reset
+  // yet, this send will almost certainly 429 too. Warn once so the user can wait
+  // (recommended) instead of hammering a drained window. rlWindowUntil self-expires,
+  // so once the reset time passes this never fires.
+  if ((rlWindowUntil || 0) > Date.now() && typeof confirmDialog === 'function') {
+    const _secs = Math.max(1, Math.round((rlWindowUntil - Date.now()) / 1000))
+    const _go = await confirmDialog({
+      title: 'Rate limit still cooling down',
+      message: 'The shared per-minute token limit was just hit and resets in about ' + _secs + 's. Sending now will likely be rejected until then. Wait for it to reset, or send anyway?',
+      okText: 'Send anyway', cancelText: 'Wait'
+    })
+    if (!_go) { if (typeof lclCrumb === 'function') lclCrumb('send_held_ratelimit', { secs: _secs }); return }
+  }
 
   const chat = curChat(); if (!chat) return
   if (typeof lclCrumb === 'function') lclCrumb('send', { model: creds && creds.model, chars: text.length, docs: (chat.docs && chat.docs.length) || 0 })
@@ -5210,6 +5234,7 @@ async function runStream(chat, payload, ragSources) {
       // reset when present, else a default 60s backoff (covers a 429 from embeddings
       // using the shared budget, or a 429 whose reset time did not parse).
       if (r.kind === 'ratelimit') {
+        rlWindowUntil = r.resetMs || (Date.now() + 60000)   // pre-send guard reads this to warn before firing into a drained window
         if (isActive()) {
           handleRateLimitWait(chat, payload, ragSources, r.resetMs || (Date.now() + 60000), errData?.error?.message || '')
         } else {
@@ -5345,6 +5370,7 @@ async function runStream(chat, payload, ragSources) {
     if (truncated) msgObj.truncated = true
     if (bubble) attachMsgFlags(bubble, msgObj)
     retry5xxCount = 0
+    rlWindowUntil = 0   // a clean success means the window has room again; clear the pre-send guard
     uiHealth('ok', connectedLabel())
   } catch (err) {
     if (typingEl) try { typingEl.remove() } catch {}
