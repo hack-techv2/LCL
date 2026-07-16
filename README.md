@@ -29,6 +29,12 @@ browser interface at `http://localhost:3000`.
   proactively — large documents summarise via adaptive map-reduce, embeddings
   wait out 429s instead of failing, and long replies that hit the token cap get
   a **Continue** button that picks up exactly where they stopped.
+- **Long chats stay fast (compaction):** once a conversation grows large it is
+  **compacted** automatically — the older turns are summarised and only that
+  summary plus the most recent turns are sent to the model, so each turn stays
+  small and several fit within the per-minute budget. Your full history is never
+  lost (it stays saved and viewable); a collapsed “earlier messages compacted”
+  marker shows what was folded and expands it back in place.
 - **Resilient:** automatic retries with visible countdowns for rate limits and
   transient upstream errors; mid-stream failures are detected and retried
   rather than silently truncating a reply.
