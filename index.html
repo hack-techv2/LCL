@@ -5009,10 +5009,12 @@ async function send() {
   // Stop to cancel the wait and send a fresh message.
   if (pendingRetry) {
     const _secs = Math.max(0, Math.round(((rlWindowUntil || 0) - Date.now()) / 1000))
-    if (typeof lclCrumb === 'function') lclCrumb('send_blocked_ratelimit', { secs: _secs })
-    toast(_secs > 0
-      ? ('Rate-limited \u2014 it\u2019ll retry automatically in ~' + _secs + 's. Press Stop to cancel and send this instead.')
-      : ('Rate-limited \u2014 retrying automatically. Press Stop to cancel and send this instead.'), 'info')
+    const _rl = (rlWindowUntil || 0) > Date.now()   // true 429 window vs a 5xx transient retry
+    if (typeof lclCrumb === 'function') lclCrumb('send_blocked_ratelimit', { secs: _secs, kind: _rl ? 'ratelimit' : 'transient' })
+    const _lead = _rl
+      ? (_secs > 0 ? 'Rate-limited \u2014 it\u2019ll retry automatically in ~' + _secs + 's.' : 'Rate-limited \u2014 retrying automatically.')
+      : 'Still retrying the previous message after a server hiccup.'
+    toast(_lead + ' Press Stop to cancel and send this instead.', 'info')
     return
   }
 
