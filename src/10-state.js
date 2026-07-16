@@ -13,6 +13,7 @@ let lastBudget = { tokLimit: null, tokRemaining: null, ts: 0 }   // latest /api/
 let embedTally = []    // [{ ts, tokens }] rolling 60s record of embeds for the cumulative budget gate
 let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
+let rlWindowUntil = 0  // ms epoch the shared token window is expected to reset (set from the last 429; self-expires). Drives the pre-send rate-limit guard.
 const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
 let ragStickyChunks = []
 let ragKeywordIndexCache = { signature: '', index: null, records: [] }   // v0.67e: MiniSearch keyword-index cache (invalidated on embed/remove)
