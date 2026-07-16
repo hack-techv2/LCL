@@ -6566,9 +6566,7 @@ function renderMessages() {
   const _isCompacting = (typeof compacting !== 'undefined' && compacting)
   const _open = !!(typeof compactOpen !== 'undefined' && compactOpen[chat.id])
   let _startRender = 0
-  if (_isCompacting && typeof compactingIndicatorEl === 'function') {
-    inner.appendChild(compactingIndicatorEl())
-  } else if (_cp && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length && typeof compactionPillEl === 'function') {
+  if (_cp && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length && typeof compactionPillEl === 'function') {
     inner.appendChild(compactionPillEl(chat, _open))
     if (!_open) _startRender = _cp.uptoIndex
   }
@@ -6580,6 +6578,10 @@ function renderMessages() {
     if (m.role !== 'user' && typeof attachMsgFlags === 'function') attachMsgFlags(div, m)
     inner.appendChild(div)
   })
+  // Transient compacting spinner goes at the BOTTOM of the thread (where the view
+  // scrolls to and where the reply will land), so it's visible even in a long chat -
+  // at the top it sat above the fold, off-screen (only the health pill showed it).
+  if (_isCompacting && typeof compactingIndicatorEl === 'function') inner.appendChild(compactingIndicatorEl())
   el.innerHTML = ''
   el.appendChild(inner)
   el.scrollTop = el.scrollHeight
