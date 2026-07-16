@@ -143,3 +143,20 @@ embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
 ### C31 (7 Jul) — gateway switch: `setGateway('Kepler')` stashes the current gateway's keys in `D.settings.gwVault`, POSTs the Kepler preset to `/api/endpoint`, and clears creds keys (none saved yet); after the user pastes a Kepler key, switching back stashes it and restores the PlatformAI keys. `currentGateway()` resolves PlatformAI/NC3 (Dev)/Custom from the active endpoint. Runs the real `// === gateway ===` block. T36 asserts the 2-preset list (PlatformAI + NC3 (Dev)).
 
 ### C29 (7 Jul) — split run carries the user instruction through map-reduce: with a non-summary ask ("Search the presenter's name"), part requests get the extract prompt + the ask verbatim, the combine request answers the ORIGINAL ask from the part-extracts, and the system line switches to "processing a document"; a summarise-style ask keeps the original generic part/combine prompts (captured from the real fetch bodies).
+
+### 15–16 Jul 2026 additions — budget-exceeded, log scrub, rate-limit UX, timeout, compaction
+
+Server suite (`demo-api.test.js`, now 42 cases):
+
+| ID | groups | What it does | Expects |
+|----|--------|--------------|---------|
+| T42 | errors | `[[budgetexceeded]]` `/api/chat` | flat `429` whose body is the bare string `1 budget(s) exceeded` — NO reset/limit/remaining fields (overall API-key budget exhaustion) |
+
+Client-logic suite (`client-logic.test.js`, now 51 cases):
+
+- **C48** — `postClassified` on a flat `{"error":"1 budget(s) exceeded"}` 429 classifies `kind:'terminal'` (not `ratelimit`), with `resetMs`/`limit429`/`remaining429` all null, so the chat path shows a plain terminal error and never enters the 60s retry-forever loop (15 Jul debug log).
+- **C49** — `sanitizeSecrets` (extracted from `server.txt`) scrubs `api_key: <…>`, `Bearer <…>`, `sk-…` tokens and 32+ hex runs from any log line, while keeping the useful 429 diagnostics (limit type / remaining / reset). Guards the centralised log-sink redaction so a key can never reach `debug_logs.txt`.
+- **C50** — re-sending while a 429 countdown is pending is BLOCKED with an informative toast (crumb `send_blocked_ratelimit`) and does NOT cancel + re-fire the pending retry into the still-drained window (Stop cancels instead).
+- **C51** — `server.txt` two-phase upstream timeout: a generous first-byte budget (`firstByteMsBudget = min(180000, max(inactivityMs, 90000))`) then a tighten to the per-token inactivity window once streaming starts (`onStreamTimeout('first-byte'|'inactivity')`). Stops large/slow prompts tripping the old 10s cutoff.
+- **C52** — conversation compaction: with a tiny threshold, `compactChatIfNeeded` folds all but the last 8 messages into `chat.compaction` (summary via the mocked stream), `chat.messages` is preserved intact, and the estimated sent-history tokens drop (`estSentHistoryTokens` before > after); `compacted` crumb fired.
+- **C53** — compaction is a no-op under the threshold, and also when only recent turns remain (fewer than keep-recent messages) — no summary call is made (empty fetch queue would throw if it were).
