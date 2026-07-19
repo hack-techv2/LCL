@@ -277,9 +277,10 @@ async function buildPayload(chat, queryText) {
 // - the full history stays on disk and in the UI; only what the model receives
 // shrinks. Like the "compacting conversation" behaviour of the main apps.
 // ===========================================================================
-function setCompacting(on) {
-  compacting = !!on
-  if (on && typeof setHealth === 'function') setHealth('warn', 'Compacting\u2026')
+function setCompacting(chatIdOrNull) {
+  compacting = chatIdOrNull || null   // scope the spinner to the chat being compacted
+  // Health pill is global; only claim 'Compacting…' while that chat is the one on screen.
+  if (compacting && typeof setHealth === 'function' && (typeof chatId === 'undefined' || chatId === compacting)) setHealth('warn', 'Compacting\u2026')
   if (typeof renderMessages === 'function') renderMessages()
 }
 
@@ -332,10 +333,10 @@ async function compactChatIfNeeded(chat) {
   if (!toFold.length) return { aborted: false }
   if (typeof lclCrumb === 'function') lclCrumb('compact_start', { upto: foldEnd, sentTok: sentTok, threshold: threshold })
   const ctl = new AbortController(); inflightCtl = ctl
-  setCompacting(true)
+  setCompacting(chat.id)
   let summary = null
   try { summary = await summariseConversation(cp && cp.summary, toFold, ctl.signal) } catch (e) { summary = null }
-  setCompacting(false)
+  setCompacting(null)
   const aborted = ctl.signal.aborted
   inflightCtl = null
   if (aborted) { if (typeof lclCrumb === 'function') lclCrumb('compact_aborted', {}); return { aborted: true } }
