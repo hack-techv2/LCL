@@ -1532,7 +1532,7 @@ let embedTally = []    // [{ ts, tokens }] rolling 60s record of embeds for the 
 let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
 let rlWindowUntil = 0  // ms epoch the shared token window is expected to reset (set from the last 429; self-expires). Drives the pre-send rate-limit guard.
-let compacting = false // true while an auto-compaction summary call is in flight (drives the spinner + 'Compacting…' pill)
+let compacting = null  // chatId currently being compacted (scopes the spinner to THAT chat), else null
 const compactOpen = {} // chatId -> bool: whether the collapsed 'earlier messages compacted' block is expanded in the UI
 const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
 let ragStickyChunks = []
@@ -5038,9 +5038,10 @@ async function buildPayload(chat, queryText) {
 // - the full history stays on disk and in the UI; only what the model receives
 // shrinks. Like the "compacting conversation" behaviour of the main apps.
 // ===========================================================================
-function setCompacting(on) {
-  compacting = !!on
-  if (on && typeof setHealth === 'function') setHealth('warn', 'Compacting\u2026')
+function setCompacting(chatIdOrNull) {
+  compacting = chatIdOrNull || null   // scope the spinner to the chat being compacted
+  // Health pill is global; only claim 'Compacting…' while that chat is the one on screen.
+  if (compacting && typeof setHealth === 'function' && (typeof chatId === 'undefined' || chatId === compacting)) setHealth('warn', 'Compacting\u2026')
   if (typeof renderMessages === 'function') renderMessages()
 }
 
@@ -5093,10 +5094,10 @@ async function compactChatIfNeeded(chat) {
   if (!toFold.length) return { aborted: false }
   if (typeof lclCrumb === 'function') lclCrumb('compact_start', { upto: foldEnd, sentTok: sentTok, threshold: threshold })
   const ctl = new AbortController(); inflightCtl = ctl
-  setCompacting(true)
+  setCompacting(chat.id)
   let summary = null
   try { summary = await summariseConversation(cp && cp.summary, toFold, ctl.signal) } catch (e) { summary = null }
-  setCompacting(false)
+  setCompacting(null)
   const aborted = ctl.signal.aborted
   inflightCtl = null
   if (aborted) { if (typeof lclCrumb === 'function') lclCrumb('compact_aborted', {}); return { aborted: true } }
@@ -6567,7 +6568,7 @@ function renderMessages() {
   // compacted show a collapsed 'Earlier messages compacted' pill that hides the folded
   // messages (click to expand them back in place - they are never deleted).
   const _cp = chat.compaction
-  const _isCompacting = (typeof compacting !== 'undefined' && compacting)
+  const _isCompacting = (typeof compacting !== 'undefined' && compacting && compacting === chat.id)   // spinner only in the chat being compacted
   const _open = !!(typeof compactOpen !== 'undefined' && compactOpen[chat.id])
   let _startRender = 0
   if (_cp && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length && typeof compactionPillEl === 'function') {
