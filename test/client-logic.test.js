@@ -664,6 +664,57 @@ const CASES = [
     const guarded = /if \(!pendingRetry\) uiSync\(\)/.test(S)
     check('C54 retry countdown survives: uiSync gated by !pendingRetry', guarded, 'guarded=' + guarded)
   } },
+
+  { id: 'C55 compaction pill + spinner: structure + expand/collapse toggle (real builders)', fn: async () => {
+    // Runs the REAL compactionPillEl / compactingIndicatorEl (+ mkEl) against a tiny
+    // DOM stub, so the collapsed pill, its count, the caret glyphs, the click toggle,
+    // and the spinner are exercised for real - covers the compaction UI browser check.
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const U = fs.readFileSync(path.join(__dirname, '..', 'src', '80-ui.js'), 'utf8')
+    const mkElSrc = (U.match(/function mkEl\(tag, attrs, children\) \{[\s\S]*?\n\}/) || [])[0]
+    const pillSrc = (R.match(/function compactionPillEl\(chat, open\) \{[\s\S]*?\n\}/) || [])[0]
+    const spinSrc = (R.match(/function compactingIndicatorEl\(\) \{[\s\S]*?\n\}/) || [])[0]
+    if (!mkElSrc || !pillSrc || !spinSrc) return check('C55 compaction pill + spinner structure', false, 'source not found')
+    const mkNode = tag => { const n = { tagName: tag, className: '', innerHTML: '', _a: {}, _l: {}, childNodes: [], nodeType: 1 }
+      n.setAttribute = (k, v) => { n._a[k] = v }; n.addEventListener = (e, f) => { (n._l[e] = n._l[e] || []).push(f) }
+      n.append = c => { n.childNodes.push(c) }; n.appendChild = c => { n.childNodes.push(c); return c }; return n }
+    let renders = 0
+    const ctx = vm.createContext({
+      document: { createElement: mkNode, createTextNode: s => ({ nodeType: 3, textContent: String(s) }) },
+      compactOpen: {}, renderMessages: () => { renders++ }, lclCrumb: () => {}
+    })
+    vm.runInContext(mkElSrc + '\n' + pillSrc + '\n' + spinSrc, ctx)
+    const pillEl = vm.runInContext('compactionPillEl', ctx)
+    const spinEl = vm.runInContext('compactingIndicatorEl', ctx)
+    const txtOf = n => (n.childNodes || []).map(c => c.nodeType === 3 ? c.textContent : txtOf(c)).join('')
+    const chat = { id: 'x', compaction: { uptoIndex: 7 } }
+    const collapsed = pillEl(chat, false); const cTxt = txtOf(collapsed)
+    const okCollapsed = collapsed.className.indexOf('compact-pill') === 0 && collapsed.className.indexOf('open') === -1
+      && /Earlier messages compacted/.test(cTxt) && /7 messages/.test(cTxt) && /\u25b8/.test(cTxt)
+    collapsed._l.click[0]()   // simulate a click on the pill
+    const toggled = vm.runInContext('compactOpen.x', ctx) === true && renders === 1
+    const openEl = pillEl(chat, true); const oTxt = txtOf(openEl)
+    const okOpen = /open/.test(openEl.className) && /\u25be/.test(oTxt) && /showing all/.test(oTxt)
+    const spin = spinEl()
+    const okSpin = /compacting/.test(spin.className) && spin.childNodes.some(c => c.className === 'compact-spin')
+    check('C55 compaction pill + spinner: structure + expand/collapse toggle', okCollapsed && toggled && okOpen && okSpin,
+      'collapsed=' + okCollapsed + ' toggle=' + toggled + ' open=' + okOpen + ' spin=' + okSpin)
+  } },
+
+  { id: 'C56 compaction + finish-in-background wiring (source guards)', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const loopIdx = R.indexOf('chat.messages.slice(_startRender).forEach')
+    const spinIdx = R.indexOf("_isCompacting && typeof compactingIndicatorEl === 'function') inner.appendChild")
+    const slicesCollapsed = /if \(!_open\) _startRender = _cp\.uptoIndex/.test(R)
+    const spinnerAtBottom = loopIdx > 0 && spinIdx > loopIdx   // spinner appended AFTER the message loop = bottom of thread
+    const spinnerScoped = /compacting === chat\.id/.test(R)   // spinner only shows in the chat being compacted
+    const noAbortOnNav = !/\n\s*stopStreaming\(true\)/.test(T30)   // switchChat/newChat no longer abort the in-flight run
+    const scopedUI = /const uiMsg = /.test(T50) && /const uiHealth = /.test(T50) && /if \(!pendingRetry\) uiSync\(\)/.test(T50)
+    const toastWording = T50.includes('Still retrying the previous message after a server hiccup.')
+    const ok = slicesCollapsed && spinnerAtBottom && spinnerScoped && noAbortOnNav && scopedUI && toastWording
+    check('C56 compaction + finish-in-background wiring (source guards)', ok,
+      'sliceCollapsed=' + slicesCollapsed + ' spinnerBottom=' + spinnerAtBottom + ' spinnerScoped=' + spinnerScoped + ' noAbortNav=' + noAbortOnNav + ' scopedUI=' + scopedUI + ' toast=' + toastWording)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
