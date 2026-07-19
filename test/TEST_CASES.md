@@ -160,3 +160,12 @@ Client-logic suite (`client-logic.test.js`, now 51 cases):
 - **C51** — `server.txt` two-phase upstream timeout: a generous first-byte budget (`firstByteMsBudget = min(180000, max(inactivityMs, 90000))`) then a tighten to the per-token inactivity window once streaming starts (`onStreamTimeout('first-byte'|'inactivity')`). Stops large/slow prompts tripping the old 10s cutoff.
 - **C52** — conversation compaction: with a tiny threshold, `compactChatIfNeeded` folds all but the last 8 messages into `chat.compaction` (summary via the mocked stream), `chat.messages` is preserved intact, and the estimated sent-history tokens drop (`estSentHistoryTokens` before > after); `compacted` crumb fired.
 - **C53** — compaction is a no-op under the threshold, and also when only recent turns remain (fewer than keep-recent messages) — no summary call is made (empty fetch queue would throw if it were).
+
+### 16 Jul 2026 — browser/visual checks promoted to automated cases
+
+The UI_CHECKS "16 Jul additions" items now have automated coverage (no longer manual-only):
+
+- **C55** — runs the REAL `compactionPillEl` / `compactingIndicatorEl` (+ `mkEl`, extracted from source) against a tiny DOM stub: the collapsed pill has class `compact-pill` (not `open`), shows the folded count and the ▸ caret; clicking it toggles `compactOpen[chatId]` and re-renders; the expanded pill shows ▾ + "showing all"; the spinner element carries `.compact-spin`.
+- **C56** — source-wiring guards: `renderMessages` slices at `_startRender = uptoIndex` when collapsed and appends the compacting spinner AFTER the message loop (bottom of thread, not above the fold); `switchChat`/`newChat` no longer call `stopStreaming(true)` (finish-in-background); `runStream` routes UI through `uiMsg`/`uiHealth` and gates `uiSync()` on `!pendingRetry`; the block-on-resend toast distinguishes a 5xx retry ("server hiccup") from a real rate limit.
+
+Map of UI check → automated case: switch-chat background → C56 (+live); budget-exceeded → C48; rate-limit re-send/countdown → C50, C54; log scrub → C49; compaction pill/spinner/history → C52, C53, C55, C56.
