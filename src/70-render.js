@@ -239,7 +239,7 @@ function renderMessages() {
   // compacted show a collapsed 'Earlier messages compacted' pill that hides the folded
   // messages (click to expand them back in place - they are never deleted).
   const _cp = chat.compaction
-  const _isCompacting = (typeof compacting !== 'undefined' && compacting)
+  const _isCompacting = (typeof compacting !== 'undefined' && compacting && compacting === chat.id)   // spinner only in the chat being compacted
   const _open = !!(typeof compactOpen !== 'undefined' && compactOpen[chat.id])
   let _startRender = 0
   if (_cp && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length && typeof compactionPillEl === 'function') {
