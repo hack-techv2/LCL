@@ -2103,9 +2103,10 @@ async function handleUpdateApply(req, res) {
     // Integrity gate is the SHA-256 above; server.txt was already syntax-checked
     // by build.js before upload, so no redundant runtime check here.
     const applied = swapInFiles(verified)
+    const skills = await syncBundledSkills(ref)   // pull bundled skills from the same ref (best-effort)
     _alphaCache = { ts: 0, data: null }
     json(res, {
-      ok: true, channel: ch, ref, applied, unchanged,
+      ok: true, channel: ch, ref, applied, unchanged, skills,
       restartNeeded: applied.includes('server.txt'),
       refreshNeeded: applied.includes('index.html')
     })
@@ -2254,7 +2255,8 @@ async function restoreStable() {
     bufs[f] = await downloadVerified(tag, f, want)
   }
   const applied = swapInFiles(bufs)
-  return { tag, applied }
+  const skills = await syncBundledSkills(tag)   // pull bundled skills from the release tag (best-effort)
+  return { tag, applied, skills }
 }
 // .stable backup helpers — keep a verbatim copy of the stable files so a revert
 // can fall back to them when GitHub is unreachable.
@@ -2300,6 +2302,58 @@ function swapInFiles(bufs) {
   return applied
 }
 
+// --- Bundled skill sync (pulled by the updater) ------------------------------
+// Local record of which skill ids THIS install pulled as "bundled", so an update
+// can refresh/remove them without ever touching skills the user created. Runtime
+// only (git-ignored); NOT the repo's skills/manifest.json.
+const BUNDLED_RECORD = path.join(SKILLS_DIR, '.bundled.json')
+function readBundledRecord() {
+  try { const a = JSON.parse(fs.readFileSync(BUNDLED_RECORD, 'utf8')); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+function writeBundledRecord(ids) {
+  try { fs.mkdirSync(SKILLS_DIR, { recursive: true }); fs.writeFileSync(BUNDLED_RECORD, JSON.stringify(ids)) }
+  catch (e) { log.warn('[skills] record write failed: ' + ((e && e.message) || e)) }
+}
+// Pull the repo's BUNDLED skills for `ref` into the local skills folder. The repo's
+// skills/manifest.json { "bundled": [ids] } is the source of truth: each listed skill
+// is (re)written so fixes propagate; a previously-bundled id dropped from the manifest
+// is removed; skills the USER created (any id NOT in the manifest AND NOT in our local
+// record) are NEVER touched. Best-effort - any failure logs and leaves skills as-is so a
+// flaky GitHub call can't break the core update. Returns { installed, removed } or { skipped }.
+async function syncBundledSkills(ref) {
+  try {
+    const mf = await ghFetchFile(ref, 'skills/manifest.json')
+    if (mf.statusCode !== 200) { log.debug('[skills] no manifest @' + ref + ' (HTTP ' + mf.statusCode + ') - skipping'); return { skipped: true } }
+    let wanted = []
+    try { const j = JSON.parse(mf.buf.toString('utf8')); if (j && Array.isArray(j.bundled)) wanted = j.bundled.filter(id => typeof id === 'string' && isValidSlug(id)) }
+    catch { log.warn('[skills] manifest parse failed @' + ref); return { skipped: true, badManifest: true } }
+    fs.mkdirSync(SKILLS_DIR, { recursive: true })
+    const prev = readBundledRecord()
+    const installed = []
+    for (const id of wanted) {
+      const dl = await ghFetchFile(ref, 'skills/' + id + '.md')
+      if (dl.statusCode !== 200) { log.warn('[skills] bundled ' + id + ' fetch HTTP ' + dl.statusCode + ' - kept as-is'); if (prev.includes(id)) installed.push(id); continue }
+      const dest = path.join(SKILLS_DIR, id + '.md'), tmp = dest + '.tmp'
+      try { fs.writeFileSync(tmp, dl.buf); fs.renameSync(tmp, dest); installed.push(id) }
+      catch (e) { log.warn('[skills] write ' + id + ' failed: ' + ((e && e.message) || e)) }
+    }
+    // Remove ids we PREVIOUSLY installed as bundled that are no longer in the manifest.
+    // Only ids from our own record are eligible - user-created skills never appear here.
+    const removed = []
+    for (const id of prev) {
+      if (wanted.includes(id) || !isValidSlug(id)) continue
+      try { const p = path.join(SKILLS_DIR, id + '.md'); if (fs.existsSync(p)) { fs.unlinkSync(p); removed.push(id) } }
+      catch (e) { log.warn('[skills] remove ' + id + ' failed: ' + ((e && e.message) || e)) }
+    }
+    writeBundledRecord(installed)
+    if (installed.length || removed.length) log.info('[skills] bundled sync @' + ref + ' | installed ' + installed.length + ' | removed ' + removed.length)
+    return { installed, removed }
+  } catch (e) {
+    log.warn('[skills] bundled sync failed: ' + ((e && e.message) || e))
+    return { error: (e && e.message) || String(e) }
+  }
+}
+
 // Download + verify + atomically swap UPDATE_FILES for a given git ref. The
 // SHA-256 from that ref's checksums.txt is the integrity gate. Returns
 // { applied, unchanged }; throws (applying nothing) if any file fails.
@@ -2315,8 +2369,9 @@ async function applyRef(ref) {
     verified[f] = await downloadVerified(ref, f, want)
   }
   const applied = swapInFiles(verified)
+  const skills = await syncBundledSkills(ref)   // pull bundled skills from the same ref (best-effort)
   _alphaCache = { ts: 0, data: null }
-  return { applied, unchanged }
+  return { applied, unchanged, skills }
 }
 
 function handleUpdateChannel(req, res) {
