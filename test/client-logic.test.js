@@ -729,7 +729,7 @@ const CASES = [
     // When the sidebar is minimised, hide the whole version cluster (badge + ALPHA pill
     // + "new") so only the comet logo remains - same on stable and alpha.
     const CSS = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
-    const hidesVerWrap = CSS.includes('body.sb-collapsed .ver-wrap{display:none}')
+    const hidesVerWrap = CSS.includes('body.sb-collapsed .ver-wrap{display:none !important}')   // !important overrides the wrapper's inline display
     const stillHidesUpd = /body\.sb-collapsed \.footer-upd\{display:none/.test(CSS)
     check('C58 collapsed footer = comet logo only (ver-wrap hidden)', hidesVerWrap && stillHidesUpd, 'verWrap=' + hidesVerWrap + ' upd=' + stillHidesUpd)
   } },
