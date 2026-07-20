@@ -715,6 +715,15 @@ const CASES = [
     check('C56 compaction + finish-in-background wiring (source guards)', ok,
       'sliceCollapsed=' + slicesCollapsed + ' spinnerBottom=' + spinnerAtBottom + ' spinnerScoped=' + spinnerScoped + ' noAbortNav=' + noAbortOnNav + ' scopedUI=' + scopedUI + ' toast=' + toastWording)
   } },
+
+  { id: 'C57 embed progress toast + pill suppressed for a single-chunk embed (15-rag.js)', fn: async () => {
+    // The per-query embed (one chunk, no progress bar) was spamming a pointless
+    // "Embedding\u2026 batch 1/1 (1/1 chunks)" toast + pill flash on every RAG search.
+    const G = fs.readFileSync(path.join(__dirname, '..', 'src', '15-rag.js'), 'utf8')
+    const toastGated = /\} else if \(evt\.total > 1 \|\| evt\.batchTotal > 1\) \{/.test(G)
+    const healthGated = /if \(\(onProgress \|\| evt\.total > 1 \|\| evt\.batchTotal > 1\) && typeof setHealth === 'function'\) setHealth\('warn', 'Embedding /.test(G)
+    check('C57 embed progress toast + pill suppressed for a single-chunk embed', toastGated && healthGated, 'toastGated=' + toastGated + ' healthGated=' + healthGated)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
