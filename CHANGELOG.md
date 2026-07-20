@@ -3,6 +3,14 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 21 Jul 2026 - Updater pulls bundled skills + collapsed footer shows only the comet logo (alpha)
+
+- **The updater now pulls bundled skills.** After applying an update (alpha branch, stable release, or channel switch), the server reads the repo's `skills/manifest.json` (`{ "bundled": [ids] }`) at the same ref and syncs those skill `.md` files into the local `skills/` folder: each listed skill is (re)written so fixes propagate, a previously-bundled skill dropped from the manifest is removed, and **skills you created yourself are never touched** (tracked via a local, git-ignored `skills/.bundled.json` record so user skills and bundled ones are never confused). Best-effort — a flaky GitHub call logs and leaves skills as-is, never blocking the core update. Works on both channels; stable gains it once this build is promoted. `syncBundledSkills` in server.txt; tests **C59** (install/refresh/remove/keep behaviour) + **C60** (wired into all three apply paths). First bundled skill: **Self-Explanatory Slides** (`skills/self-explanatory-slides.md`, in `skills/manifest.json`). server.txt changed -> restart Node.
+- **Collapsed sidebar footer shows only the comet logo** — the version badge, ALPHA pill, and "new" indicator hide when the sidebar is minimised (was showing the ALPHA pill + version). Expanded footer is unchanged. Test **C58**.
+- Also folded in this alpha run: the retry countdown no longer gets wiped by the finish-in-background re-render (**C54**), the compacting spinner shows at the bottom of the thread and is scoped to its own chat (**C55/C56**), and the per-query embed no longer spams a "batch 1/1 (1/1 chunks)" toast (**C57**).
+
+Suites: client-logic 58/58, demo-api 42/42, build 5/5.
+
 ## 16 Jul 2026 - Automatic conversation compaction (long chats stay fast) (alpha)
 
 Long chats re-send the whole transcript every turn (16 Jul logs: ~100k-token sends), which drains the shared 200k/min budget and stresses the proxy. LCL now **compacts** a chat like the main apps do: when the history that would be sent crosses a threshold, the older turns are summarised into a compact "conversation so far" block and only that summary plus the most recent turns are sent to the model. Each turn stays small, so several fit per minute without 429s.
