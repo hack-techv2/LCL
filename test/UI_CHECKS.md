@@ -222,3 +222,8 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
       collapses. Full transcript is preserved (expand shows every original message).
       Stop during compaction cancels the send cleanly. (#demo is not compacted — inject a
       fake `chat.compaction` to exercise the pill, as in the session smoke test.)
+
+## 20 Jul 2026 additions
+- [ ] Collapse the sidebar: the footer shows ONLY the comet logo — no version badge, no
+      ALPHA pill, no "↑ new" (on both stable and alpha). Expand it again → the full
+      footer returns (name, contributors, version, and the ALPHA pill on alpha). Guard C58.
