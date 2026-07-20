@@ -16,6 +16,9 @@ test/fixtures/*.xlsx
 # if Node is ever run from this folder)
 lcl_data.json
 embed_cache.bin
+# Per-install record of which skills the updater pulled as bundled (runtime only;
+# the repo's skills/manifest.json is the committed source of truth)
+skills/.bundled.json
 # Offline stable-build snapshots written when enabling the Experimental channel
 *.stable
 
