@@ -733,6 +733,65 @@ const CASES = [
     const stillHidesUpd = /body\.sb-collapsed \.footer-upd\{display:none/.test(CSS)
     check('C58 collapsed footer = comet logo only (ver-wrap hidden)', hidesVerWrap && stillHidesUpd, 'verWrap=' + hidesVerWrap + ' upd=' + stillHidesUpd)
   } },
+
+  { id: 'C59 bundled-skill sync: refresh manifest skills, remove dropped bundled, keep user skills (server.txt)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const parts = [
+      (S.match(/const BUNDLED_RECORD = path\.join\(SKILLS_DIR, '\.bundled\.json'\)/) || [])[0],
+      (S.match(/function readBundledRecord\(\) \{[\s\S]*?\n\}/) || [])[0],
+      (S.match(/function writeBundledRecord\(ids\) \{[\s\S]*?\n\}/) || [])[0],
+      (S.match(/async function syncBundledSkills\(ref\) \{[\s\S]*?\n\}/) || [])[0],
+    ]
+    if (parts.some(p => !p)) return check('C59 bundled-skill sync', false, 'source not found: ' + parts.map(p => !!p).join(','))
+    const files = {
+      '/skills/user-skill.md': '# My Skill\nmine',
+      '/skills/old-bundled.md': '# Old Bundled\nx',
+      '/skills/self-explanatory-slides.md': '# Self-Explanatory Slides\nOLD content',
+      '/skills/.bundled.json': JSON.stringify(['old-bundled', 'self-explanatory-slides']),
+    }
+    const fakeFs = {
+      existsSync: p => Object.prototype.hasOwnProperty.call(files, p),
+      readFileSync: p => { if (!(p in files)) throw new Error('ENOENT ' + p); return files[p] },
+      writeFileSync: (p, d) => { files[p] = d },
+      renameSync: (a, b) => { files[b] = files[a]; delete files[a] },
+      unlinkSync: p => { delete files[p] },
+      mkdirSync: () => {},
+    }
+    const repo = {
+      'skills/manifest.json': Buffer.from(JSON.stringify({ bundled: ['self-explanatory-slides', 'new-bundled'] })),
+      'skills/self-explanatory-slides.md': Buffer.from('# Self-Explanatory Slides\nNEW content'),
+      'skills/new-bundled.md': Buffer.from('# New Bundled\nfresh'),
+    }
+    const ctx = vm.createContext({
+      path: { join: (...a) => a.join('/') },
+      SKILLS_DIR: '/skills', fs: fakeFs,
+      ghFetchFile: async (ref, name) => repo[name] ? { statusCode: 200, buf: repo[name] } : { statusCode: 404, buf: Buffer.alloc(0) },
+      isValidSlug: s => /^[a-z0-9][a-z0-9-]*$/.test(s),
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      Buffer: Buffer, JSON: JSON, String: String, Array: Array,
+    })
+    vm.runInContext(parts.join('\n'), ctx)
+    const res = await vm.runInContext('syncBundledSkills', ctx)('alpha')
+    const userKept = files['/skills/user-skill.md'] === '# My Skill\nmine'
+    const oldRemoved = !('/skills/old-bundled.md' in files)
+    const refreshed = String(files['/skills/self-explanatory-slides.md']).includes('NEW content')
+    const added = ('/skills/new-bundled.md' in files) && String(files['/skills/new-bundled.md']).includes('New Bundled')
+    let rec = []; try { rec = JSON.parse(files['/skills/.bundled.json']) } catch {}
+    const recordOk = rec.length === 2 && rec.includes('self-explanatory-slides') && rec.includes('new-bundled')
+    const returnOk = res && res.installed && res.installed.length === 2 && res.removed && res.removed.length === 1 && res.removed[0] === 'old-bundled'
+    check('C59 bundled-skill sync: refresh manifest, remove dropped bundled, keep user skills',
+      userKept && oldRemoved && refreshed && added && recordOk && returnOk,
+      'user=' + userKept + ' oldRemoved=' + oldRemoved + ' refreshed=' + refreshed + ' added=' + added + ' record=' + recordOk + ' return=' + returnOk)
+  } },
+
+  { id: 'C60 updater calls syncBundledSkills in all three apply paths (server.txt)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const inApplyRef = /const applied = swapInFiles\(verified\)\r?\n\s*const skills = await syncBundledSkills\(ref\)/.test(S)
+    const inRestore = /const applied = swapInFiles\(bufs\)\r?\n\s*const skills = await syncBundledSkills\(tag\)/.test(S)
+    const count = (S.match(/await syncBundledSkills\(/g) || []).length
+    check('C60 updater calls syncBundledSkills in all three apply paths', inApplyRef && inRestore && count >= 3,
+      'applyRef=' + inApplyRef + ' restore=' + inRestore + ' calls=' + count)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
