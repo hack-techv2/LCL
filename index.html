@@ -2280,12 +2280,15 @@ async function embedBatch(texts, onProgress, shouldAbort) {
           if (evt.type === 'progress') {
             if (onProgress) {
               onProgress({ state: 'embedding', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal })
-            } else {
+            } else if (evt.total > 1 || evt.batchTotal > 1) {
+              // Only announce progress for a genuinely multi-chunk/batch embed that has no
+              // progress bar. A single-chunk embed (e.g. the per-query embedding on each RAG
+              // search) is trivial and was spamming a pointless "batch 1/1 (1/1 chunks)" toast.
               const prefix = groupTotal > 1 ? ('Group ' + groupNum + '/' + groupTotal + ' - ') : ''
               toast(prefix + 'Embedding… batch ' + evt.batchDone + '/' + evt.batchTotal
                 + '  (' + evt.done + '/' + evt.total + ' chunks)', 'info')
             }
-            if (typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
+            if ((onProgress || evt.total > 1 || evt.batchTotal > 1) && typeof setHealth === 'function') setHealth('warn', 'Embedding ' + evt.done + '/' + evt.total)
           } else if (evt.type === 'pacing') {
             if (onProgress) {
               onProgress({ state: 'pacing', done: evt.done, total: evt.total, batchDone: evt.batchDone, batchTotal: evt.batchTotal, waitSec: evt.waitSec })
