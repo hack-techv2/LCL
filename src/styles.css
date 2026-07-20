@@ -697,7 +697,8 @@ body.sb-collapsed .sb-bot{margin-top:auto;padding:9px 0;display:flex;flex-direct
 body.sb-collapsed .sb-btn{width:38px;height:38px;padding:0;gap:0;justify-content:center;font-size:0}
 body.sb-collapsed .sb-btn svg{width:16px;height:16px}
 body.sb-collapsed .app-footer{justify-content:center;padding:10px 0}
-body.sb-collapsed .footer-info,body.sb-collapsed .ver-wrap{display:none}
+body.sb-collapsed .footer-info{display:none}
+body.sb-collapsed .ver-wrap{display:none !important}   /* !important beats the wrapper's inline display:inline-flex, so version + ALPHA + new all hide */
 body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::after{top:calc(100% + 8px);bottom:auto;left:0;right:auto;transform:none}
 body.sb-collapsed .new-chat-btn[data-tip-bottom]:hover::before{top:calc(100% + 3px);bottom:auto;left:14px;right:auto;transform:none;border:5px solid transparent;border-bottom-color:var(--bdr2);border-top-color:transparent}
 .sb-toggle{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--bg);border:1px solid var(--bdr);color:var(--tx2);cursor:pointer;flex-shrink:0;margin-right:10px;transition:all .15s}
