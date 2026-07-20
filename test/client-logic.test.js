@@ -724,6 +724,15 @@ const CASES = [
     const healthGated = /if \(\(onProgress \|\| evt\.total > 1 \|\| evt\.batchTotal > 1\) && typeof setHealth === 'function'\) setHealth\('warn', 'Embedding /.test(G)
     check('C57 embed progress toast + pill suppressed for a single-chunk embed', toastGated && healthGated, 'toastGated=' + toastGated + ' healthGated=' + healthGated)
   } },
+
+  { id: 'C58 collapsed sidebar footer shows only the comet logo (styles.css)', fn: async () => {
+    // When the sidebar is minimised, hide the whole version cluster (badge + ALPHA pill
+    // + "new") so only the comet logo remains - same on stable and alpha.
+    const CSS = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
+    const hidesVerWrap = CSS.includes('body.sb-collapsed .ver-wrap{display:none}')
+    const stillHidesUpd = /body\.sb-collapsed \.footer-upd\{display:none/.test(CSS)
+    check('C58 collapsed footer = comet logo only (ver-wrap hidden)', hidesVerWrap && stillHidesUpd, 'verWrap=' + hidesVerWrap + ' upd=' + stillHidesUpd)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
