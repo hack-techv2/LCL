@@ -792,6 +792,51 @@ const CASES = [
     check('C60 updater calls syncBundledSkills in all three apply paths', inApplyRef && inRestore && count >= 3,
       'applyRef=' + inApplyRef + ' restore=' + inRestore + ' calls=' + count)
   } },
+
+  { id: 'C61 code-block helpers: ext/mime map, filename from title/heading, lang detect, CSV parse', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const block = R.slice(R.indexOf('const CODE_EXT'))
+    const ctx = vm.createContext({ document: {}, navigator: {}, Blob: function(){}, URL: {}, fmt: s => s, toast: () => {}, setTimeout: setTimeout, encodeURIComponent: encodeURIComponent, mkEl: () => ({}) })
+    vm.runInContext(block, ctx)
+    const extFor = vm.runInContext('codeExtFor', ctx), mimeFor = vm.runInContext('codeMimeFor', ctx)
+    const fname = vm.runInContext('codeFilename', ctx), langOf = vm.runInContext('codeBlockLang', ctx), csv = vm.runInContext('codeCsvRows', ctx)
+    const extOk = extFor('html') === 'html' && extFor('python') === 'py' && extFor('csv') === 'csv' && extFor('weird') === 'txt'
+    const mimeOk = mimeFor('csv') === 'text/csv' && mimeFor('html') === 'text/html'
+    const nameOk = fname('html', '<title>Q3 Report!</title>') === 'q3-report.html' && fname('md', '# My Doc\nx') === 'my-doc.md' && fname('py', 'print(1)') === 'lcl-snippet.py'
+    const langOk = langOf({ className: 'language-python', textContent: 'x' }) === 'python' && langOf({ className: '', textContent: '<!DOCTYPE html><html>' }) === 'html' && langOf({ className: '', textContent: '<svg viewBox="0 0 1 1">' }) === 'svg'
+    const rows = csv('a,b\n1,"2,3"')
+    const csvOk = rows.length === 2 && rows[0].join('|') === 'a|b' && rows[1].join('|') === '1|2,3'
+    check('C61 code-block helpers: ext/mime, filename, lang, CSV', extOk && mimeOk && nameOk && langOk && csvOk,
+      'ext=' + extOk + ' mime=' + mimeOk + ' name=' + nameOk + ' lang=' + langOk + ' csv=' + csvOk)
+  } },
+
+  { id: 'C62 HTML preview is a locked-down sandbox (allow-scripts + CSP blocks connect/form) + SVG data-URL', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const block = R.slice(R.indexOf('const CODE_EXT'))
+    const mkNode = tag => { const n = { tagName: tag, className: '', _a: {}, srcdoc: '', src: '' }; n.setAttribute = (k, v) => { n._a[k] = v }; n.getAttribute = k => n._a[k]; return n }
+    const ctx = vm.createContext({ document: { createElement: mkNode }, encodeURIComponent: encodeURIComponent, fmt: s => s, toast: () => {}, setTimeout: setTimeout, mkEl: () => ({}), navigator: {}, Blob: function(){}, URL: {} })
+    vm.runInContext(block, ctx)
+    const frame = vm.runInContext('codeHtmlFrame', ctx)('<html><head></head><body>hi</body></html>')
+    const sandboxOk = frame._a.sandbox === 'allow-scripts' && !/allow-same-origin/.test(frame._a.sandbox || '')
+    const cspOk = /connect-src 'none'/.test(frame.srcdoc) && /form-action 'none'/.test(frame.srcdoc)
+    const assetsOk = /img-src \*/.test(frame.srcdoc) && /script-src \*/.test(frame.srcdoc)
+    const svg = vm.runInContext('codeSvgPreview', ctx)('<svg viewBox="0 0 1 1"></svg>')
+    const svgOk = svg.src.indexOf('data:image/svg+xml') === 0
+    check('C62 HTML sandbox (allow-scripts, no same-origin, CSP blocks connect/form) + SVG data-URL', sandboxOk && cspOk && assetsOk && svgOk,
+      'sandbox=' + sandboxOk + ' csp=' + cspOk + ' assets=' + assetsOk + ' svg=' + svgOk)
+  } },
+
+  { id: 'C63 code-block toolbar wired into render + stream completion (source guards)', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const P = T50
+    const hasEnhance = /function enhanceCodeBlocks\(scope\)/.test(R)
+    const buildsBarBtns = R.includes("class: 'code-wrap'") && R.includes("class: 'code-bar'") && /Download ' \+ fname/.test(R) && R.includes('Copy HTML')
+    const previewable = R.includes("const CODE_PREVIEWABLE = { html:1, csv:1, svg:1, md:1, markdown:1 }")
+    const inRender = /enhanceCodeBlocks\(div\)/.test(R)
+    const inStream = /if \(bubble && typeof enhanceCodeBlocks === 'function'\) enhanceCodeBlocks\(bubble\)/.test(P)
+    check('C63 code-block toolbar wired into render + stream completion', hasEnhance && buildsBarBtns && previewable && inRender && inStream,
+      'enhance=' + hasEnhance + ' barBtns=' + buildsBarBtns + ' previewable=' + previewable + ' render=' + inRender + ' stream=' + inStream)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
