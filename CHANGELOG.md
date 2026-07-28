@@ -3,6 +3,15 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 21 Jul 2026 - Code-block tools: Copy / Download every block + sandboxed preview for HTML/CSV/SVG/Markdown (alpha)
+
+Every fenced code block in a reply now gets a small toolbar at the **bottom** of the block (so it stays reachable under long code / previews): **Copy** the block's source, and **Download** it as a file. The download name and extension are derived from the content — an HTML `<title>` or a Markdown heading becomes the filename, and the language maps to the right extension (`html`, `md`, `py`, `js`, `json`, `csv`, `sql`, `sh`, `css`, `svg`, `txt` fallback). For the renderable types the toolbar also carries an auto-opening **Preview** (Hide/Show toggle):
+
+- **HTML** renders in a locked-down sandboxed iframe — `sandbox="allow-scripts"` only (opaque origin: it cannot read LCL's DOM, your key, storage, or the proxy), plus an injected CSP that allows remote images/fonts/scripts but blocks `connect-src`/`form-action` so the page can't beacon or POST data out. Labelled "isolated sandbox".
+- **CSV** renders as a table, **SVG** as a data-URL image (embedded scripts never execute), **Markdown** via the normal renderer. Everything else (Python, JSON, SQL…) gets Copy + Download only, no preview.
+
+Enhancement runs only on a completed message (never mid-stream) and re-attaches on every re-render. Client-only; works when LCL is opened as a `file://` too. Tests **C61** (ext/mime/filename/lang/CSV), **C62** (sandbox + CSP + SVG data-URL), **C63** (wiring). Verified live in `#demo`.
+
 ## 21 Jul 2026 - Updater pulls bundled skills + collapsed footer shows only the comet logo (alpha)
 
 - **The updater now pulls bundled skills.** After applying an update (alpha branch, stable release, or channel switch), the server reads the repo's `skills/manifest.json` (`{ "bundled": [ids] }`) at the same ref and syncs those skill `.md` files into the local `skills/` folder: each listed skill is (re)written so fixes propagate, a previously-bundled skill dropped from the manifest is removed, and **skills you created yourself are never touched** (tracked via a local, git-ignored `skills/.bundled.json` record so user skills and bundled ones are never confused). Best-effort — a flaky GitHub call logs and leaves skills as-is, never blocking the core update. Works on both channels; stable gains it once this build is promoted. `syncBundledSkills` in server.txt; tests **C59** (install/refresh/remove/keep behaviour) + **C60** (wired into all three apply paths). First bundled skill: **Self-Explanatory Slides** (`skills/self-explanatory-slides.md`, in `skills/manifest.json`). server.txt changed -> restart Node.
