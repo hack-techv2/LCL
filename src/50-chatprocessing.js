@@ -741,6 +741,7 @@ async function runStream(chat, payload, ragSources) {
     if (filtered) msgObj.filtered = true
     if (truncated) msgObj.truncated = true
     if (bubble) attachMsgFlags(bubble, msgObj)
+    if (bubble && typeof enhanceCodeBlocks === 'function') enhanceCodeBlocks(bubble)   // Copy/Download + preview once the reply is complete
     retry5xxCount = 0
     rlWindowUntil = 0   // a clean success means the window has room again; clear the pre-send guard
     uiHealth('ok', connectedLabel())
