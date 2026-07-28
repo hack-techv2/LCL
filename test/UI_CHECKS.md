@@ -227,3 +227,13 @@ Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
 - [ ] Collapse the sidebar: the footer shows ONLY the comet logo — no version badge, no
       ALPHA pill, no "↑ new" (on both stable and alpha). Expand it again → the full
       footer returns (name, contributors, version, and the ALPHA pill on alpha). Guard C58.
+
+## 21 Jul 2026 additions
+- [ ] Ask LCL for an HTML file. When the reply finishes, the ```html block gets a bottom
+      toolbar: Copy HTML / Download <title>.html / Hide preview, and a sandboxed preview
+      auto-opens below it (rendered page). Toggle hides/shows it; Download saves the file;
+      Copy HTML copies just the source. A ```python (or json/sql) block gets Copy + Download
+      only, no preview. CSV → table preview; SVG → image preview; Markdown → rendered.
+      Preview must NOT appear mid-stream (only once the reply completes) and must survive
+      switching away + back. Confirm the HTML preview can't reach LCL (sandbox=allow-scripts,
+      no same-origin; CSP blocks connect/form). Guards C61–C63.
