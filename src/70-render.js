@@ -252,6 +252,7 @@ function renderMessages() {
     // Persisted truncation/filter notes (incl. the Continue button) - previously
     // these existed only on the live bubble and vanished on re-render/reload.
     if (m.role !== 'user' && typeof attachMsgFlags === 'function') attachMsgFlags(div, m)
+    if (m.role !== 'user' && typeof enhanceCodeBlocks === 'function') enhanceCodeBlocks(div)
     inner.appendChild(div)
   })
   // Transient compacting spinner goes at the BOTTOM of the thread (where the view
@@ -581,4 +582,158 @@ async function refreshBudget() {
       lastBudget = { tokLimit: rl.tokLimit, tokRemaining: rl.tokRemaining, ts: Date.now() }
     }
   } catch {}
+}
+
+// =============================================================================
+// Code-block tools: Copy + Download on every fenced block, plus an auto-opening
+// sandboxed Preview for the renderable types (HTML / CSV / SVG / Markdown). The
+// toolbar sits at the BOTTOM of each block (so it stays reachable under long
+// code / previews). Enhancement is idempotent and runs on COMPLETE messages
+// only (renderMessages + stream completion), never mid-stream, and re-attaches
+// on every re-render because the message body is rebuilt from chat.messages.
+// =============================================================================
+const CODE_EXT = { html:'html', htm:'html', markdown:'md', md:'md', python:'py', py:'py', javascript:'js', js:'js', jsx:'jsx', typescript:'ts', ts:'ts', json:'json', csv:'csv', tsv:'tsv', sql:'sql', bash:'sh', sh:'sh', shell:'sh', css:'css', svg:'svg', xml:'xml', yaml:'yaml', yml:'yaml', text:'txt', plaintext:'txt' }
+const CODE_PREVIEWABLE = { html:1, csv:1, svg:1, md:1, markdown:1 }
+
+function codeBlockLang(codeEl) {
+  const m = String(codeEl.className || '').match(/language-([\w-]+)/i)
+  let lang = m ? m[1].toLowerCase() : ''
+  if (!lang) {
+    const head = String(codeEl.textContent || '').slice(0, 200).trim().toLowerCase()
+    if (head.indexOf('<!doctype html') === 0 || head.indexOf('<html') === 0) lang = 'html'
+    else if (head.indexOf('<svg') === 0) lang = 'svg'
+  }
+  return lang
+}
+function codeExtFor(lang) { return CODE_EXT[lang] || 'txt' }
+function codeMimeFor(lang) { return ({ html:'text/html', svg:'image/svg+xml', csv:'text/csv', md:'text/markdown', markdown:'text/markdown', json:'application/json', css:'text/css', js:'text/javascript', javascript:'text/javascript' })[lang] || 'text/plain' }
+function codeFilename(lang, src) {
+  let base = ''
+  if (lang === 'html') { const t = src.match(/<title[^>]*>([^<]+)<\/title>/i); if (t) base = t[1] }
+  if (!base) { const h = src.match(/^\s{0,3}#\s+(.+)$/m); if (h) base = h[1] }
+  base = String(base || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  return (base || 'lcl-snippet') + '.' + codeExtFor(lang)
+}
+function codeCopyText(text, done) {
+  const ok = () => { if (done) done() }
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(ok).catch(() => codeCopyFallback(text, ok)); return } } catch (e) {}
+  codeCopyFallback(text, ok)
+}
+function codeCopyFallback(text, ok) {
+  try { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); if (ok) ok() } catch (e) {}
+}
+function codeDownload(text, filename, mime) {
+  try {
+    const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = filename
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => { try { URL.revokeObjectURL(url) } catch (e) {} }, 2000)
+  } catch (e) { if (typeof toast === 'function') toast('Download failed: ' + ((e && e.message) || e), 'err') }
+}
+// Minimal RFC-4180-ish CSV parse (quoted fields + "" escapes) -> HTML table.
+function codeCsvRows(src) {
+  const rows = []; let row = [], field = '', q = false
+  const s = String(src).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (q) { if (ch === '"') { if (s[i + 1] === '"') { field += '"'; i++ } else q = false } else field += ch }
+    else if (ch === '"') q = true
+    else if (ch === ',') { row.push(field); field = '' }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else field += ch
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row) }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''))
+}
+function codeCsvTable(src) {
+  const rows = codeCsvRows(src); if (!rows.length) return null
+  const tbl = mkEl('table', { class: 'code-csv' })
+  rows.forEach((r, i) => {
+    const tr = mkEl('tr')
+    r.forEach(c => tr.appendChild(mkEl(i === 0 ? 'th' : 'td', {}, c)))
+    tbl.appendChild(tr)
+  })
+  return tbl
+}
+// Sandboxed HTML preview. allow-scripts only (opaque origin - cannot touch LCL,
+// its key, storage, or the proxy). Injected CSP allows remote images/fonts/
+// scripts + inline, but blocks connect-src / form-action so the page can't
+// beacon or POST data out. No allow-same-origin / popups / top-navigation / modals.
+function codeHtmlFrame(src) {
+  const csp = "default-src 'none'; img-src * data: blob:; media-src * data: blob:; font-src * data:; " +
+    "style-src * 'unsafe-inline' data:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; " +
+    "connect-src 'none'; form-action 'none'; frame-src 'none'; base-uri 'none'"
+  const meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
+  let doc = String(src)
+  if (/<head[^>]*>/i.test(doc)) doc = doc.replace(/<head[^>]*>/i, m => m + meta)
+  else if (/<html[^>]*>/i.test(doc)) doc = doc.replace(/<html[^>]*>/i, m => m + '<head>' + meta + '</head>')
+  else doc = meta + doc
+  const f = document.createElement('iframe')
+  f.className = 'code-preview-frame'
+  f.setAttribute('sandbox', 'allow-scripts')
+  f.setAttribute('referrerpolicy', 'no-referrer')
+  f.setAttribute('loading', 'lazy')
+  f.srcdoc = doc
+  return f
+}
+function codeSvgPreview(src) {
+  const img = document.createElement('img')   // data-URL <img> never executes embedded SVG scripts
+  img.className = 'code-preview-svg'
+  img.alt = 'SVG preview'
+  try { img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(String(src)) } catch (e) {}
+  return img
+}
+function codePreviewNode(lang, src) {
+  try {
+    if (lang === 'html') return codeHtmlFrame(src)
+    if (lang === 'svg') return codeSvgPreview(src)
+    if (lang === 'csv') { const t = codeCsvTable(src); return t ? mkEl('div', { class: 'code-preview-scroll' }, t) : null }
+    if (lang === 'md' || lang === 'markdown') return mkEl('div', { class: 'code-preview-md', html: fmt(src) })
+  } catch (e) {}
+  return null
+}
+// Attach the bottom toolbar (+ auto-open preview) to every <pre> code block in a
+// COMPLETE message element. Idempotent: skips a <pre> already inside a .code-wrap.
+function enhanceCodeBlocks(scope) {
+  if (!scope || typeof mkEl !== 'function') return
+  const body = (scope.classList && scope.classList.contains('msg-body')) ? scope : (scope.querySelector ? scope.querySelector('.msg-body') : null)
+  if (!body) return
+  const pres = body.querySelectorAll('pre')
+  for (let i = 0; i < pres.length; i++) {
+    const pre = pres[i]
+    if (pre.parentElement && pre.parentElement.classList.contains('code-wrap')) continue
+    const codeEl = pre.querySelector('code') || pre
+    const src = codeEl.textContent || ''
+    if (!src.trim()) continue
+    const lang = codeBlockLang(codeEl)
+    const fname = codeFilename(lang, src)
+    const wrap = mkEl('div', { class: 'code-wrap' })
+    pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre)
+
+    const canPreview = !!CODE_PREVIEWABLE[lang]
+    let previewHost = null
+    if (canPreview) {
+      const node = codePreviewNode(lang, src)
+      if (node) { previewHost = mkEl('div', { class: 'code-preview' }, node); wrap.appendChild(previewHost) }
+    }
+
+    const bar = mkEl('div', { class: 'code-bar' })
+    if (previewHost && lang === 'html') bar.appendChild(mkEl('span', { class: 'code-sandbox' }, 'isolated sandbox \u00b7 scripts + remote assets on'))
+    else if (previewHost) bar.appendChild(mkEl('span', { class: 'code-sandbox' }, 'preview'))
+    const btns = mkEl('span', { class: 'code-btns' })
+    const copyLabel = lang === 'html' ? 'Copy HTML' : 'Copy'
+    const copyBtn = mkEl('button', { class: 'code-btn', type: 'button' }, copyLabel)
+    copyBtn.addEventListener('click', () => codeCopyText(src, () => { copyBtn.textContent = 'Copied'; setTimeout(() => { copyBtn.textContent = copyLabel }, 1500) }))
+    const dlBtn = mkEl('button', { class: 'code-btn', type: 'button', title: 'Download ' + fname }, 'Download ' + fname)
+    dlBtn.addEventListener('click', () => codeDownload(src, fname, codeMimeFor(lang)))
+    btns.appendChild(copyBtn); btns.appendChild(dlBtn)
+    if (previewHost) {
+      const tog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Hide preview')
+      tog.addEventListener('click', () => { const open = previewHost.style.display !== 'none'; previewHost.style.display = open ? 'none' : ''; tog.textContent = open ? 'Show preview' : 'Hide preview' })
+      btns.appendChild(tog)
+    }
+    bar.appendChild(btns)
+    wrap.appendChild(bar)
+  }
 }
