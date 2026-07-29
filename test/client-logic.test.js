@@ -837,6 +837,22 @@ const CASES = [
     check('C63 code-block toolbar wired into render + stream completion', hasEnhance && buildsBarBtns && previewable && inRender && inStream,
       'enhance=' + hasEnhance + ' barBtns=' + buildsBarBtns + ' previewable=' + previewable + ' render=' + inRender + ' stream=' + inStream)
   } },
+  { id: 'C64 preview: source collapsed by default + Show/Hide source + fullscreen on wrap (sandbox unchanged)', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const C = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
+    const collapseDefault = R.includes("pre.style.display = 'none'")           // raw source hidden once a preview exists
+    const srcToggle = /'Show ' \+ srcLabel/.test(R) && /Hide ' : 'Show '/.test(R)
+    // Fullscreen is requested on the PARENT-owned wrap, never the iframe, and we
+    // never widen the sandbox to allow-fullscreen (isolation must stay intact).
+    const fsOnWrap = R.includes('codeToggleFs(wrap)') && R.includes("class: 'code-btn code-fs-btn'")
+    const noAllowFs = !/setAttribute\('sandbox',[^)]*allow-fullscreen/.test(R)  // sandbox attr must not grant it (comments allowed to mention it)
+    const sandboxStill = /f\.setAttribute\('sandbox', 'allow-scripts'\)/.test(R)
+    const cssBig = /\.code-preview-frame \{[^}]*height:85vh/.test(C)          // screen's-worth inline, no cramped box
+    const cssFs = C.includes('.code-wrap:fullscreen') && /\.code-wrap:fullscreen \.code-preview-frame \{[^}]*height:100%/.test(C)
+    check('C64 source collapsed by default + source toggle + fullscreen on wrap + sandbox intact',
+      collapseDefault && srcToggle && fsOnWrap && noAllowFs && sandboxStill && cssBig && cssFs,
+      'collapse=' + collapseDefault + ' srcTog=' + srcToggle + ' fsWrap=' + fsOnWrap + ' noAllowFs=' + noAllowFs + ' sandbox=' + sandboxStill + ' css85=' + cssBig + ' cssFs=' + cssFs)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
