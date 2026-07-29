@@ -919,7 +919,7 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .code-wrap { border:1px solid var(--bdr, var(--bdr2)); border-radius:8px; overflow:hidden; margin:8px 0; }
 .code-wrap pre { margin:0; border-radius:0; max-height:320px; overflow:auto; }
 .code-preview { background:#ffffff; border-top:1px solid var(--bdr, var(--bdr2)); }
-.code-preview-frame { display:block; width:100%; height:340px; border:0; background:#ffffff; }
+.code-preview-frame { display:block; width:100%; height:85vh; border:0; background:#ffffff; }
 .code-preview-svg { display:block; max-width:100%; margin:12px auto; }
 .code-preview-scroll { overflow:auto; max-height:340px; padding:8px; background:#ffffff; }
 .code-csv { border-collapse:collapse; font-size:12px; color:#111111; }
@@ -932,6 +932,22 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .code-btn { font-size:11px; font-family:inherit; border:1px solid var(--bdr2); background:transparent; color:var(--tx2); border-radius:6px; padding:3px 9px; cursor:pointer; }
 .code-btn:hover { color:var(--tx); border-color:var(--tx2); }
 .code-btn:focus-visible { outline:2px solid var(--ac); outline-offset:2px; }
+/* Fullscreen: the parent-owned .code-wrap fills the screen and becomes a flex
+   column so the preview grows and the toolbar (with Exit) stays reachable. The
+   sandboxed iframe is a child - it never self-fullscreens. Separate rules per
+   vendor pseudo (an unknown pseudo in a list would drop the whole rule). */
+.code-wrap:fullscreen { display:flex; flex-direction:column; background:var(--bg2); border-radius:0; margin:0; }
+.code-wrap:fullscreen pre { flex:0 0 auto; max-height:40vh; }
+.code-wrap:fullscreen .code-preview { flex:1 1 auto; min-height:0; overflow:auto; }
+.code-wrap:fullscreen .code-preview-frame { height:100%; }
+.code-wrap:fullscreen .code-preview-scroll { max-height:none; height:100%; }
+.code-wrap:fullscreen .code-bar { flex:0 0 auto; }
+.code-wrap:-webkit-full-screen { display:flex; flex-direction:column; background:var(--bg2); border-radius:0; margin:0; }
+.code-wrap:-webkit-full-screen pre { flex:0 0 auto; max-height:40vh; }
+.code-wrap:-webkit-full-screen .code-preview { flex:1 1 auto; min-height:0; overflow:auto; }
+.code-wrap:-webkit-full-screen .code-preview-frame { height:100%; }
+.code-wrap:-webkit-full-screen .code-preview-scroll { max-height:none; height:100%; }
+.code-wrap:-webkit-full-screen .code-bar { flex:0 0 auto; }
 
 </style>
 </head>
@@ -7045,6 +7061,25 @@ function codePreviewNode(lang, src) {
   } catch (e) {}
   return null
 }
+// Fullscreen helpers. We request fullscreen on the PARENT-owned .code-wrap (not on
+// the sandboxed iframe), so the sandbox stays 'allow-scripts' only - no
+// 'allow-fullscreen' is granted and the untrusted page can never self-fullscreen.
+// The toolbar rides along inside the wrap, so Exit stays reachable; Esc also exits.
+function codeFsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null }
+function codeRequestFs(el) { const fn = el && (el.requestFullscreen || el.webkitRequestFullscreen); if (fn) { try { fn.call(el) } catch (e) {} } }
+function codeExitFs() { const fn = document.exitFullscreen || document.webkitExitFullscreen; if (fn) { try { fn.call(document) } catch (e) {} } }
+function codeToggleFs(host) { if (codeFsElement()) codeExitFs(); else codeRequestFs(host) }
+function codeBindFsSync() {
+  if (window.__lclCodeFsBound) return
+  window.__lclCodeFsBound = true
+  const sync = () => {
+    const fsEl = codeFsElement()
+    const btns = document.querySelectorAll('.code-fs-btn')
+    for (let i = 0; i < btns.length; i++) btns[i].textContent = (fsEl && btns[i].__fsHost === fsEl) ? 'Exit fullscreen' : 'Fullscreen'
+  }
+  document.addEventListener('fullscreenchange', sync)
+  document.addEventListener('webkitfullscreenchange', sync)
+}
 // Attach the bottom toolbar (+ auto-open preview) to every <pre> code block in a
 // COMPLETE message element. Idempotent: skips a <pre> already inside a .code-wrap.
 function enhanceCodeBlocks(scope) {
@@ -7081,9 +7116,19 @@ function enhanceCodeBlocks(scope) {
     dlBtn.addEventListener('click', () => codeDownload(src, fname, codeMimeFor(lang)))
     btns.appendChild(copyBtn); btns.appendChild(dlBtn)
     if (previewHost) {
+      // Collapse the raw source by default once a preview exists - the reader
+      // mostly wants the rendered result; a toggle reveals the code on demand.
+      const srcLabel = (lang === 'html') ? 'HTML' : 'source'
+      pre.style.display = 'none'
+      const srcTog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Show ' + srcLabel)
+      srcTog.addEventListener('click', () => { const hidden = pre.style.display === 'none'; pre.style.display = hidden ? '' : 'none'; srcTog.textContent = (hidden ? 'Hide ' : 'Show ') + srcLabel })
       const tog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Hide preview')
       tog.addEventListener('click', () => { const open = previewHost.style.display !== 'none'; previewHost.style.display = open ? 'none' : ''; tog.textContent = open ? 'Show preview' : 'Hide preview' })
-      btns.appendChild(tog)
+      const fsBtn = mkEl('button', { class: 'code-btn code-fs-btn', type: 'button' }, 'Fullscreen')
+      fsBtn.__fsHost = wrap
+      fsBtn.addEventListener('click', () => codeToggleFs(wrap))
+      btns.appendChild(srcTog); btns.appendChild(tog); btns.appendChild(fsBtn)
+      codeBindFsSync()
     }
     bar.appendChild(btns)
     wrap.appendChild(bar)
