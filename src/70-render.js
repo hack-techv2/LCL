@@ -693,6 +693,25 @@ function codePreviewNode(lang, src) {
   } catch (e) {}
   return null
 }
+// Fullscreen helpers. We request fullscreen on the PARENT-owned .code-wrap (not on
+// the sandboxed iframe), so the sandbox stays 'allow-scripts' only - no
+// 'allow-fullscreen' is granted and the untrusted page can never self-fullscreen.
+// The toolbar rides along inside the wrap, so Exit stays reachable; Esc also exits.
+function codeFsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null }
+function codeRequestFs(el) { const fn = el && (el.requestFullscreen || el.webkitRequestFullscreen); if (fn) { try { fn.call(el) } catch (e) {} } }
+function codeExitFs() { const fn = document.exitFullscreen || document.webkitExitFullscreen; if (fn) { try { fn.call(document) } catch (e) {} } }
+function codeToggleFs(host) { if (codeFsElement()) codeExitFs(); else codeRequestFs(host) }
+function codeBindFsSync() {
+  if (window.__lclCodeFsBound) return
+  window.__lclCodeFsBound = true
+  const sync = () => {
+    const fsEl = codeFsElement()
+    const btns = document.querySelectorAll('.code-fs-btn')
+    for (let i = 0; i < btns.length; i++) btns[i].textContent = (fsEl && btns[i].__fsHost === fsEl) ? 'Exit fullscreen' : 'Fullscreen'
+  }
+  document.addEventListener('fullscreenchange', sync)
+  document.addEventListener('webkitfullscreenchange', sync)
+}
 // Attach the bottom toolbar (+ auto-open preview) to every <pre> code block in a
 // COMPLETE message element. Idempotent: skips a <pre> already inside a .code-wrap.
 function enhanceCodeBlocks(scope) {
@@ -729,9 +748,19 @@ function enhanceCodeBlocks(scope) {
     dlBtn.addEventListener('click', () => codeDownload(src, fname, codeMimeFor(lang)))
     btns.appendChild(copyBtn); btns.appendChild(dlBtn)
     if (previewHost) {
+      // Collapse the raw source by default once a preview exists - the reader
+      // mostly wants the rendered result; a toggle reveals the code on demand.
+      const srcLabel = (lang === 'html') ? 'HTML' : 'source'
+      pre.style.display = 'none'
+      const srcTog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Show ' + srcLabel)
+      srcTog.addEventListener('click', () => { const hidden = pre.style.display === 'none'; pre.style.display = hidden ? '' : 'none'; srcTog.textContent = (hidden ? 'Hide ' : 'Show ') + srcLabel })
       const tog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Hide preview')
       tog.addEventListener('click', () => { const open = previewHost.style.display !== 'none'; previewHost.style.display = open ? 'none' : ''; tog.textContent = open ? 'Show preview' : 'Hide preview' })
-      btns.appendChild(tog)
+      const fsBtn = mkEl('button', { class: 'code-btn code-fs-btn', type: 'button' }, 'Fullscreen')
+      fsBtn.__fsHost = wrap
+      fsBtn.addEventListener('click', () => codeToggleFs(wrap))
+      btns.appendChild(srcTog); btns.appendChild(tog); btns.appendChild(fsBtn)
+      codeBindFsSync()
     }
     bar.appendChild(btns)
     wrap.appendChild(bar)
