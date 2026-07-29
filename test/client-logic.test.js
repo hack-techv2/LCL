@@ -837,21 +837,23 @@ const CASES = [
     check('C63 code-block toolbar wired into render + stream completion', hasEnhance && buildsBarBtns && previewable && inRender && inStream,
       'enhance=' + hasEnhance + ' barBtns=' + buildsBarBtns + ' previewable=' + previewable + ' render=' + inRender + ' stream=' + inStream)
   } },
-  { id: 'C64 preview: source collapsed by default + Show/Hide source + fullscreen on wrap (sandbox unchanged)', fn: async () => {
+  { id: 'C64 preview: source collapsed by default + Show/Hide source (tall) + open-in-browser stays sandboxed', fn: async () => {
     const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
     const C = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
     const collapseDefault = R.includes("pre.style.display = 'none'")           // raw source hidden once a preview exists
     const srcToggle = /'Show ' \+ srcLabel/.test(R) && /Hide ' : 'Show '/.test(R)
-    // Fullscreen is requested on the PARENT-owned wrap, never the iframe, and we
-    // never widen the sandbox to allow-fullscreen (isolation must stay intact).
-    const fsOnWrap = R.includes('codeToggleFs(wrap)') && R.includes("class: 'code-btn code-fs-btn'")
-    const noAllowFs = !/setAttribute\('sandbox',[^)]*allow-fullscreen/.test(R)  // sandbox attr must not grant it (comments allowed to mention it)
-    const sandboxStill = /f\.setAttribute\('sandbox', 'allow-scripts'\)/.test(R)
+    const openTab = R.includes('codeOpenInTab(src)') && R.includes("class: 'code-btn code-open-tab'")
+    // The new browser tab hosts the SAME sandboxed iframe: allow-scripts only
+    // (no same-origin) and it reuses codeHtmlDoc (the CSP-injected document).
+    const tabBlock = R.slice(R.indexOf('function codeOpenInTab'), R.indexOf('function codeOpenInTab') + 700)
+    const tabSandboxed = /sandbox="allow-scripts"/.test(tabBlock) && !/allow-same-origin/.test(tabBlock) && tabBlock.includes('codeHtmlDoc(src)')
+    const sharedDoc = /function codeHtmlDoc\(src\)/.test(R) && /f\.srcdoc = codeHtmlDoc\(src\)/.test(R)
+    const inlineSandbox = /f\.setAttribute\('sandbox', 'allow-scripts'\)/.test(R)
     const cssBig = /\.code-preview-frame \{[^}]*height:85vh/.test(C)          // screen's-worth inline, no cramped box
-    const cssFs = C.includes('.code-wrap:fullscreen') && /\.code-wrap:fullscreen \.code-preview-frame \{[^}]*height:100%/.test(C)
-    check('C64 source collapsed by default + source toggle + fullscreen on wrap + sandbox intact',
-      collapseDefault && srcToggle && fsOnWrap && noAllowFs && sandboxStill && cssBig && cssFs,
-      'collapse=' + collapseDefault + ' srcTog=' + srcToggle + ' fsWrap=' + fsOnWrap + ' noAllowFs=' + noAllowFs + ' sandbox=' + sandboxStill + ' css85=' + cssBig + ' cssFs=' + cssFs)
+    const cssTall = /\.code-wrap pre\.code-src-tall \{[^}]*max-height:85vh/.test(C) && R.includes("pre.classList.add('code-src-tall')")
+    check('C64 collapse default + source toggle (tall) + open-in-browser sandboxed + shared CSP doc',
+      collapseDefault && srcToggle && openTab && tabSandboxed && sharedDoc && inlineSandbox && cssBig && cssTall,
+      'collapse=' + collapseDefault + ' srcTog=' + srcToggle + ' openTab=' + openTab + ' tabSandboxed=' + tabSandboxed + ' sharedDoc=' + sharedDoc + ' inlineSb=' + inlineSandbox + ' css85=' + cssBig + ' cssTall=' + cssTall)
   } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
