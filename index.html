@@ -932,22 +932,8 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .code-btn { font-size:11px; font-family:inherit; border:1px solid var(--bdr2); background:transparent; color:var(--tx2); border-radius:6px; padding:3px 9px; cursor:pointer; }
 .code-btn:hover { color:var(--tx); border-color:var(--tx2); }
 .code-btn:focus-visible { outline:2px solid var(--ac); outline-offset:2px; }
-/* Fullscreen: the parent-owned .code-wrap fills the screen and becomes a flex
-   column so the preview grows and the toolbar (with Exit) stays reachable. The
-   sandboxed iframe is a child - it never self-fullscreens. Separate rules per
-   vendor pseudo (an unknown pseudo in a list would drop the whole rule). */
-.code-wrap:fullscreen { display:flex; flex-direction:column; background:var(--bg2); border-radius:0; margin:0; }
-.code-wrap:fullscreen pre { flex:0 0 auto; max-height:40vh; }
-.code-wrap:fullscreen .code-preview { flex:1 1 auto; min-height:0; overflow:auto; }
-.code-wrap:fullscreen .code-preview-frame { height:100%; }
-.code-wrap:fullscreen .code-preview-scroll { max-height:none; height:100%; }
-.code-wrap:fullscreen .code-bar { flex:0 0 auto; }
-.code-wrap:-webkit-full-screen { display:flex; flex-direction:column; background:var(--bg2); border-radius:0; margin:0; }
-.code-wrap:-webkit-full-screen pre { flex:0 0 auto; max-height:40vh; }
-.code-wrap:-webkit-full-screen .code-preview { flex:1 1 auto; min-height:0; overflow:auto; }
-.code-wrap:-webkit-full-screen .code-preview-frame { height:100%; }
-.code-wrap:-webkit-full-screen .code-preview-scroll { max-height:none; height:100%; }
-.code-wrap:-webkit-full-screen .code-bar { flex:0 0 auto; }
+/* When revealed alongside a preview, the raw source matches the preview height. */
+.code-wrap pre.code-src-tall { max-height:85vh; }
 
 </style>
 </head>
@@ -7028,7 +7014,9 @@ function codeCsvTable(src) {
 // its key, storage, or the proxy). Injected CSP allows remote images/fonts/
 // scripts + inline, but blocks connect-src / form-action so the page can't
 // beacon or POST data out. No allow-same-origin / popups / top-navigation / modals.
-function codeHtmlFrame(src) {
+// Build the CSP-injected document string shared by the inline frame and the
+// full-browser tab, so both run under identical restrictions.
+function codeHtmlDoc(src) {
   const csp = "default-src 'none'; img-src * data: blob:; media-src * data: blob:; font-src * data:; " +
     "style-src * 'unsafe-inline' data:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; " +
     "connect-src 'none'; form-action 'none'; frame-src 'none'; base-uri 'none'"
@@ -7037,13 +7025,33 @@ function codeHtmlFrame(src) {
   if (/<head[^>]*>/i.test(doc)) doc = doc.replace(/<head[^>]*>/i, m => m + meta)
   else if (/<html[^>]*>/i.test(doc)) doc = doc.replace(/<html[^>]*>/i, m => m + '<head>' + meta + '</head>')
   else doc = meta + doc
+  return doc
+}
+function codeHtmlFrame(src) {
   const f = document.createElement('iframe')
   f.className = 'code-preview-frame'
   f.setAttribute('sandbox', 'allow-scripts')
   f.setAttribute('referrerpolicy', 'no-referrer')
   f.setAttribute('loading', 'lazy')
-  f.srcdoc = doc
+  f.srcdoc = codeHtmlDoc(src)
   return f
+}
+function codeAttrEscape(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+// Open the HTML in a real browser tab, at full browser size. The tab loads a
+// bare shell (no script, nothing sensitive) that hosts the SAME sandboxed
+// iframe (allow-scripts + CSP) as the inline preview - so the page gets the
+// whole window but still can't read LCL's key/storage or reach the proxy.
+function codeOpenInTab(src) {
+  try {
+    const inner = codeAttrEscape(codeHtmlDoc(src))
+    const shell = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>LCL preview</title>' +
+      '<style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100vw;height:100vh;display:block}</style></head>' +
+      '<body><iframe sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="' + inner + '"></iframe></body></html>'
+    const url = URL.createObjectURL(new Blob([shell], { type: 'text/html' }))
+    const w = window.open(url, '_blank')
+    setTimeout(() => { try { URL.revokeObjectURL(url) } catch (e) {} }, 60000)
+    if (!w && typeof toast === 'function') toast('Allow pop-ups to open the preview in a new tab')
+  } catch (e) {}
 }
 function codeSvgPreview(src) {
   const img = document.createElement('img')   // data-URL <img> never executes embedded SVG scripts
@@ -7060,25 +7068,6 @@ function codePreviewNode(lang, src) {
     if (lang === 'md' || lang === 'markdown') return mkEl('div', { class: 'code-preview-md', html: fmt(src) })
   } catch (e) {}
   return null
-}
-// Fullscreen helpers. We request fullscreen on the PARENT-owned .code-wrap (not on
-// the sandboxed iframe), so the sandbox stays 'allow-scripts' only - no
-// 'allow-fullscreen' is granted and the untrusted page can never self-fullscreen.
-// The toolbar rides along inside the wrap, so Exit stays reachable; Esc also exits.
-function codeFsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null }
-function codeRequestFs(el) { const fn = el && (el.requestFullscreen || el.webkitRequestFullscreen); if (fn) { try { fn.call(el) } catch (e) {} } }
-function codeExitFs() { const fn = document.exitFullscreen || document.webkitExitFullscreen; if (fn) { try { fn.call(document) } catch (e) {} } }
-function codeToggleFs(host) { if (codeFsElement()) codeExitFs(); else codeRequestFs(host) }
-function codeBindFsSync() {
-  if (window.__lclCodeFsBound) return
-  window.__lclCodeFsBound = true
-  const sync = () => {
-    const fsEl = codeFsElement()
-    const btns = document.querySelectorAll('.code-fs-btn')
-    for (let i = 0; i < btns.length; i++) btns[i].textContent = (fsEl && btns[i].__fsHost === fsEl) ? 'Exit fullscreen' : 'Fullscreen'
-  }
-  document.addEventListener('fullscreenchange', sync)
-  document.addEventListener('webkitfullscreenchange', sync)
 }
 // Attach the bottom toolbar (+ auto-open preview) to every <pre> code block in a
 // COMPLETE message element. Idempotent: skips a <pre> already inside a .code-wrap.
@@ -7119,16 +7108,18 @@ function enhanceCodeBlocks(scope) {
       // Collapse the raw source by default once a preview exists - the reader
       // mostly wants the rendered result; a toggle reveals the code on demand.
       const srcLabel = (lang === 'html') ? 'HTML' : 'source'
+      pre.classList.add('code-src-tall')   // shown source matches the preview height
       pre.style.display = 'none'
       const srcTog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Show ' + srcLabel)
       srcTog.addEventListener('click', () => { const hidden = pre.style.display === 'none'; pre.style.display = hidden ? '' : 'none'; srcTog.textContent = (hidden ? 'Hide ' : 'Show ') + srcLabel })
       const tog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Hide preview')
       tog.addEventListener('click', () => { const open = previewHost.style.display !== 'none'; previewHost.style.display = open ? 'none' : ''; tog.textContent = open ? 'Show preview' : 'Hide preview' })
-      const fsBtn = mkEl('button', { class: 'code-btn code-fs-btn', type: 'button' }, 'Fullscreen')
-      fsBtn.__fsHost = wrap
-      fsBtn.addEventListener('click', () => codeToggleFs(wrap))
-      btns.appendChild(srcTog); btns.appendChild(tog); btns.appendChild(fsBtn)
-      codeBindFsSync()
+      btns.appendChild(srcTog); btns.appendChild(tog)
+      if (lang === 'html') {
+        const tabBtn = mkEl('button', { class: 'code-btn code-open-tab', type: 'button', title: 'Open the preview in a new browser tab (still sandboxed)' }, 'Open in browser')
+        tabBtn.addEventListener('click', () => codeOpenInTab(src))
+        btns.appendChild(tabBtn)
+      }
     }
     bar.appendChild(btns)
     wrap.appendChild(bar)
