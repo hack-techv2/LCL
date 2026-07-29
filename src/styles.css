@@ -912,19 +912,5 @@ select.model-sel:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-r
 .code-btn { font-size:11px; font-family:inherit; border:1px solid var(--bdr2); background:transparent; color:var(--tx2); border-radius:6px; padding:3px 9px; cursor:pointer; }
 .code-btn:hover { color:var(--tx); border-color:var(--tx2); }
 .code-btn:focus-visible { outline:2px solid var(--ac); outline-offset:2px; }
-/* Fullscreen: the parent-owned .code-wrap fills the screen and becomes a flex
-   column so the preview grows and the toolbar (with Exit) stays reachable. The
-   sandboxed iframe is a child - it never self-fullscreens. Separate rules per
-   vendor pseudo (an unknown pseudo in a list would drop the whole rule). */
-.code-wrap:fullscreen { display:flex; flex-direction:column; background:var(--bg2); border-radius:0; margin:0; }
-.code-wrap:fullscreen pre { flex:0 0 auto; max-height:40vh; }
-.code-wrap:fullscreen .code-preview { flex:1 1 auto; min-height:0; overflow:auto; }
-.code-wrap:fullscreen .code-preview-frame { height:100%; }
-.code-wrap:fullscreen .code-preview-scroll { max-height:none; height:100%; }
-.code-wrap:fullscreen .code-bar { flex:0 0 auto; }
-.code-wrap:-webkit-full-screen { display:flex; flex-direction:column; background:var(--bg2); border-radius:0; margin:0; }
-.code-wrap:-webkit-full-screen pre { flex:0 0 auto; max-height:40vh; }
-.code-wrap:-webkit-full-screen .code-preview { flex:1 1 auto; min-height:0; overflow:auto; }
-.code-wrap:-webkit-full-screen .code-preview-frame { height:100%; }
-.code-wrap:-webkit-full-screen .code-preview-scroll { max-height:none; height:100%; }
-.code-wrap:-webkit-full-screen .code-bar { flex:0 0 auto; }
+/* When revealed alongside a preview, the raw source matches the preview height. */
+.code-wrap pre.code-src-tall { max-height:85vh; }
