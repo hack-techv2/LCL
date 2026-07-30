@@ -106,21 +106,40 @@ async function ensurePdfJsReady() {
   }
 }
 
-async function loadPdfDocumentFromBytes(bytes) {
+async function loadPdfDocumentFromBytes(bytes, label) {
   await ensurePdfJsReady()
-  const first = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
-  try {
-    return await pdfjsLib.getDocument({ data: first, verbosity: 0 }).promise
-  } catch (e) {
-    // Corporate proxies/CDN blockers sometimes return HTML for pdf.worker.min.js,
-    // which shows up in the browser as a PDF "content type"/MIME error. Retry
-    // with workers disabled so extraction can still proceed entirely in-page.
-    if (/worker|module|mime|content.?type|script/i.test(String(e && e.message || e))) {
-      console.warn('[pdf] worker failed; retrying with disableWorker:', e.message || e)
-      const second = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
-      return await pdfjsLib.getDocument({ data: second, verbosity: 0, disableWorker: true }).promise
+  let password = null          // kept only in this local for the retry loop
+  let asked = false            // have we prompted at least once
+  let disableWorker = false
+  for (;;) {
+    const data = bytes.slice ? bytes.slice() : new Uint8Array(bytes)
+    const params = { data, verbosity: 0 }
+    if (password != null) params.password = password
+    if (disableWorker) params.disableWorker = true
+    try {
+      return await pdfjsLib.getDocument(params).promise
+    } catch (e) {
+      const msg = String(e && e.message || e)
+      // Encrypted PDF: pdf.js throws PasswordException (code 1 = need password,
+      // 2 = wrong password). Prompt the user, then retry with the password. The
+      // password lives only in the local above - never persisted or sent out.
+      if (e && e.name === 'PasswordException') {
+        if (typeof promptPdfPassword !== 'function') throw e
+        const entered = await promptPdfPassword(label, { incorrect: e.code === 2 || asked })
+        if (entered == null) { const c = new Error('password required'); c.pdfPasswordCancelled = true; throw c }
+        password = entered; asked = true
+        continue
+      }
+      // Corporate proxies/CDN blockers sometimes return HTML for pdf.worker.min.js,
+      // which shows up in the browser as a PDF "content type"/MIME error. Retry
+      // with workers disabled so extraction can still proceed entirely in-page.
+      if (!disableWorker && /worker|module|mime|content.?type|script/i.test(msg)) {
+        console.warn('[pdf] worker failed; retrying with disableWorker:', msg)
+        disableWorker = true
+        continue
+      }
+      throw e
     }
-    throw e
   }
 }
 
@@ -167,7 +186,7 @@ function pdfLinesToStructuredText(lines) {
 
 async function extractPdfStructured(file) {
   const bytes = new Uint8Array(await file.arrayBuffer())
-  const pdf = await loadPdfDocumentFromBytes(bytes)
+  const pdf = await loadPdfDocumentFromBytes(bytes, file.name)
   const totalPages = pdf.numPages
   const pages = []
   const emptyPageNums = []
@@ -673,7 +692,8 @@ async function queueFilesForPreview(files, target) {
       }
       if (parseWarning) toast(f.name + ': ' + parseWarning, 'info')
     } catch (err) {
-      toast('Could not read ' + f.name + ': ' + err.message, 'err')
+      if (err && err.pdfPasswordCancelled) toast(f.name + ' skipped — password required', 'info')
+      else toast('Could not read ' + f.name + ': ' + err.message, 'err')
       if (progressive) {
         const idx = previewQueue.indexOf(rec)
         if (idx >= 0) {
