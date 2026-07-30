@@ -446,6 +446,19 @@ body.sb-collapsed .rail-btn[data-tip]:hover::before{display:none}
 .cd-ok{font-size:13px;font-family:var(--sans);background:var(--ac);border:1px solid var(--ac);color:#fff;padding:7px 16px;border-radius:8px;cursor:pointer;transition:all .12s}
 .cd-ok:hover{background:var(--ac2);border-color:var(--ac2)}
 .cd-ok:disabled{opacity:.5;cursor:default}
+/* Encrypted-PDF password prompt (promptPdfPassword) */
+.cd-pw-file{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);margin:12px 0}
+.cd-pw-file-ic{color:var(--tx2);display:flex;flex-shrink:0}
+.cd-pw-file-name{font-size:12px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-pw-field{position:relative;display:flex;align-items:center}
+.cd-pw-input{width:100%;box-sizing:border-box;padding:8px 36px 8px 10px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r);color:var(--tx);font-size:13px;font-family:var(--sans);transition:border-color .15s,box-shadow .15s}
+.cd-pw-input:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px var(--focus-ring)}
+.cd-pw-field.cd-pw-bad .cd-pw-input{border-color:var(--red)}
+.cd-pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--tx3);cursor:pointer;display:flex;padding:4px;border-radius:5px}
+.cd-pw-eye:hover{color:var(--tx)}
+.cd-pw-eye.on{color:var(--ac)}
+.cd-pw-err{font-size:11px;color:var(--red);margin-top:6px}
+.cd-pw-note{font-size:11px;color:var(--tx3);line-height:1.5;margin-top:10px}
 .dp-upload{margin:10px;padding:10px;background:transparent;border:1px dashed var(--bdr2);border-radius:var(--r);color:var(--tx3);font-family:var(--sans);font-size:12px;cursor:pointer;width:calc(100% - 20px);transition:all .15s;text-align:center}
 .dp-upload:hover{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
 .dp-empty{padding:20px;text-align:center;color:var(--tx3);font-size:12px;line-height:1.7}
