@@ -3,6 +3,12 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 21 Jul 2026 - Password-protected PDFs (alpha)
+
+Attaching an encrypted PDF used to fail silently. Now when pdf.js reports the file needs a password, LCL shows a **Protected PDF** prompt (`promptPdfPassword`): it names the file, takes the password in a masked field with a show/hide eye, and on a wrong password re-prompts with an inline "Incorrect password, try again". Enter the right one and extraction (and OCR, which reuses the already-decrypted document) proceed as normal; Cancel drops just that file from the batch with a quiet "skipped — password required" toast rather than a red error.
+
+Security: the password lives only in a local variable inside `loadPdfDocumentFromBytes` for the retry loop — it is **never written to `lcl_data.json`, never logged, and never sent to the proxy** (the proxy only ever sees extracted text, same as before). This covers the *open* password; owner/permission passwords that only restrict editing don't block reading. Test **C65** drives the real loader with a fake pdf.js to prove it prompts, retries with the password, aborts cleanly on cancel, and never persists the value.
+
 ## 21 Jul 2026 - Code-block tools: Copy / Download every block + sandboxed preview for HTML/CSV/SVG/Markdown (alpha)
 
 Every fenced code block in a reply now gets a small toolbar at the **bottom** of the block (so it stays reachable under long code / previews): **Copy** the block's source, and **Download** it as a file. The download name and extension are derived from the content — an HTML `<title>` or a Markdown heading becomes the filename, and the language maps to the right extension (`html`, `md`, `py`, `js`, `json`, `csv`, `sql`, `sh`, `css`, `svg`, `txt` fallback). For the renderable types the toolbar also carries an auto-opening **Preview** (Hide/Show toggle):
