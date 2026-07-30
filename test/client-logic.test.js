@@ -855,6 +855,41 @@ const CASES = [
       collapseDefault && srcToggle && openTab && tabSandboxed && sharedDoc && inlineSandbox && cssBig && cssTall,
       'collapse=' + collapseDefault + ' srcTog=' + srcToggle + ' openTab=' + openTab + ' tabSandboxed=' + tabSandboxed + ' sharedDoc=' + sharedDoc + ' inlineSb=' + inlineSandbox + ' css85=' + cssBig + ' cssTall=' + cssTall)
   } },
+  { id: 'C65 encrypted PDF: prompt + retry with password; cancel aborts; password not persisted', fn: async () => {
+    const F = fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8')
+    const U = fs.readFileSync(path.join(__dirname, '..', 'src', '80-ui.js'), 'utf8')
+    // Source guards: prompt exists, reassurance copy present, and the password is
+    // only a local in the loader - never written to state / crumb / disk / proxy.
+    const promptExists = /function promptPdfPassword\(fileName, opts\)/.test(U) && /Never saved, never sent to the server/.test(U)
+    const noPersist = !/lclCrumb\([^)]*password/i.test(F) && !/save\w*\([^)]*password/i.test(F) && !/console\.(log|warn|error)\([^)]*\bpassword\b/i.test(F)
+    // Functional: drive the real loader with a fake pdf.js that rejects until a
+    // password is supplied, and a fake prompt. It must retry and return the doc.
+    const block = F.slice(F.indexOf('async function loadPdfDocumentFromBytes'), F.indexOf('function pdfItemsToLines'))
+    let promptCalls = 0, firstIncorrect = null, passwordSeen = null
+    const mkCtx = (promptReturns) => {
+      const pdfjsLib = { GlobalWorkerOptions: { workerSrc: 'x' }, getDocument: (params) => {
+        return { promise: (params.password ? (passwordSeen = params.password, Promise.resolve({ numPages: 1 }))
+          : Promise.reject({ name: 'PasswordException', code: 1 })) }
+      } }
+      const promptPdfPassword = (label, opts) => { promptCalls++; if (firstIncorrect === null) firstIncorrect = !!(opts && opts.incorrect); return Promise.resolve(promptReturns) }
+      const ctx = { pdfjsLib, promptPdfPassword, console: { warn(){} }, Uint8Array, setTimeout, Promise, PDFJS_WORKER_SRC: 'x' }
+      ctx.ensurePdfJsReady = async () => {}
+      vm.createContext(ctx)
+      vm.runInContext('async function ensurePdfJsReady(){}\n' + block, ctx)
+      return ctx
+    }
+    const okCtx = mkCtx('letmein')
+    const doc = await vm.runInContext('loadPdfDocumentFromBytes', okCtx)(new Uint8Array([1, 2, 3]), 'secret.pdf')
+    const retried = doc && doc.numPages === 1 && passwordSeen === 'letmein' && promptCalls === 1 && firstIncorrect === false
+    // Cancel path: prompt returns null -> loader throws a flagged, non-scary error.
+    promptCalls = 0; firstIncorrect = null; passwordSeen = null
+    const cancelCtx = mkCtx(null)
+    let cancelled = false
+    try { await vm.runInContext('loadPdfDocumentFromBytes', cancelCtx)(new Uint8Array([1]), 'secret.pdf') }
+    catch (e) { cancelled = !!(e && e.pdfPasswordCancelled) }
+    check('C65 encrypted PDF prompt + retry + cancel + no-persist', promptExists && noPersist && retried && cancelled,
+      'prompt=' + promptExists + ' noPersist=' + noPersist + ' retried=' + retried + ' cancelled=' + cancelled)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
