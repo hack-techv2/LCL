@@ -655,6 +655,47 @@ function confirmDialog(opts) {
   })
 }
 
+// Password prompt for an encrypted PDF. Resolves to the entered password, or
+// null if cancelled. The value is handed straight to pdf.js for one decode -
+// it is never stored, logged, or sent to the proxy (the caller keeps it in a
+// local variable only for the retry loop).
+function promptPdfPassword(fileName, opts) {
+  opts = opts || {}
+  const FILE_IC = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5H4A1.5 1.5 0 002.5 3v10A1.5 1.5 0 004 14.5h8a1.5 1.5 0 001.5-1.5V6z"/><path d="M9 1.5V6h4.5"/></svg>'
+  const EYE_IC = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>'
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(null) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    function submit() { const v = input.value; if (!v) { try { input.focus() } catch {} ; return } finish(v) }
+    const input = mkEl('input', { class: 'cd-pw-input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: 'Password' })
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit() } })
+    const eye = mkEl('button', { class: 'cd-pw-eye', type: 'button', 'aria-label': 'Show password', title: 'Show password', html: EYE_IC,
+      onclick: () => { const hidden = input.type === 'password'; input.type = hidden ? 'text' : 'password'; eye.classList.toggle('on', hidden); try { input.focus() } catch {} } })
+    const chip = mkEl('div', { class: 'cd-pw-file' }, [
+      mkEl('span', { class: 'cd-pw-file-ic', 'aria-hidden': 'true', html: FILE_IC }),
+      mkEl('span', { class: 'cd-pw-file-name' }, fileName || 'document.pdf')
+    ])
+    const err = mkEl('div', { class: 'cd-pw-err' }, 'Incorrect password, try again')
+    if (!opts.incorrect) err.style.display = 'none'
+    const ok = mkEl('button', { class: 'cd-ok', onclick: submit }, 'Unlock')
+    const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(null) }, 'Cancel')
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, 'Protected PDF'),
+      mkEl('div', { class: 'cd-msg' }, 'This file needs a password to open.'),
+      chip,
+      mkEl('div', { class: 'cd-pw-field' + (opts.incorrect ? ' cd-pw-bad' : '') }, [input, eye]),
+      err,
+      mkEl('div', { class: 'cd-pw-note' }, 'Used once to open this file. Never saved, never sent to the server.'),
+      mkEl('div', { class: 'cd-acts' }, [cancel, ok])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(null) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { input.focus() } catch {} }, 0)
+  })
+}
+
 // Themed multi-choice dialog. opts.buttons = [{ text, value, primary }]; resolves
 // to the chosen value, or opts.cancelValue on overlay-click / Escape. Reuses the
 // .cd-* styling; the message renders with line breaks (white-space:pre-line).
