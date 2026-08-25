@@ -3,6 +3,10 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 21 Jul 2026 - Split-progress pill matches the part counter (alpha)
+
+When an over-budget request was split (map-reduce), the top progress pill sat at a frozen "Processing 1/1" while the message body climbed "part 1/5 … 5/5" — because they were two unrelated counters (the pill counted *documents*, the body counted *parts*). Now there's one source of truth, `splitPartLabel(p,n)`, feeding both, so the pill reads "Processing part 3/5" in step with the body (and "2/5 · part 3/4" when several docs are in the run). `summariseText` takes an opt-in `partCb` that fires only at the top level; compaction, which also uses `summariseText`, passes no callback so its pill behaviour is unchanged. Test **C66** drives a real 3-part split and asserts the callback fires 1/3, 2/3, 3/3, that the label and pill share the formatter, and that compaction stays untouched.
+
 ## 21 Jul 2026 - Password-protected PDFs (alpha)
 
 Attaching an encrypted PDF used to fail silently. Now when pdf.js reports the file needs a password, LCL shows a **Protected PDF** prompt (`promptPdfPassword`): it names the file, takes the password in a masked field with a show/hide eye, and on a wrong password re-prompts with an inline "Incorrect password, try again". Enter the right one and extraction (and OCR, which reuses the already-decrypted document) proceed as normal; Cancel drops just that file from the batch with a quiet "skipped — password required" toast rather than a red error.
