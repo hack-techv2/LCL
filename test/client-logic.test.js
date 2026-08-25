@@ -890,6 +890,30 @@ const CASES = [
     check('C65 encrypted PDF prompt + retry + cancel + no-persist', promptExists && noPersist && retried && cancelled,
       'prompt=' + promptExists + ' noPersist=' + noPersist + ' retried=' + retried + ' cancelled=' + cancelled)
   } },
+  { id: 'C66 split progress: one counter drives pill + body; partCb fires per top-level part; compaction untouched', fn: async () => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const hasFormatter = /function splitPartLabel\(p, n\) \{ return 'part ' \+ p \+ '\/' \+ n \}/.test(P)
+    const labelUsesFmt = P.includes("label + ' (' + pl + ')'")                              // body label from the shared formatter
+    const pillUsesFmt = P.includes('const setProc =') && P.includes('splitPartLabel(pp, pn)') // pill from the same formatter
+    const optIn = /async function summariseText\(sysPrompt, label, text, instruction, bodyEl, signal, depth, partCb\)/.test(P)
+    const depthGuard = P.includes("if (depth === 0 && typeof partCb === 'function') partCb(p + 1, parts.length)")
+    const compactionUnaffected = P.includes("summariseText(sysPrompt, 'conversation', seed, instruction, null, signal, 0)") // no partCb -> pill untouched by compaction
+    const passedToDoc = P.includes('summariseDoc(sys, doc, instruction, bodyEl, signal, setProc)')
+    // Functional: drive the real summariseText with stubs so a doc splits into 3
+    // parts; the top-level partCb must fire 1/3,2/3,3/3 and the run must complete.
+    const block = P.slice(P.indexOf('function splitPartLabel'), P.indexOf('function embedsActive'))
+    const calls = []
+    const ctx = { perRequestTokenCap: () => 20000, estTokens: t => t.length, isSummariseAsk: () => true,
+      summariseInto: async () => ({ text: 'X' }), fmt: s => s, Math: Math, JSON: JSON, Date: Date, Promise: Promise, setTimeout: setTimeout }
+    vm.createContext(ctx)
+    vm.runInContext(block, ctx)
+    const out = await vm.runInContext('summariseText', ctx)('sys', 'doc.html', 'y'.repeat(50000), 'do it', null, null, 0, (p, n) => calls.push(p + '/' + n))
+    const fired = JSON.stringify(calls) === JSON.stringify(['1/3', '2/3', '3/3']) && out === 'X'
+    const plFn = vm.runInContext('splitPartLabel', ctx)(3, 5) === 'part 3/5'
+    check('C66 split-progress counter centralised + partCb top-level only',
+      hasFormatter && labelUsesFmt && pillUsesFmt && optIn && depthGuard && compactionUnaffected && passedToDoc && fired && plFn,
+      'fmt=' + hasFormatter + ' lbl=' + labelUsesFmt + ' pill=' + pillUsesFmt + ' optIn=' + optIn + ' depth=' + depthGuard + ' compact=' + compactionUnaffected + ' doc=' + passedToDoc + ' fired=' + fired + '(' + calls.join(',') + ') plFn=' + plFn)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
