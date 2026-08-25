@@ -27,6 +27,7 @@ const KNOWN_GLOBALS = new Set([
   'onData',  // callback parameter of streamSse() (12-transport), not a global fn
   'onProgress',  // callback parameter of embedBatch() (15-rag), not a global fn
   'onToken',  // callback parameter of streamChatOnce() (50-chatprocessing), not a global fn
+  'partCb',  // callback parameter of summariseText()/summariseDoc() (50-chatprocessing), not a global fn
   'shouldAbort'  // callback parameter of embedBatch() (15-rag), not a global fn
 ])
 const KEYWORDS = new Set('if for while switch catch return typeof function await throw delete void do else new in of yield case try finally with class extends super'.split(' '))
