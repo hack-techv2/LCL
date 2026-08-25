@@ -1232,14 +1232,18 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
   return { text: null }
 }
 
-async function summariseDoc(sysPrompt, doc, instruction, bodyEl, signal) {
-  return await summariseText(sysPrompt, doc.name, doc.content, instruction, bodyEl, signal, 0)
+// One source of truth for the map-reduce part counter, so the in-body label and
+// the top progress pill always show the same numbers (never drift to "1/1").
+function splitPartLabel(p, n) { return 'part ' + p + '/' + n }
+
+async function summariseDoc(sysPrompt, doc, instruction, bodyEl, signal, partCb) {
+  return await summariseText(sysPrompt, doc.name, doc.content, instruction, bodyEl, signal, 0, partCb)
 }
 
 // Summarise one blob, splitting into parts (map-reduce) when it is over the cap OR
 // when the gateway rejects it as too big even with a free budget. Recurses so a part
 // that is still too big splits again. Depth-guarded to avoid runaway.
-async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal, depth) {
+async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal, depth, partCb) {
   if (signal && signal.aborted) return null
   const cap = perRequestTokenCap()
   const est = estTokens(text)
@@ -1274,7 +1278,9 @@ async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal
   for (let p = 0; p < parts.length; p++) {
     if (signal && signal.aborted) return null
     if (liveEl) liveEl.innerHTML = fmt('_' + label + ' \u2014 ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '…_')
-    const s = await summariseText(sysPrompt, label + ' (part ' + (p + 1) + '/' + parts.length + ')', parts[p], partInstr, liveEl, signal, depth + 1)
+    const pl = splitPartLabel(p + 1, parts.length)
+    if (depth === 0 && typeof partCb === 'function') partCb(p + 1, parts.length)
+    const s = await summariseText(sysPrompt, label + ' (' + pl + ')', parts[p], partInstr, liveEl, signal, depth + 1)
     if (s == null) return null
     partSummaries.push('Part ' + (p + 1) + ': ' + s)
     if (doneEl) doneEl.innerHTML = fmt(partSummaries.join('\n\n'))
@@ -1326,14 +1332,25 @@ async function runSplitSummaries(chat, docs, instruction) {
       if (signal.aborted) break
       if (chat && chat.id && !D.chats[chat.id]) break   // chat deleted mid-run - don't append into another chat
       const doc = docs[i]
-      if (isActive()) setHealth('warn', (summaryAsk ? 'Summarising ' : 'Processing ') + (i + 1) + '/' + docs.length)
+      // Single pill setter for this run. With no part yet it shows the doc count;
+      // once a doc splits, partCb feeds it the SAME numbers the body shows, so the
+      // pill reads e.g. "Processing part 3/5" instead of a frozen "1/1".
+      const setProc = (pp, pn) => {
+        if (!isActive()) return
+        const verb = summaryAsk ? 'Summarising ' : 'Processing '
+        const count = pn
+          ? (docs.length > 1 ? (i + 1) + '/' + docs.length + ' · ' : '') + splitPartLabel(pp, pn)
+          : (i + 1) + '/' + docs.length
+        setHealth('warn', verb + count)
+      }
+      setProc()
       const header = '**' + doc.name + '** - ' + kindWord + ' (' + (i + 1) + ' of ' + docs.length + ')\n\n'
       const bubble = isActive() ? appendMsg('ai', '', null, [doc.name]) : null
       const bodyEl = bubble ? bubble.querySelector('.msg-body') : null
       if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising…_' : '_Working…_'))
       await waitForEmbedsIdle(bodyEl, header, signal)
       let summary = null
-      try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal) } catch (e) { summary = null }
+      try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal, setProc) } catch (e) { summary = null }
       if (signal.aborted) {
         if (bodyEl) bodyEl.innerHTML = fmt(header + '_Stopped._')
         if (typeof lclCrumb === 'function') lclCrumb('split_stopped', { at: i + 1, total: docs.length })
