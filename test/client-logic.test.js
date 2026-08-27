@@ -914,6 +914,71 @@ const CASES = [
       hasFormatter && labelUsesFmt && pillUsesFmt && optIn && depthGuard && compactionUnaffected && passedToDoc && fired && plFn,
       'fmt=' + hasFormatter + ' lbl=' + labelUsesFmt + ' pill=' + pillUsesFmt + ' optIn=' + optIn + ' depth=' + depthGuard + ' compact=' + compactionUnaffected + ' doc=' + passedToDoc + ' fired=' + fired + '(' + calls.join(',') + ') plFn=' + plFn)
   } },
+  { id: 'C67 chat title: reject echoed markup as a title; rename input built without innerHTML', fn: async () => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const L = fs.readFileSync(path.join(__dirname, '..', 'src', '30-chatlist.js'), 'utf8')
+    // 1. The titler must strip code/markup from the seed and validate the reply.
+    const seedStripped = P.includes('const deCode =') && /replace\(\/```\[\\s\\S\]\*\?```\/g/.test(P) && P.includes('deCode(extract(chat.messages[1]))')
+    const guarded = P.includes('if (title && isTitleLike(title) && chat)')
+    // Functional: isTitleLike must reject what the model echoes back for an HTML reply.
+    const fn = P.slice(P.indexOf('function isTitleLike'), P.indexOf('async function autoTitleChat'))
+    const ctx = {}; vm.createContext(ctx); vm.runInContext(fn, ctx)
+    const isTitleLike = vm.runInContext('isTitleLike', ctx)
+    const rejects = !isTitleLike('<!DOCTYPE html><html lang="en"><head><meta') &&
+                    !isTitleLike('<div class="wrap">') &&
+                    !isTitleLike('```html') &&
+                    !isTitleLike('Budget checker\nsecond line') &&
+                    !isTitleLike('x'.repeat(40)) &&
+                    !isTitleLike('a'.repeat(80))
+    const accepts = isTitleLike('Budget sheet error check') && isTitleLike('OCR tool for screenshots')
+    // 2. The rename input must be built with DOM APIs - a title containing a
+    // double quote used to break out of value="..." and mangle the input.
+    const block = L.slice(L.indexOf('function startRename'), L.indexOf('function finishRename'))
+    const noInnerHtml = !/innerHTML\s*=/.test(block)   // assignment, not the explanatory comment
+    const domBuilt = block.includes("createElement('input')") && block.includes('inp.value = cur') &&
+                     block.includes("addEventListener('blur'") && block.includes("addEventListener('keydown'")
+    // Simulate: set .value as a property with a quote-laden title, read it back intact.
+    const el = { className: '', type: '', value: '', _l: {}, addEventListener(k, f) { this._l[k] = f }, focus(){}, select(){} }
+    const nasty = '<!DOCTYPE html><html lang="en"> " onfocus="alert(1)'
+    el.value = nasty
+    const survives = el.value === nasty
+    check('C67 title validation + injection-safe rename input',
+      seedStripped && guarded && rejects && accepts && noInnerHtml && domBuilt && survives,
+      'seed=' + seedStripped + ' guard=' + guarded + ' rejects=' + rejects + ' accepts=' + accepts + ' noInnerHTML=' + noInnerHtml + ' dom=' + domBuilt + ' survives=' + survives)
+  } },
+  { id: 'C68 autoTitleChat end-to-end: markup stripped from seed, echoed markup rejected, real title kept', fn: async () => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const block = P.slice(P.indexOf('function isTitleLike'), P.indexOf('function stopStreaming'))
+    const mkChat = () => ({
+      id: 't1', titledByAI: false, title: 'Make me an HTML tool that checks a budget…',
+      messages: [
+        { role: 'user', content: 'Make me an HTML tool that checks a budget sheet' },
+        { role: 'assistant', content: 'Here you go:\n\n```html\n<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Budget</title></head><body><h1>Hi</h1></body></html>\n```' }
+      ]
+    })
+    let seed = null
+    const run = async (modelReply) => {
+      const ctx = {
+        creds: { apiKey: 'x', model: 'y' }, persist() {}, renderChatList() {}, renderTopbar() {},
+        httpPost: async (url, body) => { seed = body.payload.messages[1].content
+          return { ok: true, json: async () => ({ choices: [{ message: { content: modelReply } }] }) } },
+        Promise, String, JSON
+      }
+      vm.createContext(ctx); vm.runInContext(block, ctx)
+      const chat = mkChat(); const before = chat.title
+      await vm.runInContext('autoTitleChat', ctx)(chat)
+      return { changed: chat.title !== before, title: chat.title, titledByAI: !!chat.titledByAI }
+    }
+    // 1. Model echoes the generated HTML back - must be rejected, title untouched.
+    const echoed = await run('<!DOCTYPE html><html lang="en"><head><meta charset')
+    const seedClean = !!seed && !/<html|<!DOCTYPE|```|<head/i.test(seed)
+    const seedKeptIntent = !!seed && /budget sheet/i.test(seed)
+    // 2. A well-behaved reply is still accepted.
+    const good = await run('Budget sheet checker tool')
+    check('C68 autoTitleChat: clean seed, rejects echoed markup, accepts real title',
+      seedClean && seedKeptIntent && !echoed.changed && !echoed.titledByAI && good.changed && good.title === 'Budget sheet checker tool' && good.titledByAI,
+      'seedClean=' + seedClean + ' seedIntent=' + seedKeptIntent + ' echoedRejected=' + !echoed.changed + ' echoedFlag=' + echoed.titledByAI + ' goodAccepted=' + good.changed + ' goodTitle=' + JSON.stringify(good.title))
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
