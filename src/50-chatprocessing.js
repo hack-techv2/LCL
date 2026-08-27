@@ -799,13 +799,33 @@ async function runStream(chat, payload, ragSources) {
 // merged from 52-chat-retry.js
 // ---------------------------------------------------------------------------
 
+// A usable title is one short line of prose. Anything carrying markup, code
+// fences, line breaks or one giant unbroken token is the model echoing the reply
+// back instead of titling it (seen when the reply is a generated HTML file).
+function isTitleLike(s) {
+  const t = String(s || '').trim()
+  if (!t || t.length > 60) return false
+  if (/[<>{}]|```/.test(t)) return false
+  if (/[\r\n]/.test(t)) return false
+  if (/^(<!doctype|<html|<\?xml)/i.test(t)) return false
+  if (!/\s/.test(t) && t.length > 30) return false
+  return true
+}
+
 async function autoTitleChat(chat) {
   if (!creds || !chat || chat.titledByAI) return
   if (!chat.messages || chat.messages.length < 2) return
   const extract = (m) => typeof m.content === 'string' ? m.content :
     (m.content?.find?.(b => b.type === 'text')?.text || '')
-  const seed = (extract(chat.messages[0]) + '\n\n' +
-                extract(chat.messages[1])).slice(0, 1500)
+  // Strip fenced code and stray tags before seeding: a generated HTML document
+  // would otherwise dominate the prompt and get echoed back as the "title".
+  const deCode = (s) => String(s || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/```[\s\S]*$/, ' ')
+    .replace(/<[^>]{0,200}>/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+  const seed = (deCode(extract(chat.messages[0])) + '\n\n' +
+                deCode(extract(chat.messages[1]))).slice(0, 1500)
   try {
     const resp = await httpPost('/api/chat', {
         apiKey: creds.apiKey, modelId: creds.model,
@@ -827,7 +847,8 @@ async function autoTitleChat(chat) {
     title = title.replace(/^["'`""'']/, '').replace(/["'`""'']$/, '')
                  .replace(/^Title:\s*/i, '').replace(/[.!?]+$/, '')
                  .slice(0, 60)
-    if (title && chat) {
+    // Reject a non-title (echoed markup/code) and keep the first-message title.
+    if (title && isTitleLike(title) && chat) {
       chat.title = title
       chat.titledByAI = true
       persist()
