@@ -114,9 +114,27 @@ function startRename(id, e) {
   e.stopPropagation()
   const item = document.querySelector(`.chat-item[data-id="${id}"] .chat-title`)
   if (!item) return
-  const cur = D.chats[id].title
-  item.innerHTML = `<input class="rename-input" value="${cur}" onblur="finishRename('${id}',this)" onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value='${cur}';this.blur()}">`
-  const inp = item.querySelector('input')
+  const cur = (D.chats[id] && D.chats[id].title) || ''
+  // Built with DOM APIs, never innerHTML. A title can contain quotes and angle
+  // brackets (e.g. markup echoed back by the titler); interpolating it into
+  // value="..." closed the attribute early - the input rendered blank/mangled so
+  // the rename could not take, and a crafted title could inject a live handler.
+  item.textContent = ''
+  const inp = document.createElement('input')
+  inp.className = 'rename-input'
+  inp.type = 'text'
+  inp.value = cur
+  // Enter commits directly rather than via blur(): blur() is a no-op when the
+  // window has lost focus, which silently dropped the rename. Guarded so the
+  // blur that follows a commit does not run finishRename twice.
+  let settled = false
+  const commit = () => { if (settled) return; settled = true; finishRename(id, inp) }
+  inp.addEventListener('blur', commit)
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit() }
+    else if (ev.key === 'Escape') { settled = true; renderChatList() }
+  })
+  item.appendChild(inp)
   inp.focus(); inp.select()
 }
 
