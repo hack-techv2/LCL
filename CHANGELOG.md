@@ -3,6 +3,16 @@
 All notable changes to Local Comet LLM. Everything below is part of the v0.67d
 release.
 
+## 27 Aug 2026 - Chat titles: no more HTML as a title, and rename actually works (alpha)
+
+Asking LCL for an HTML file could leave the chat titled `<!DOCTYPE html><html lang="en"...` — and that chat then couldn't be renamed. Two separate faults that compounded.
+
+**The title.** `autoTitleChat` seeded the titling request with the first user message *plus the first assistant reply*. When that reply was a generated HTML document, the model echoed the markup instead of writing a title, truncated to `max_tokens: 24`; the cleanup only stripped quotes and a `Title:` prefix, so the fragment was saved. Now the seed has fenced code and stray tags stripped before it is sent (the model sees intent, not markup), and the reply must pass `isTitleLike()` — one short line, no `<>{}`, no code fences, no line breaks, not one giant token. A reply that fails is discarded and the chat keeps the title derived from the first message.
+
+**The rename.** `startRename()` built the edit box by interpolating the title into `innerHTML`, so a title containing `"` (e.g. `lang="en"`) closed the `value="..."` attribute early — the input rendered blank or mangled and the rename could not take. This was also an HTML-injection hole: a title carrying `" onfocus="...` would inject a live handler, and titles come from model output. The input is now built with DOM APIs (`createElement`, `.value` as a property, `addEventListener`), so quotes and angle brackets are simply data. Enter also commits directly instead of via `blur()`, which was a no-op when the window had lost focus and silently dropped the rename.
+
+Existing mangled titles are left as-is — rename now works, so they can be fixed in place. Tests **C67** (validation + injection-safe input) and **C68** (drives `autoTitleChat` end-to-end: seed is clean, echoed markup rejected, a real title still accepted).
+
 ## 21 Jul 2026 - Split-progress pill matches the part counter (alpha)
 
 When an over-budget request was split (map-reduce), the top progress pill sat at a frozen "Processing 1/1" while the message body climbed "part 1/5 … 5/5" — because they were two unrelated counters (the pill counted *documents*, the body counted *parts*). Now there's one source of truth, `splitPartLabel(p,n)`, feeding both, so the pill reads "Processing part 3/5" in step with the body (and "2/5 · part 3/4" when several docs are in the run). `summariseText` takes an opt-in `partCb` that fires only at the top level; compaction, which also uses `summariseText`, passes no callback so its pill behaviour is unchanged. Test **C66** drives a real 3-part split and asserts the callback fires 1/3, 2/3, 3/3, that the label and pill share the formatter, and that compaction stays untouched.
