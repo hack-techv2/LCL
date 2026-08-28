@@ -101,6 +101,13 @@ function openUpdateDialog(){
 
 function closeUpdateDialog(){ const el=document.getElementById('update-bd'); if(el) el.remove() }
 
+// Flush any queued chat/state write to disk BEFORE asking the server to restart,
+// so a Node restart never drops the most recent chat mid-write. persist() awaits
+// the serialized write chain, so this guarantees the latest D is on disk.
+async function flushBeforeRestart(){
+  try { if (typeof persist === 'function') await persist() } catch {}
+}
+
 async function applyUpdate(){
   if (typeof demoOn === 'function' && demoOn()) {
     // Emulate the full download -> restart -> updated sequence (no network). The
@@ -109,12 +116,12 @@ async function applyUpdate(){
     const btn = document.getElementById('update-apply-btn')
     if (btn){ btn.disabled = true; btn.textContent = 'Working\u2026' }
     if (out) out.innerHTML = '<div style="color:var(--tx3);padding:6px 0">Downloading and verifying\u2026 (demo)</div>'
-    setTimeout(() => { if (out) out.innerHTML = '<div style="color:var(--ok);padding:6px 0">Updated to v0.67d. Restarting Node\u2026</div>' }, 1000)
+    setTimeout(() => { if (out) out.innerHTML = '<div style="color:var(--ok);padding:6px 0">Updated to v0.67e. Restarting Node\u2026</div>' }, 1000)
     setTimeout(() => {
-      const vb = document.getElementById('ver-badge'); if (vb) vb.textContent = 'v0.67d'
-      lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67d', tag:'v0.67d', newer:false, error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
+      const vb = document.getElementById('ver-badge'); if (vb) vb.textContent = 'v0.67e'
+      lclUpdate = { checked:true, channel:'stable', current:'0.67e', latest:'0.67e', tag:'v0.67e', newer:false, error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
       renderUpdateBadge(); renderUpdateSettings(); closeUpdateDialog()
-      toast('Updated to v0.67d (demo) \u2014 Reset demo to replay', 'ok')
+      toast('Updated to v0.67e (demo) \u2014 Reset demo to replay', 'ok')
     }, 2100)
     return
   }
@@ -165,10 +172,10 @@ async function setChannel(ch){
     if (ch === 'alpha') {
       // Preview sticky enrolment: enrolled on the experimental channel and already
       // on the latest build (the alpha == stable case).
-      lclUpdate = { checked:true, channel:'alpha', current:'0.67d', ref:'alpha', inSync:true, changed:[], hash:'a1b2c3d', installedAt:Date.now(), error:null, sameAsStable:true }
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67e', ref:'alpha', inSync:true, changed:[], hash:'a1b2c3d', installedAt:Date.now(), error:null, sameAsStable:true }
       if (typeof toast === 'function') toast('Enrolled in Experimental updates \u2014 already on the latest build','ok')
     } else {
-      lclUpdate = { checked:true, channel:'stable', current:'0.67c', latest:'0.67d', tag:'v0.67d', newer:true, inSync:true, changed:[], hash:'', error:null }
+      lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e', newer:true, inSync:true, changed:[], hash:'', error:null }
       relockAlpha()
     }
     if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
@@ -196,6 +203,7 @@ async function setChannel(ch){
         ? 'Experimental build applied'
         : (d.restoredFromBackup ? 'Offline \u2014 restored local stable backup' : ('Restored stable '+((d.restored&&d.restored.tag)||'')))
       toast(msg+' \u2014 restarting Node\u2026','ok')
+      await flushBeforeRestart()
       try{ await httpPost('/api/update/restart') }catch{}
       waitForServerThenReload(); return
     }
@@ -240,20 +248,21 @@ async function applyAlphaNow(){
   if (typeof demoOn === 'function' && demoOn()) {
     toast('Downloading alpha build\u2026 (demo)', 'info')
     setTimeout(() => {
-      lclUpdate = { checked:true, channel:'alpha', current:'0.67c', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', installedAt:Date.now(), error:null }
+      lclUpdate = { checked:true, channel:'alpha', current:'0.67d', ref:'alpha', inSync:true, changed:[], hash:'e4f5a6b', installedAt:Date.now(), error:null }
       renderUpdateBadge(); renderUpdateSettings()
       toast('Alpha updated to #e4f5a6b (demo) \u2014 Reset demo to replay', 'ok')
     }, 1200)
     return
   }
   try{
-    toast('Downloading alpha update...','info')
+    toast('Downloading alpha update…','info')
     const r = await httpPost('/api/update/apply')
     const d = await r.json()
     if (d.error){ toast('Update failed: '+d.error,'err'); return }
     const applied = (d.applied||[]).join(', ') || 'no changes'
     if (d.restartNeeded){
       toast('Applied ('+applied+'). Restarting Node…','ok')
+      await flushBeforeRestart()
       try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
@@ -298,6 +307,7 @@ async function simulateUpdate(files){
     if (d.error){ toast('Simulate failed: ' + d.error,'err'); return }
     if (d.restartNeeded){
       toast('Applied (' + label + '). Restarting Node.js\u2026','ok')
+      await flushBeforeRestart()
       try { await httpPost('/api/update/restart') } catch {}
       waitForServerThenReload()
       return
