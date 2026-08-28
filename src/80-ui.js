@@ -355,7 +355,12 @@ function closeSkillsManager() {
   cancelNewSkill()
   document.getElementById('skills-mgr').classList.add('hidden')
 }
-function closeSP() { document.getElementById('sp').classList.add('hidden') }
+// Closing without saving must drop the pending gateway pick, or reopening would
+// show a selection that was never applied.
+function closeSP() {
+  document.getElementById('sp').classList.add('hidden')
+  if (typeof clearPendingGateway === 'function') clearPendingGateway()
+}
 
 function renderSpSkillsList() {
   const root = document.getElementById('sp-skills-list')
@@ -807,9 +812,29 @@ function confirmEmbedBatch(plans, caps) {
   })
 }
 
-function saveSP() {
+async function saveSP() {
+  // A pending gateway pick (or a changed key) is committed HERE, not on click,
+  // and only after the key is verified against that gateway. If verification
+  // fails the connection is left exactly as it was - every other setting on this
+  // panel still saves, so a gateway being briefly down can't block the whole form.
+  const _gwTarget = pendingGateway()
+  const _gwChanged = _gwTarget !== currentGateway()
+  const _keyTyped = (document.getElementById('s-key').value || '').trim()
+  const _keyChanged = _keyTyped && _keyTyped !== (creds.apiKey || '')
+  let _gwErr = null
+  if (_gwChanged || _keyChanged) {
+    const btn = document.querySelector('#sp .btn-sv')
+    const label = btn ? btn.textContent : ''
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking key…' }
+    const r = await applyGatewayChange(_gwTarget, _keyTyped)
+    if (btn) { btn.disabled = false; btn.textContent = label }
+    if (!r.ok) { _gwErr = r.error; clearPendingGateway() }
+  }
   const prevEmbedKey = creds.embedApiKey || ''
-  creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
+  // If a gateway switch was attempted and failed, the typed key belongs to the
+  // gateway we did NOT move to - adopting it here would overwrite the working
+  // key of the gateway we are still on.
+  if (!(_gwErr && _gwChanged)) creds.apiKey = document.getElementById('s-key').value.trim()||creds.apiKey
   creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
   creds.systemPrompt = document.getElementById('s-sys').value.trim()
   const tokInput = parseInt(document.getElementById('s-tok-v-input').value)
@@ -827,7 +852,12 @@ function saveSP() {
   D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
   saveSettings(D.settings)
   persist()
-  closeSP(); toast('Settings saved','ok')
+  closeSP()
+  // Be explicit when the connection did NOT change - a quiet "Settings saved"
+  // would leave the user believing they had switched gateway when they hadn't.
+  if (_gwErr) toast(_gwErr + ' Other settings were saved.', 'err')
+  else if (_gwChanged) toast('Settings saved - connected to ' + _gwTarget, 'ok')
+  else toast('Settings saved','ok')
   // Validate a new/changed embedding key NOW (one tiny embed call) so a wrong or
   // truncated key is caught with a clear message instead of silently 401'ing on
   // the first RAG embed. Non-blocking: settings are already saved.
@@ -899,42 +929,69 @@ function keyStoreFor(name) {
   return gwVault()
 }
 
-async function setGateway(name, where) {
-  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode \u2014 gateway not changed', 'info'); renderGatewaySeg(); return }
-  const cur = currentGateway()
-  if (name === cur) { renderGatewaySeg(); return }
+// Pending (unsaved) gateway pick. Clicking a segment only SELECTS - it never
+// touches the server endpoint and never writes to disk. The switch is applied by
+// Save, and only after the key is verified against that gateway. This is also
+// what stops a stalled server turning repeated clicks into a burst of endpoint
+// switches and settings writes: there is nothing in flight to pile up.
+let _pendingGw = null
+
+function pendingGateway() { return _pendingGw || currentGateway() }
+function clearPendingGateway() { _pendingGw = null; renderGatewaySeg() }
+
+function setGateway(name, where) {
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode - gateway not changed', 'info'); renderGatewaySeg(); return }
+  const presets = (lclEndpoint && lclEndpoint.presets) || []
+  if (presets.length && !presets.find(function (p) { return p.name === name })) {
+    toast('Gateway presets unavailable - restart the LCL server (old server.txt?)', 'err'); return
+  }
+  _pendingGw = (name === currentGateway()) ? null : name
+  // Show the key stored for the SELECTED gateway so it is clear whether one
+  // exists - still only in the input; nothing is committed until Save.
+  const saved = keyStoreFor(name)[name] || {}
+  const kEl = document.getElementById('s-key'); if (kEl) kEl.value = saved.apiKey || ''
+  const eEl = document.getElementById('s-embk'); if (eEl) eEl.value = saved.embedApiKey || ''
+  const mEl = document.getElementById('m-key'); if (mEl) mEl.value = saved.apiKey || ''
+  renderGatewaySeg()
+  if (typeof lclCrumb === 'function') lclCrumb('gateway_pick', { gw: name, where: where, pending: !!_pendingGw })
+}
+
+// Verify a key against a gateway WITHOUT switching to it, then commit the switch.
+// On any failure nothing changes - endpoint, vault and creds are all left alone.
+async function applyGatewayChange(name, apiKey) {
   const presets = (lclEndpoint && lclEndpoint.presets) || []
   const target = presets.find(function (p) { return p.name === name }) || presets[0]
-  if (!target) { toast('Gateway presets unavailable \u2014 restart the LCL server (old server.txt?)', 'err'); return }
-  // Stash the CURRENT endpoint’s key pair under its own store (gateways ->
-  // gwVault, keyed by gateway name).
-  const curName = (lclEndpoint && lclEndpoint.active && lclEndpoint.active.name) || cur
+  if (!target) return { ok: false, error: 'Gateway presets unavailable' }
+  if (!apiKey) return { ok: false, error: 'Not switched - enter your ' + name + ' API key first.' }
+  let d = {}
+  try {
+    const r = await httpPost('/api/testkey', { modelUrl: target.modelUrl, apiKey: apiKey, model: (creds && creds.model) || '' })
+    try { d = await r.json() } catch (e) {}
+  } catch (e) { return { ok: false, error: 'Not switched - could not reach the LCL server (' + e.message + ').' } }
+  if (!d || !d.ok) {
+    const why = (d && d.reason) === 'auth' ? 'that key was rejected by ' + name
+      : (d && d.reason) === 'timeout' ? name + ' did not respond'
+      : (d && d.reason) === 'network' ? 'could not reach ' + name
+      : (d && d.reason) === 'tls' ? 'the TLS certificate was not trusted'
+      : (d && d.error) || 'the key check failed'
+    return { ok: false, error: 'Not switched - ' + why }
+  }
+  // Key verified: stash the OUTGOING gateway's keys, then switch the endpoint.
+  const curName = (lclEndpoint && lclEndpoint.active && lclEndpoint.active.name) || currentGateway()
   if (creds) keyStoreFor(curName)[curName] = { apiKey: creds.apiKey || '', embedApiKey: creds.embedApiKey || '', embedModelId: creds.embedModelId || '' }
   try {
     const r = await httpPost('/api/endpoint', { name: target.name, modelUrl: target.modelUrl, embedUrl: target.embedUrl || '', model: '' })
-    let d = {}; try { d = await r.json() } catch (e) {}
-    if (!r.ok) { toast('Gateway switch failed: ' + ((d && d.error) || ('HTTP ' + r.status)), 'err'); return }
-    lclEndpoint = { active: d.active, isDefault: !!(d.active && presets[0] && d.active.modelUrl === presets[0].modelUrl), presets: presets }
-  } catch (e) { toast('Gateway switch failed: ' + e.message, 'err'); return }
-  // Restore the target gateway\u2019s saved keys (may be blank on first use).
-  const saved = keyStoreFor(name)[name] || {}
-  if (creds) {
-    creds.apiKey = saved.apiKey || ''
-    creds.embedApiKey = saved.embedApiKey || ''
-    if (saved.embedModelId) creds.embedModelId = saved.embedModelId
-    D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
-    saveSettings(D.settings); persist()
-  }
-  const kEl = document.getElementById('s-key'); if (kEl) kEl.value = (creds && creds.apiKey) || ''
-  const eEl = document.getElementById('s-embk'); if (eEl) eEl.value = (creds && creds.embedApiKey) || ''
-  renderGatewaySeg()
-  if (typeof lclCrumb === 'function') lclCrumb('gateway_set', { gw: name, where: where, hasKey: !!saved.apiKey })
-  toast(saved.apiKey ? 'Switched to ' + name : 'Switched to ' + name + ' \u2014 enter your ' + name + ' API key', saved.apiKey ? 'ok' : 'info')
-  if (creds && creds.apiKey && typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+    let e2 = {}; try { e2 = await r.json() } catch (e) {}
+    if (!r.ok) return { ok: false, error: 'Gateway switch failed: ' + ((e2 && e2.error) || ('HTTP ' + r.status)) }
+    lclEndpoint = { active: e2.active, isDefault: !!(e2.active && presets[0] && e2.active.modelUrl === presets[0].modelUrl), presets: presets }
+  } catch (e) { return { ok: false, error: 'Gateway switch failed: ' + e.message } }
+  _pendingGw = null
+  if (typeof lclCrumb === 'function') lclCrumb('gateway_set', { gw: name, verified: true })
+  return { ok: true }
 }
 
 function renderGatewaySeg() {
-  const cur = currentGateway()
+  const cur = pendingGateway()   // highlight the pending pick until Save commits it
   ;['sp', 'modal'].forEach(function (w) {
     const seg = document.getElementById('gw-seg-' + w); if (!seg) return
     const btns = seg.querySelectorAll ? seg.querySelectorAll('.seg-btn') : []
