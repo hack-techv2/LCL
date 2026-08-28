@@ -518,41 +518,46 @@ const CASES = [
     check('C29 split run carries the user instruction through map-reduce', out === 'ANSWER' && partOk && combineOk && sysOk && genericOk, 'part=' + partOk + ' combine=' + combineOk + ' sys=' + sysOk + ' generic=' + genericOk)
   } },
 
-  { id: 'C31 gateway switch: per-gateway key vault + endpoint POST', fn: async () => {
+  { id: 'C31 gateway vault + endpoint POST happen on APPLY, never on click', fn: async () => {
     const S = src('80-ui.js')
     const mE = S.match(/\/\/ === endpoint-dev ===([\s\S]*?)\/\/ === end endpoint-dev ===/)
     const mG = S.match(/\/\/ === gateway ===([\s\S]*?)\/\/ === end gateway ===/)
-    if (!mE || !mG) return check('C31 gateway switch', false, 'markers not found')
+    if (!mE || !mG) return check('C31 gateway vault', false, 'markers not found')
     const posts = []
     const PA3 = 'https://api.ai.tech.gov.sg/platform/models/chat/completions'
     const KP3 = 'https://nc3.gov.sg/kepler/v1/chat/completion'
     const gwbTitle = { textContent: '' }, gwbUrl = { textContent: '' }
     const banner = { className: 'hidden', querySelector: sel => (sel === '.gwb-title' ? gwbTitle : (sel === '.gwb-url' ? gwbUrl : null)) }
+    const keyEl = { value: '' }, embEl = { value: '' }
     const ctx = vm.createContext({
-      document: { getElementById: id => (id === 'gw-emb-banner' ? banner : null), querySelectorAll: () => [], querySelector: () => null },
+      document: { getElementById: id => (id === 'gw-emb-banner' ? banner : (id === 's-key' ? keyEl : (id === 's-embk' ? embEl : null))), querySelectorAll: () => [], querySelector: () => null },
       setTimeout: () => 0, console, URL,
-      httpPost: async (u, b) => { posts.push({ u, b }); return { ok: true, json: async () => ({ ok: true, active: { name: b.name, modelUrl: b.modelUrl, embedUrl: b.embedUrl } }) } },
+      httpPost: async (u, b) => { posts.push({ u, b })
+        if (u === '/api/testkey') return { ok: true, json: async () => ({ ok: true, status: 200 }) }
+        return { ok: true, json: async () => ({ ok: true, active: { name: b.name, modelUrl: b.modelUrl, embedUrl: b.embedUrl } }) } },
       toast: () => {}, lclCrumb: () => {},
       creds: { apiKey: 'PLAT-KEY', embedApiKey: 'PLAT-EMB', embedModelId: 'emb-1', model: 'm1' },
       D: { settings: {} },
       credsToSettings: c2 => ({ apiKey: c2.apiKey }), saveSettings: () => {}, persist: () => {}
     })
     vm.runInContext(mE[0] + String.fromCharCode(10) + mG[0], ctx)
-    vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ' }, isDefault: true, presets: [{ name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ', embedUrl: "pe" }, { name: "Kepler", modelUrl: ' + JSON.stringify(KP3) + ', embedUrl: "ke" }, { name: "NC3 Dev", modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: "x" }] }', ctx)
+    vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ' }, isDefault: true, presets: [{ name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ', embedUrl: "pe" }, { name: "Kepler", modelUrl: ' + JSON.stringify(KP3) + ', embedUrl: "ke" }] }', ctx)
     const gw0 = vm.runInContext('currentGateway()', ctx)
-    await vm.runInContext('setGateway("Kepler", "sp")', ctx)
+    // Clicking selects only: no network, no vault write, active gateway unchanged.
+    vm.runInContext('setGateway("Kepler", "sp")', ctx)
+    const clickSilent = posts.length === 0 && vm.runInContext('currentGateway()', ctx) === 'PlatformAI'
+    const pending = vm.runInContext('pendingGateway()', ctx) === 'Kepler'
+    // Apply: key verified first, THEN the endpoint switch, and the outgoing
+    // gateway's keys are vaulted at that point (not on click).
+    const res = await vm.runInContext('applyGatewayChange("Kepler", "KEP-KEY")', ctx)
+    const order = posts.length === 2 && posts[0].u === '/api/testkey' && posts[1].u === '/api/endpoint'
+    const post1 = posts[1].b.name === 'Kepler' && posts[1].b.modelUrl === KP3 && posts[1].b.embedUrl === 'ke'
     const vault1 = vm.runInContext('D.settings.gwVault.PlatformAI.apiKey', ctx) === 'PLAT-KEY'
-    const cleared = vm.runInContext('creds.apiKey', ctx) === '' && vm.runInContext('creds.embedApiKey', ctx) === ''
     const gw1 = vm.runInContext('currentGateway()', ctx)
-    const post1 = posts.length === 1 && posts[0].u === '/api/endpoint' && posts[0].b.name === 'Kepler' && posts[0].b.modelUrl === KP3 && posts[0].b.embedUrl === 'ke'
-    // user pastes the assigned Kepler key, then flips back
-    vm.runInContext('creds.apiKey = "KEP-KEY"; creds.embedApiKey = "KEP-EMB"', ctx)
-    await vm.runInContext('setGateway("PlatformAI", "sp")', ctx)
-    const restored = vm.runInContext('creds.apiKey', ctx) === 'PLAT-KEY' && vm.runInContext('creds.embedApiKey', ctx) === 'PLAT-EMB'
-    const vault2 = vm.runInContext('D.settings.gwVault.Kepler.apiKey', ctx) === 'KEP-KEY'
-    const gw2 = vm.runInContext('currentGateway()', ctx)
-    const noteOk = gwbTitle.textContent === 'Embedding via PlatformAI' && gwbUrl.textContent === 'pe' && banner.className === ''
-    check('C31 gateway switch: per-gateway key vault + endpoint POST', gw0 === 'PlatformAI' && gw1 === 'Kepler' && vault1 && cleared && post1 && restored && vault2 && gw2 === 'PlatformAI' && noteOk, 'gw=' + gw0 + '>' + gw1 + '>' + gw2 + ' vault=' + vault1 + '/' + vault2 + ' cleared=' + cleared + ' restored=' + restored + ' post=' + post1)
+    const noteOk = (vm.runInContext('renderGatewaySeg()', ctx), gwbTitle.textContent === 'Embedding via Kepler' && gwbUrl.textContent === 'ke')
+    check('C31 gateway vault + endpoint POST on apply, not on click',
+      gw0 === 'PlatformAI' && clickSilent && pending && res.ok && order && post1 && vault1 && gw1 === 'Kepler' && noteOk,
+      'gw=' + gw0 + '>' + gw1 + ' silent=' + clickSilent + ' pending=' + pending + ' order=' + order + ' post=' + post1 + ' vault=' + vault1 + ' note=' + noteOk)
   } },
   { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
     const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
@@ -1051,6 +1056,98 @@ const CASES = [
     check('C71 stable=tag / alpha=branch, Contents API only, revert online+offline',
       refFromTag && noTagGuard && usesContentsApi && noRawHost && revertOnline && revertOffline && filesScoped,
       'tagRef=' + refFromTag + ' guard=' + noTagGuard + ' api=' + usesContentsApi + ' noRaw=' + noRawHost + ' revertOnline=' + revertOnline + ' revertOffline=' + revertOffline + ' scoped=' + filesScoped)
+  } },
+  { id: 'C72 gateway pick is deferred: click never switches; Save verifies the key before committing', fn: async () => {
+    const U = src('80-ui.js')
+    const block = U.slice(U.indexOf('// Pending (unsaved) gateway pick.'), U.indexOf('function renderGatewaySeg'))
+    const calls = []
+    const mk = (testOk, reason) => {
+      const ctx = {
+        _pendingGwSeed: null, toast: () => {}, renderGatewaySeg: () => {}, lclCrumb: () => {},
+        currentGateway: () => 'PlatformAI',
+        keyStoreFor: () => ({ 'NC3 (Dev)': { apiKey: 'nc3key' }, PlatformAI: { apiKey: 'pakey' } }),
+        creds: { apiKey: 'pakey', model: 'm' },
+        lclEndpoint: { active: { name: 'PlatformAI', modelUrl: 'https://a.gov.sg/x' }, presets: [
+          { name: 'PlatformAI', modelUrl: 'https://a.gov.sg/x' }, { name: 'NC3 (Dev)', modelUrl: 'https://b.gov.sg/y' } ] },
+        document: { getElementById: () => ({ value: '' }) },
+        httpPost: async (url, body) => { calls.push(url)
+          if (url === '/api/testkey') return { ok: true, json: async () => (testOk ? { ok: true, status: 200 } : { ok: false, reason: reason, error: 'bad' }) }
+          return { ok: true, json: async () => ({ active: { name: 'NC3 (Dev)', modelUrl: 'https://b.gov.sg/y' } }) } }
+      }
+      vm.createContext(ctx); vm.runInContext(block, ctx); return ctx
+    }
+    // 1. Clicking a gateway must NOT hit the network or persist anything.
+    const c1 = mk(true); calls.length = 0
+    vm.runInContext('setGateway', c1)('NC3 (Dev)', 'sp')
+    const clickSilent = calls.length === 0 && vm.runInContext('pendingGateway', c1)() === 'NC3 (Dev)'
+    // 2. Save path: testkey is called FIRST, and only then the endpoint switch.
+    calls.length = 0
+    const okRes = await vm.runInContext('applyGatewayChange', c1)('NC3 (Dev)', 'nc3key')
+    const verifiedThenSwitched = okRes.ok && calls[0] === '/api/testkey' && calls[1] === '/api/endpoint' && calls.length === 2
+    // 3. A rejected key must switch NOTHING.
+    const c2 = mk(false, 'auth'); calls.length = 0
+    const badRes = await vm.runInContext('applyGatewayChange', c2)('NC3 (Dev)', 'wrong')
+    const noSwitchOnBadKey = !badRes.ok && calls.length === 1 && calls[0] === '/api/testkey' && /rejected by NC3 \(Dev\)/.test(badRes.error)
+    // 4. A blank key is refused before any network call.
+    calls.length = 0
+    const blankRes = await vm.runInContext('applyGatewayChange', c2)('NC3 (Dev)', '')
+    const blankRefused = !blankRes.ok && calls.length === 0
+    // 5. Wiring: Save gates on it, close resets the pick, click no longer persists.
+    const savesViaApply = U.includes('const r = await applyGatewayChange(_gwTarget, _keyTyped)') &&
+                          U.includes('if (!(_gwErr && _gwChanged)) creds.apiKey')
+    const closeResets = U.includes("if (typeof clearPendingGateway === 'function') clearPendingGateway()")
+    const clickNoPersist = !/function setGateway[\s\S]{0,1200}?saveSettings\(/.test(U)
+    check('C72 deferred gateway: silent click, verify-then-switch, nothing on failure',
+      clickSilent && verifiedThenSwitched && noSwitchOnBadKey && blankRefused && savesViaApply && closeResets && clickNoPersist,
+      'click=' + clickSilent + ' order=' + verifiedThenSwitched + ' badKey=' + noSwitchOnBadKey + ' blank=' + blankRefused + ' save=' + savesViaApply + ' close=' + closeResets + ' noPersist=' + clickNoPersist)
+  } },
+
+  { id: 'C73 /api/testkey: gov.sg allowlist, leaves active endpoint alone, key masked; console wrapper cannot stack', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const h = S.slice(S.indexOf('function handleTestKey'), S.indexOf('function handleTestKey') + 3000)
+    // Same allowlist as a real endpoint change - this route must not probe arbitrary hosts.
+    const allowlisted = h.includes("validEndpointUrl(modelUrl, false)")
+    // It must never write the endpoint / persist.
+    const noPersist = !/saveData\(/.test(h) && !/appData\.settings\s*=/.test(h)
+    const masked = h.includes('maskSecret(apiKey)') && !/log\.debug\([^)]*apiKey\s*\)/.test(h)
+    const scrubbed = h.includes('sanitizeSecrets(String(msg')
+    const bounded = h.includes('setTimeout(20000') && h.includes("reason: 'timeout'")
+    const authReason = h.includes("(sc === 401 || sc === 403) ? 'auth'")
+    const routed = S.includes("'POST /api/testkey':        handleTestKey")
+    // Console wrapper: originals stashed per-process so an in-process reload
+    // reuses them instead of wrapping the previous wrapper (stacked prefixes).
+    const noStack = S.includes('globalThis.__lclConsoleOrig') && S.includes('const _origConsoleLog   = _consoleOrig.log')
+    // Functional: an in-process reload re-evaluates the module in a NEW scope but
+    // the SAME global. Evaluating the wrapper block twice must still yield ONE
+    // '<ts> [log]' prefix - two would mean the wrapper wrapped itself.
+    const cStart = S.indexOf('// Tee console -> file.')
+    const cEnd = S.indexOf('\n', S.indexOf('console.error =', cStart))
+    const blk = S.slice(cStart, cEnd)
+    const out = []
+    const ctx = { _logStamp: () => 'TS', _sanitizeParts: a => a, dbgWrite: () => {},
+                  console: { log: (...a) => out.push(a.join(' ')), warn: () => {}, error: () => {} } }
+    vm.createContext(ctx)
+    const load = () => vm.runInContext('(function(){' + blk + '})()', ctx)   // one module load
+    const depth = () => (String(out[0] || '').match(/TS \[log\]/g) || []).length
+    load(); vm.runInContext('console.log("x")', ctx); const d1 = depth()
+    out.length = 0
+    load(); vm.runInContext('console.log("x")', ctx); const d2 = depth()   // simulated reload
+    out.length = 0
+    load(); vm.runInContext('console.log("x")', ctx); const d3 = depth()   // and again
+    const stable = d1 === 1 && d2 === 1 && d3 === 1
+    // Control: the old pattern (re-binding console.log each load) DOES stack, so
+    // this test would have caught the bug.
+    const oldBlk = 'const _o = console.log.bind(console); console.log = (...a) => { _o(_logStamp() + " [log]", ...a) }'
+    const cout = []
+    const octx = { _logStamp: () => 'TS', console: { log: (...a) => cout.push(a.join(' ')) } }
+    vm.createContext(octx)
+    vm.runInContext('(function(){' + oldBlk + '})()', octx)
+    vm.runInContext('(function(){' + oldBlk + '})()', octx)
+    vm.runInContext('console.log("x")', octx)
+    const controlStacks = (String(cout[0] || '').match(/TS \[log\]/g) || []).length === 2
+    check('C73 testkey allowlisted + non-mutating + masked; console wrapper stack-proof',
+      allowlisted && noPersist && masked && scrubbed && bounded && authReason && routed && noStack && stable && controlStacks,
+      'allow=' + allowlisted + ' noPersist=' + noPersist + ' masked=' + masked + ' scrub=' + scrubbed + ' bounded=' + bounded + ' auth=' + authReason + ' route=' + routed + ' src=' + noStack + ' depths=' + d1 + '/' + d2 + '/' + d3 + ' controlStacks=' + controlStacks)
   } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
