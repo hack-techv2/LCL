@@ -10,8 +10,11 @@
       <div class="modal-logo" style="padding:2px"><svg width="20" height="20" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="12.5" y1="1" x2="12.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="1" x2="15" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="1" x2="17.5" y2="0" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="15" y1="12" x2="15" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="17.5" y1="12" x2="17.5" y2="13.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="3.5" x2="21.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="6.5" x2="21.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="20" y1="9.5" x2="21.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="3.5" x2="7.5" y2="3.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="6.5" x2="7.5" y2="6.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/><line x1="9" y1="9.5" x2="7.5" y2="9.5" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.8"/></svg></div>
       <div class="modal-name">Local Comet LLM (LCL)</div>
     </div>
-    <div class="modal-sub">// GovTech Models API - v0.67d Alpha</div>
-    <div class="field"><label>GovTech Models API Key</label>
+    <div class="modal-sub">// GovTech Models API - v0.67e Alpha</div>
+    <div class="field"><label>Gateway</label>
+      <div class="seg-cls" id="gw-seg-modal"><button type="button" class="seg-btn" data-gw="PlatformAI" onclick="setGateway('PlatformAI','modal')"><span class="seg-code">PlatformAI</span><span class="seg-full">api.ai.tech.gov.sg</span></button><button type="button" class="seg-btn" data-gw="NC3 (Dev)" onclick="setGateway('NC3 (Dev)','modal')"><span class="seg-code">NC3 (Dev)</span><span class="seg-full">dev-nc3.csa.gov.sg</span></button></div>
+      <div class="gw-note" id="gw-note-modal">Pick the gateway your key was issued for.</div></div>
+    <div class="field"><label id="m-key-label">GovTech Models API Key</label>
       <input type="password" id="cfg-key" placeholder="Paste your API key" autocomplete="off"></div>
     <div class="field"><label>Data classification</label>
       <div class="seg-cls" id="cls-seg-cfg"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','cfg')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','cfg')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
@@ -28,58 +31,93 @@
   <div class="sp-box">
     <button class="sp-close" onclick="closeSP()" title="Close (Esc)"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>
     <div class="sp-title">Settings</div>
-    <div class="sp-tabs"><button type="button" class="sp-tab on" data-tab="models" onclick="spTab('models')">Models</button><button type="button" class="sp-tab" data-tab="settings" onclick="spTab('settings')">Settings</button></div>
-    <div class="sp-pane on" data-pane="models"><div class="sp-sec">
+    <div class="sp-cols">
+      <nav class="sp-nav">
+        <div class="sp-nav-lbl">Model</div>
+        <button type="button" class="sp-nav-it on" data-sec="connection" onclick="spNav('connection')">Connection</button>
+        <button type="button" class="sp-nav-it" data-sec="embedding" onclick="spNav('embedding')">Embedding</button>
+        <button type="button" class="sp-nav-it" data-sec="rag" onclick="spNav('rag')">RAG &amp; files</button>
+        <button type="button" class="sp-nav-it" data-sec="defaults" onclick="spNav('defaults')">Defaults</button>
+        <div class="sp-nav-lbl">System</div>
+        <button type="button" class="sp-nav-it" data-sec="updates" onclick="spNav('updates')">Updates</button>
+        <button type="button" class="sp-nav-it" data-sec="account" onclick="spNav('account')">Account</button>
+      </nav>
+      <div class="sp-main">
+    <div class="sp-pane on" data-pane="models"><div class="sp-sec on" data-sec="connection">
       <div class="sp-lbl">Connection</div>
+      <div class="sp-cap">Your gateway credentials and the chat model LCL uses.</div>
+      <div class="sf"><label>Gateway</label>
+        <div class="seg-cls" id="gw-seg-sp"><button type="button" class="seg-btn" data-gw="PlatformAI" onclick="setGateway('PlatformAI','sp')"><span class="seg-code">PlatformAI</span><span class="seg-full">api.ai.tech.gov.sg</span></button><button type="button" class="seg-btn" data-gw="NC3 (Dev)" onclick="setGateway('NC3 (Dev)','sp')"><span class="seg-code">NC3 (Dev)</span><span class="seg-full">dev-nc3.csa.gov.sg</span></button></div>
+        <div class="sf-cap" id="gw-note-sp">Keys are saved per gateway &mdash; switching restores the key you used last time.</div>
+      </div>
       <div class="sf"><label>Data classification</label><div class="seg-cls" id="cls-seg-sp"><button type="button" class="seg-btn" data-cls="rsn" onclick="setClassification('rsn','sp')"><span class="seg-code">R/SN</span><span class="seg-full">Restricted (Sensitive Normal)</span></button><button type="button" class="seg-btn" data-cls="cce" onclick="setClassification('cce','sp')"><span class="seg-code">CCE/SN</span><span class="seg-full">Confidential Cloud Eligible (Sensitive Normal)</span></button></div></div>
-      <div class="sf"><label>GovTech Models API Key</label><input type="password" id="s-key"></div>
+      <div class="sf"><label id="s-key-label">GovTech Models API Key</label><input type="password" id="s-key"></div>
       <div class="sf"><label>Model Name</label><select id="s-mdl-sel" class="model-sel"></select><input type="text" id="s-mdl" placeholder="custom model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">Embedding <span class="tip" title="Used to convert uploaded files into vectors for RAG search. Set or change your embedding API key and model here. Leave a field blank to keep the current value.">ⓘ</span></div>
+    <div class="sp-sec" data-sec="embedding">
+      <div class="sp-lbl">Embedding</div>
+      <div class="sp-cap">Converts uploaded files into vectors for RAG search. Leave a field blank to keep the current value.</div>
+      <div id="gw-emb-banner" class="hidden"><span class="gwb-dot"></span><div><div class="gwb-title"></div><div class="gwb-url"></div></div></div>
       <div class="sf"><label>Embed API Key</label><input type="password" id="s-embk"></div>
       <div class="sf"><label>Embed Model</label><select id="s-embm-sel" class="model-sel"></select><input type="text" id="s-embm" placeholder="custom embed model id"></div>
     </div>
-    <div class="sp-sec">
-      <div class="sp-lbl">RAG Settings <span class="tip" title="Controls how uploaded files are searched when you chat. Files are split into chunks, converted to vectors, and the most relevant chunks are injected into the AI's context automatically.">ⓘ</span></div>
+    <div class="sp-sec" data-sec="rag">
+      <div class="sp-lbl">RAG &amp; files</div>
+      <div class="sp-cap">How uploaded files are split, embedded, and searched when you chat.</div>
       <div class="sp-grid">
         <div class="sf">
-          <div class="sf-head"><label>Chunk Size (chars) <span class="tip" title="How large each passage is when splitting uploaded documents. Smaller chunks (400–600) are more precise for specific questions. Larger chunks (1000–1500) give more surrounding context. Default 800 works well for most documents.">ⓘ</span></label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
+          <div class="sf-head"><label>Chunk Size (chars)</label><input type="number" id="s-chunk-v" class="sf-num" min="200" max="2000" step="100" oninput="onNumIn('s-chunk',this)"></div>
           <div class="sl"><input type="range" min="200" max="2000" step="100" id="s-chunk" oninput="onRangeIn('s-chunk-v',this)"></div>
           <div class="sl-ticks"><span>200</span><span>2000</span></div>
+          <div class="sf-cap">Smaller (400–600) = precise answers; larger (1000–1500) = more context. 800 suits most documents.</div>
         </div>
         <div class="sf">
-          <div class="sf-head"><label>Top-K Chunks <span class="tip" title="How many passages are retrieved and sent to the AI per message. Higher values give the AI more material to draw from but use more tokens. Default 5 is a good balance — raise to 8–10 for broad research questions.">ⓘ</span></label><input type="number" id="s-topk-v" class="sf-num" min="1" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
-          <div class="sl"><input type="range" min="1" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
+          <div class="sf-head"><label>Top-K Chunks</label><input type="number" id="s-topk-v" class="sf-num" min="3" max="10" step="1" oninput="onNumIn('s-topk',this)"></div>
+          <div class="sl"><input type="range" min="3" max="10" step="1" id="s-topk" oninput="onRangeIn('s-topk-v',this)"></div>
           <div class="sl-ticks"><span>1</span><span>10</span></div>
+          <div class="sf-cap">Passages retrieved per question. 5 balances detail and token use; raise to 8–10 for broad research.</div>
+        </div>
+        <div class="sf">
+          <div class="sf-head"><label>Warn above (tokens)</label></div>
+          <input type="text" id="s-embwarn" class="sf-num" placeholder="auto" style="width:100%">
+          <div class="sf-cap">Confirm before embedding a file estimated above this many tokens. Blank = auto (~10% of the live limit).</div>
+        </div>
+        <div class="sf">
+          <div class="sf-head"><label>Block above (tokens)</label></div>
+          <input type="text" id="s-embmax" class="sf-num" placeholder="auto" style="width:100%">
+          <div class="sf-cap">Hard cap — the server refuses embeds estimated above this. Blank = auto (~50% of the live limit).</div>
         </div>
       </div>
     </div>
     </div>
-    <div class="sp-pane" data-pane="settings"><div class="sp-sec">
+    <div class="sp-pane" data-pane="settings"><div class="sp-sec" data-sec="defaults">
       <div class="sp-lbl">Defaults</div>
-      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant..."></textarea></div>
+      <div class="sp-cap">Applied to every message in every chat.</div>
+      <div class="sf"><label>System Prompt</label><textarea id="s-sys" placeholder="You are a helpful assistant…"></textarea></div>
       <div class="sf">
-        <div class="sf-head"><label>Max Tokens <span class="tip" title="The maximum length of the AI's reply. 1 token ≈ 4 characters. Higher values allow longer responses but use more quota. Default 8192 is suitable for most tasks; raise it only if replies are getting cut off.">ⓘ</span></label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
+        <div class="sf-head"><label>Max Tokens</label><input type="number" id="s-tok-v-input" class="sf-num" min="64" max="131072" step="64" oninput="onNumIn('s-tok',this)"></div>
         <div class="sl"><input type="range" min="64" max="32768" step="64" id="s-tok" oninput="onRangeIn('s-tok-v-input',this)"></div>
         <div class="sl-ticks"><span>64</span><span>32768</span></div>
+        <div class="sf-cap">Maximum reply length (1 token ≈ 4 characters). 8192 suits most tasks — raise it only if replies get cut off.</div>
       </div>
     </div>
-    <div class="sp-sec"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec">
+    <div class="sp-sec" data-sec="updates"><div class="sp-lbl">Updates</div><div class="upd-card"><div id="upd-body" style="font-size:12px;color:var(--tx2);line-height:1.6">Not checked yet.</div></div></div><div class="sp-sec" data-sec="account">
       <div class="sp-lbl">Account</div>
       <div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-bottom:8px">
         Disconnect clears your saved API keys (chat + embed) from this machine. Chat history, embedded files, and skills are kept.
       </div>
-      <button class="btn-s" onclick="closeSP(); disconnect()" style="width:100%;border-color:rgba(231,76,60,.35);color:var(--red);display:flex;align-items:center;justify-content:center;gap:6px">
+      <button class="btn-s btn-danger" onclick="closeSP(); disconnect()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 012.75 2h5a.75.75 0 010 1.5h-5v9h5a.75.75 0 010 1.5h-5A1.75 1.75 0 011 12.25v-9.5A1.75 1.75 0 012.75 1h.5z"/><path d="M12.78 7.47a.75.75 0 010 1.06l-2.25 2.25a.75.75 0 01-1.06-1.06l.97-.97H5.25a.75.75 0 010-1.5h5.19l-.97-.97a.75.75 0 011.06-1.06l2.25 2.25z"/></svg>
         Disconnect
       </button>
     </div>
     </div>
     <div class="sp-foot">
-      <div class="sp-contrib">Contributors &middot; Melvin Yung &middot; Ko Zheng Teng</div>
+      <div class="sp-contrib">Contributors &middot; LCL &middot; Melvin Yung &middot; Ko Zheng Teng</div>
       <button class="btn-s" onclick="closeSP()">Cancel</button>
       <button class="btn-sv" onclick="saveSP()">Save</button>
+    </div>
+      </div>
     </div>
   </div>
 </div>
@@ -120,9 +158,9 @@
 <!-- Search overlay -->
 <div id="search-bd" class="hidden" onclick="if(event.target===this)closeSearch()">
   <div class="search-box">
-    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats..." oninput="runSearch()" onkeydown="handleSearchKey(event)">
+    <input type="text" id="search-inp" class="search-inp" placeholder="Search all chats…" oninput="runSearch()" onkeydown="handleSearchKey(event)">
     <div id="search-results" class="search-results"></div>
-    <div class="search-foot">Enter to open  *  Esc to close</div>
+    <div class="search-foot">Enter to open  ·  Esc to close</div>
   </div>
 </div>
 
@@ -147,14 +185,17 @@
     </button>
   </div>
   <div class="chat-list" id="chat-list"></div>
-  <div class="sb-skills" id="sb-skills"></div>
-  <div class="sb-bot">
-    <button class="sb-btn" onclick="openSP()" data-tip="Settings">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 01-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311a1.464 1.464 0 01-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 01.872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 012.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 012.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 01.872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 01-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 01-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 110-5.858 2.929 2.929 0 010 5.858z"/></svg><span class="sb-btn-lbl">Settings</span></button>
-    <button class="sb-btn" onclick="openSkillsManager()" data-tip="Manage skills">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l1.55 4.45L14 8l-4.45 1.55L8 14l-1.55-4.45L2 8l4.45-1.55L8 2z"/></svg><span class="sb-btn-lbl">Skills</span></button>
+  <div class="sb-foot">
+    <div class="sf-lbl">Active skill</div>
+    <select class="skill-select" id="skill-select" onchange="onSkillSelect(this.value)" aria-label="Active skill"></select>
+    <div class="rail">
+      <button class="rail-btn skills rail-first" id="skill-rail-btn" onclick="openSkillsManager()" data-tip="Manage skills" aria-label="Manage skills"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 19.5L13 11"/><path d="M14.8 5L15.9 8.1L19 9.2L15.9 10.3L14.8 13.4L13.7 10.3L10.6 9.2L13.7 8.1Z"/><path d="M6.3 4.1L6.7 5.4L8 5.8L6.7 6.2L6.3 7.5L5.9 6.2L4.6 5.8L5.9 5.4Z"/></svg></button>
+      <button class="rail-btn" id="search-btn" onclick="openSearch()" data-tip="Search chats" aria-label="Search all chats"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></button>
+      <button class="rail-btn" id="theme-btn" onclick="toggleTheme()" data-tip="Light / dark" aria-label="Toggle light / dark"><svg id="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg><svg id="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M18.6 12L21.2 12M16.7 16.7L18.5 18.5M12 18.6L12 21.2M7.3 16.7L5.5 18.5M5.4 12L2.8 12M7.3 7.3L5.5 5.5M12 5.4L12 2.8M16.7 7.3L18.5 5.5"/></svg></button>
+      <button class="rail-btn rail-last" onclick="openSP()" data-tip="Settings" aria-label="LCL settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.5.5 0 00.12-.61l-1.92-3.32a.5.5 0 00-.59-.22l-2.39.96a7 7 0 00-1.62-.94l-.36-2.54A.5.5 0 0013.9 2h-3.84a.5.5 0 00-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 00-.59.22L2.31 8.47a.5.5 0 00.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.47.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.5.5 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></button>
+    </div>
   </div>
-  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67d</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
+  <div class="app-footer"><div class="footer-brand"><svg width="100%" height="100%" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="10" x2="2" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/><line x1="11.5" y1="10" x2="4" y2="18" stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.45"/><line x1="10" y1="11.5" x2="2" y2="20" stroke="white" stroke-width="0.6" stroke-linecap="round" opacity="0.28"/><rect x="9" y="1" width="11" height="11" rx="1.5" fill="white" opacity="0.95"/><rect x="11" y="3" width="7" height="7" rx="0.5" fill="#e8610a"/><line x1="13.3" y1="3" x2="13.3" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="15.7" y1="3" x2="15.7" y2="10" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="5.3" x2="18" y2="5.3" stroke="white" stroke-width="0.5" opacity="0.6"/><line x1="11" y1="7.7" x2="18" y2="7.7" stroke="white" stroke-width="0.5" opacity="0.6"/></svg></div><div class="footer-info"><span class="footer-name">Local Comet LLM (LCL)</span><span class="footer-meta">by LCL (ASG) · Melvin Yung · Ko Zheng Teng<span id="footer-smiley" style="display:none"> :)</span></span></div><span class="ver-wrap" style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="footer-ver" id="ver-badge" onclick="eggClick(event)" style="cursor:pointer;user-select:none">v0.67e</span><span class="ver-alpha" id="ver-alpha" style="display:none">ALPHA</span><span class="footer-upd" id="footer-upd" style="display:none" onclick="openUpdateDialog()" data-tip="Update available">&uarr; new</span></span></div>
 </div>
 
 <!-- Main -->
@@ -173,14 +214,14 @@
     </div>
     <div class="tb-right" id="tb-right">
       <span class="health" id="health-pill" data-tip-bottom="Connection health"><span class="dot"></span><span id="health-txt">Idle</span></span>
-      <button class="tb-btn" id="search-btn" onclick="openSearch()" data-tip-bottom="Search all chats">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;margin-right:3px"><path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/></svg>Search
-      </button>
-      <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" data-tip-bottom="Toggle light / dark">
-        <svg id="icon-moon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z"/></svg>
-        <svg id="icon-sun" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:none"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.061-1.06a.75.75 0 010-1.061zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM0 8a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5H.75A.75.75 0 010 8zm13 0a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 0113 8zM2.343 13.657a.75.75 0 010-1.06l1.061-1.061a.75.75 0 011.06 1.06l-1.06 1.061a.75.75 0 01-1.061 0zm9.193-9.193a.75.75 0 010-1.06l1.06-1.061a.75.75 0 111.061 1.06l-1.06 1.061a.75.75 0 01-1.061 0z"/></svg>
-      </button>
+      <button type="button" class="tb-btn tb-ocr" id="ocr-chip" onclick="toggleOcrInfo(event)" data-tip-bottom="OCR - text from scans and images"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2 5V3.5A1.5 1.5 0 013.5 2H5"/><path d="M11 2h1.5A1.5 1.5 0 0114 3.5V5"/><path d="M14 11v1.5a1.5 1.5 0 01-1.5 1.5H11"/><path d="M5 14H3.5A1.5 1.5 0 012 12.5V11"/><path d="M4.5 8h7"/></svg><span id="ocr-chip-label">OCR</span><span class="ocr-dot" id="ocr-dot"></span></button>
       <button class="tb-btn" id="docs-btn" onclick="toggleDP()" data-tip-bottom="Upload files for RAG — requires an embedding API key">Embed (0)</button>
+      <div id="ocr-info" class="ocr-info hidden">
+        <div class="rag-info-hd"><span>OCR - text from scans and images</span><button type="button" class="rag-info-x" onclick="toggleOcrInfo(event)" title="Close">&times;</button></div>
+        <p id="ocr-status">Ready when needed</p>
+        <p>Runs automatically on scanned PDFs and image uploads (PNG, JPG, TIFF…). Everything happens locally in your browser — nothing is uploaded to extract the text, and you can keep using LCL while OCR runs.</p>
+        <div class="ocr-acts"><span class="ocr-eng-lbl">OCR engine <span id="ocr-eng-state">Off</span></span><button type="button" id="ocr-toggle" class="ocr-switch" role="switch" aria-checked="false" aria-label="Toggle OCR engine" onclick="toggleOcrEngine()"><span class="ocr-knob"></span></button></div>
+      </div>
     </div>
   </div>
 
@@ -206,6 +247,7 @@
           <div class="fp-header-sub">This text will be attached to your next message as context. Edit if needed, then click Confirm.</div>
         </div>
         <div class="fp-tabs" id="fp-tabs"></div>
+        <div class="fp-oversize hidden" id="fp-oversize"></div>
         <div class="fp-body">
           <div class="fp-label"><span id="fp-filename"></span><span id="fp-charcount"></span></div>
           <textarea class="fp-textarea" id="fp-textarea" spellcheck="false"></textarea>
@@ -213,16 +255,18 @@
         <div class="fp-foot">
           <div class="fp-hint" id="fp-hint"></div>
           <button class="btn-s" onclick="cancelFilePreview()">Cancel</button>
-          <button class="btn-sv" onclick="confirmFilePreview()">Confirm &amp; attach</button>
+          <button class="btn-sv hidden" id="fp-embed-btn" onclick="confirmFilePreviewAsEmbed()">Embed for RAG instead</button>
+          <button class="btn-sv" id="fp-confirm-btn" onclick="confirmFilePreview()">Confirm &amp; attach</button>
         </div>
       </div>
 
       <div id="input-wrap">
+        <div id="attach-tray" class="hidden"></div>
         <div class="input-inner">
           <div class="skill-chip" id="skill-chip"></div>
           <div class="chips" id="chips"></div>
           <div class="input-box">
-            <textarea id="msg-in" placeholder="Message LCL..." rows="1"
+            <textarea id="msg-in" placeholder="Message LCL…" rows="1"
               onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
             <div class="in-row">
               <label class="ib" data-tip="Attach file to this message">
@@ -238,7 +282,7 @@
               </button>
             </div>
           </div>
-          <div class="input-hint">Enter to send  *  Shift+Enter for newline</div>
+          <div class="input-hint">Enter to send  ·  Shift+Enter for newline</div>
         </div>
       </div>
     </div>
@@ -246,24 +290,48 @@
     <!-- Doc panel -->
     <div id="doc-panel" class="hidden">
       <div class="dp-hd">
-        <div class="dp-title">Chat Embeddings</div>
+        <div class="dp-title">Embedded files</div>
+        <span class="dp-count" id="dp-count"></span>
+        <span style="flex:1"></span>
+        <span class="at-clear hidden" id="dp-clear" onclick="removeAllDocs()" title="Remove all embedded files from this chat and prune their vectors">remove all</span>
+        <label class="dp-upload-sm" title="Upload files to embed as RAG context for this chat">+
+          <input type="file" id="doc-file-in" style="display:none" multiple onchange="uploadDocs(this.files)">
+        </label>
         <button class="dp-close" onclick="toggleDP()" title="Close panel">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
         </button>
       </div>
-      <div id="embed-panel-desc" style="padding:8px 12px 4px;font-size:11px;color:var(--tx3);line-height:1.5;border-bottom:1px solid var(--bdr)">
-        Upload files here to enable RAG. Text is extracted and embedded locally — the AI will search them when you chat.
+
+      <div id="rag-info" class="rag-info hidden">
+        <div class="rag-info-hd"><span>RAG — retrieval-augmented generation</span><button type="button" class="rag-info-x" onclick="toggleRagInfo(event)" title="Close">&times;</button></div>
+        <p>The AI answers using your uploaded files, not just its general knowledge. How much of a file it draws on is set by <b>Search mode</b>:</p>
+        <ul>
+          <li><b>Auto</b> — sends the whole document when it fits, otherwise searches the most relevant passages.</li>
+          <li><b>Specific</b> — always searches the most relevant passages; precise and lower cost.</li>
+          <li><b>Whole doc</b> — always sends the full document, up to the model's context window; best for summaries.</li>
+        </ul>
+        <p><b>Also search other chats' embedded files</b> widens the search to files you embedded in your other chats.</p>
       </div>
-      <label class="dp-upload" title="Upload files to embed as permanent RAG context for this chat">
-        + Upload file
-        <!-- No accept allowlist: dedicated extractors for pdf/docx/pptx/xlsx;
-             everything else is read as text (rejected if it sniffs as binary). -->
-        <input type="file" style="display:none" multiple
-          onchange="uploadDocs(this.files)">
-      </label>
+
+      <div class="dp-options">
+        <div class="dp-search-label">Search mode
+          <label class="dp-check dp-scope" title="Also search files you embedded in your other chats">
+            <input type="checkbox" id="dp-use-past-embeddings" onchange="setPastEmbeddingsForChat(this.checked)">
+            <span>+ other chats</span>
+          </label>
+        </div>
+        <div class="dp-seg" id="dp-search-mode">
+          <button type="button" class="dp-seg-btn" data-mode="auto" onclick="setSearchMode('auto')" title="Sends the whole document when it fits the model, otherwise searches for the most relevant passages.">Auto</button>
+          <button type="button" class="dp-seg-btn" data-mode="specific" onclick="setSearchMode('specific')" title="Always search for the most relevant passages — precise and lower cost. Best for specific questions on large documents.">Specific</button>
+          <button type="button" class="dp-seg-btn" data-mode="whole" onclick="setSearchMode('whole')" title="Always send the full document, up to the model's context window. Best for summaries and whole-document questions.">Whole doc</button>
+        </div>
+        <div class="dp-mode-cap" id="dp-mode-cap"></div>
+      </div>
+      <div class="dp-files-lbl">Files</div>
       <div class="dp-body" id="dp-body"></div>
+      <div class="dp-foot">Drop files anywhere (Shift+drop) or use + · text is extracted and embedded locally · <span class="rag-term" role="button" tabindex="0" onclick="toggleRagInfo(event)" onkeydown="toggleRagInfo(event)" title="What is RAG? Click to learn how it works.">about RAG</span></div>
     </div>
   </div>
-</div>
+
 
 <script>
