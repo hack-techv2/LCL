@@ -110,6 +110,46 @@ function copyMsg(btn) {
   })
 }
 
+// Native Ctrl+C / right-click Copy sanitiser, scoped to the chat transcript.
+// Chrome serialises a selection by inlining computed styles onto the copied HTML
+// (the dark-theme text colour, element backgrounds, and the orange ::selection
+// wash). Rich editors like Teams / Outlook / Word keep those inline background /
+// colour styles, so pasted text arrives with a red-ish highlight behind it. We
+// intercept the copy event, rebuild the clipboard from the selection's OWN DOM
+// (semantic tags + class names, no inlined computed styles), strip any inline
+// background/colour, and write clean text/html + text/plain ourselves. Bold,
+// italics, links, lists and tables survive; the colour bleed does not. Only the
+// #messages transcript is touched — copying from inputs/settings is left alone,
+// and the Copy buttons (navigator.clipboard.write) never dispatch this event.
+function wireCopySanitizer() {
+  document.addEventListener('copy', e => {
+    try {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
+      const msgs = document.getElementById('messages')
+      if (!msgs) return
+      const inMsgs = (node) => {
+        const el = node && (node.nodeType === 1 ? node : node.parentElement)
+        return !!(el && msgs.contains(el))
+      }
+      if (!inMsgs(sel.anchorNode) && !inMsgs(sel.focusNode)) return   // not the transcript -> leave native copy alone
+      const wrap = document.createElement('div')
+      for (let i = 0; i < sel.rangeCount; i++) wrap.appendChild(sel.getRangeAt(i).cloneContents())
+      wrap.querySelectorAll('*').forEach(el => {
+        if (!el.style) return
+        el.style.removeProperty('background')
+        el.style.removeProperty('background-color')
+        el.style.removeProperty('color')
+        if (el.getAttribute('style') === '') el.removeAttribute('style')
+      })
+      if (!e.clipboardData) return
+      e.clipboardData.setData('text/html', wrap.innerHTML)
+      e.clipboardData.setData('text/plain', sel.toString())
+      e.preventDefault()
+    } catch (err) { /* fall back to native copy */ }
+  })
+}
+
 // Resolve CSS custom properties (var(--x)) to their computed values so the
 // copied HTML renders correctly in Word / Outlook which don't understand vars.
 function resolveCssVars(html) {
@@ -212,7 +252,11 @@ let toastT=null
 
 function toast(msg,type) {
   const el=document.getElementById('toast'); el.textContent=msg; el.className='show '+(type||'')
-  clearTimeout(toastT); toastT=setTimeout(()=>el.className='',2800)
+  // Duration: floor by type (errors need reading time: 6s err / 4s ok / 2.8s info),
+  // scaled up for long messages (45ms/char), capped at 8s. Was a flat 2.8s.
+  const floor = type==='err' ? 6000 : type==='ok' ? 4000 : 2800
+  const dur = Math.min(8000, Math.max(floor, 1500 + String(msg).length * 45))
+  clearTimeout(toastT); toastT=setTimeout(()=>el.className='',dur)
 }
 
 // Update a range slider's --fill custom property so the gradient track
@@ -271,6 +315,8 @@ function openSP() {
   document.getElementById('s-topk').value  = creds.topK||5
   document.getElementById('s-embk').value  = creds.embedApiKey||''
   document.getElementById('s-embm').value  = creds.embedModelId||''
+  document.getElementById('s-embwarn').value = (typeof creds.embedWarnTokens === 'number') ? creds.embedWarnTokens : ''
+  document.getElementById('s-embmax').value  = (typeof creds.embedMaxTokens  === 'number') ? creds.embedMaxTokens  : ''
   if (typeof demoKeyHint === 'function') { demoKeyHint('s-key'); demoKeyHint('s-embk') }
   document.getElementById('s-chunk-v').value = creds.chunkSize||800
   document.getElementById('s-topk-v').value  = creds.topK||5
@@ -280,17 +326,20 @@ function openSP() {
   refreshSliderFill(document.getElementById('s-topk'))
   if (typeof initClassification === 'function') initClassification('sp', creds.classification || inferTier(creds.model) || 'cce')
   document.getElementById('sp').classList.remove('hidden')
-  let _spTab = 'models'; try { _spTab = localStorage.getItem('lcl_sp_tab') || 'models' } catch {}
-  if (typeof spTab === 'function') spTab(['models','settings'].includes(_spTab) ? _spTab : 'models')
+  let _spSec = 'connection'; try { _spSec = localStorage.getItem('lcl_sp_sec') || 'connection' } catch {}
+  spNav(document.querySelector('#sp .sp-sec[data-sec="' + _spSec + '"]') ? _spSec : 'connection')
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
+  if (typeof loadEndpointInfo === 'function') loadEndpointInfo().then(function () { if (typeof renderGatewaySeg === 'function') renderGatewaySeg() })
 }
 
-// Switch the Settings panel tab (Model / Embed / Settings); remembers last choice.
-function spTab(name){
-  document.querySelectorAll('#sp .sp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name))
-  document.querySelectorAll('#sp .sp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name))
-  try { localStorage.setItem('lcl_sp_tab', name) } catch {}
+// Full-page Settings navigation (left rail): show ONE section; remembers last.
+function spNav(sec){
+  document.querySelectorAll('#sp .sp-sec').forEach(s => s.classList.toggle('on', s.dataset.sec === sec))
+  document.querySelectorAll('#sp .sp-nav-it').forEach(b => b.classList.toggle('on', b.dataset.sec === sec))
+  try { localStorage.setItem('lcl_sp_sec', sec) } catch {}
 }
+// Legacy alias (old two-tab layout callers).
+function spTab(name){ spNav(name === 'settings' ? 'defaults' : 'connection') }
 
 // Skills manager (independent of Settings; accessible without connection)
 async function openSkillsManager() {
@@ -306,7 +355,12 @@ function closeSkillsManager() {
   cancelNewSkill()
   document.getElementById('skills-mgr').classList.add('hidden')
 }
-function closeSP() { document.getElementById('sp').classList.add('hidden') }
+// Closing without saving must drop the pending gateway pick, or reopening would
+// show a selection that was never applied.
+function closeSP() {
+  document.getElementById('sp').classList.add('hidden')
+  if (typeof clearPendingGateway === 'function') clearPendingGateway()
+}
 
 function renderSpSkillsList() {
   const root = document.getElementById('sp-skills-list')
@@ -323,7 +377,7 @@ function renderSpSkillsList() {
       </div>
       <button class="tb-btn" onclick="editSkill('${esc(s.id)}')">Edit</button>
       <button class="tb-btn" onclick="renameSkill('${esc(s.id)}')">Rename</button>
-      <button class="tb-btn" onclick="deleteSkillUI('${esc(s.id)}')" style="color:var(--red)">Delete</button>
+      <button class="tb-btn btn-danger" onclick="deleteSkillUI('${esc(s.id)}')">Delete</button>
     </div>
   `).join('')
 }
@@ -585,9 +639,202 @@ async function deleteSkillUI(id) {
     toast('Delete failed: ' + e.message, 'err')
   }
 }
-function saveSP() {
+// Promise-based themed confirm dialog. Resolves true on confirm, false on cancel/Esc.
+function confirmDialog(opts) {
+  opts = opts || {}
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(false); else if (e.key === 'Enter') finish(true) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    const ok = mkEl('button', { class: 'cd-ok', onclick: () => finish(true) }, opts.okText || 'Confirm')
+    const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(false) }, opts.cancelText || 'Cancel')
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
+      mkEl('div', { class: 'cd-msg' }, opts.message || ''),
+      mkEl('div', { class: 'cd-acts' }, [cancel, ok])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(false) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { ok.focus() } catch {} }, 0)
+  })
+}
+
+// Password prompt for an encrypted PDF. Resolves to the entered password, or
+// null if cancelled. The value is handed straight to pdf.js for one decode -
+// it is never stored, logged, or sent to the proxy (the caller keeps it in a
+// local variable only for the retry loop).
+function promptPdfPassword(fileName, opts) {
+  opts = opts || {}
+  const FILE_IC = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5H4A1.5 1.5 0 002.5 3v10A1.5 1.5 0 004 14.5h8a1.5 1.5 0 001.5-1.5V6z"/><path d="M9 1.5V6h4.5"/></svg>'
+  const EYE_IC = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>'
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(null) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    function submit() { const v = input.value; if (!v) { try { input.focus() } catch {} ; return } finish(v) }
+    const input = mkEl('input', { class: 'cd-pw-input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: 'Password' })
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit() } })
+    const eye = mkEl('button', { class: 'cd-pw-eye', type: 'button', 'aria-label': 'Show password', title: 'Show password', html: EYE_IC,
+      onclick: () => { const hidden = input.type === 'password'; input.type = hidden ? 'text' : 'password'; eye.classList.toggle('on', hidden); try { input.focus() } catch {} } })
+    const chip = mkEl('div', { class: 'cd-pw-file' }, [
+      mkEl('span', { class: 'cd-pw-file-ic', 'aria-hidden': 'true', html: FILE_IC }),
+      mkEl('span', { class: 'cd-pw-file-name' }, fileName || 'document.pdf')
+    ])
+    const err = mkEl('div', { class: 'cd-pw-err' }, 'Incorrect password, try again')
+    if (!opts.incorrect) err.style.display = 'none'
+    const ok = mkEl('button', { class: 'cd-ok', onclick: submit }, 'Unlock')
+    const cancel = mkEl('button', { class: 'cd-cancel', onclick: () => finish(null) }, 'Cancel')
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, 'Protected PDF'),
+      mkEl('div', { class: 'cd-msg' }, 'This file needs a password to open.'),
+      chip,
+      mkEl('div', { class: 'cd-pw-field' + (opts.incorrect ? ' cd-pw-bad' : '') }, [input, eye]),
+      err,
+      mkEl('div', { class: 'cd-pw-note' }, 'Used once to open this file. Never saved, never sent to the server.'),
+      mkEl('div', { class: 'cd-acts' }, [cancel, ok])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(null) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { input.focus() } catch {} }, 0)
+  })
+}
+
+// Themed multi-choice dialog. opts.buttons = [{ text, value, primary }]; resolves
+// to the chosen value, or opts.cancelValue on overlay-click / Escape. Reuses the
+// .cd-* styling; the message renders with line breaks (white-space:pre-line).
+function confirmDialog3(opts) {
+  opts = opts || {}
+  const cancelValue = (opts.cancelValue !== undefined) ? opts.cancelValue : 'cancel'
+  const stacked = !!opts.stacked
+  const FILE_IC = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5H4A1.5 1.5 0 002.5 3v10A1.5 1.5 0 004 14.5h8a1.5 1.5 0 001.5-1.5V6z"/><path d="M9 1.5V6h4.5"/><path d="M5.5 8.5h5"/><path d="M5.5 11h5"/></svg>'
+  return new Promise(resolve => {
+    let done = false
+    const onKey = e => { if (e.key === 'Escape') finish(cancelValue) }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+    // Buttons: stacked layout uses variant classes (primary/secondary/ghost) with
+    // optional sub-label; the legacy row layout keeps btn-p / cd-cancel.
+    const btns = (opts.buttons || []).map(b => {
+      if (stacked) {
+        const variant = b.variant || (b.primary ? 'primary' : 'secondary')
+        const kids = [mkEl('span', { class: 'cd3-btn-t' }, b.text)]
+        if (b.sub) kids.push(mkEl('span', { class: 'cd3-btn-sub' }, b.sub))
+        return mkEl('button', { class: 'cd3-btn cd3-' + variant, onclick: () => finish(b.value) }, kids)
+      }
+      return mkEl('button', { class: b.primary ? 'cd-ok' : 'cd-cancel', onclick: () => finish(b.value) }, b.text)
+    })
+    const kids = [
+      mkEl('div', { class: 'cd-title' }, opts.title || 'Confirm'),
+      mkEl('div', { class: 'cd-msg', style: 'white-space:pre-line' + (opts.chips && opts.chips.length ? ';margin-bottom:12px' : '') }, opts.message || '')
+    ]
+    if (opts.chips && opts.chips.length) {
+      kids.push(mkEl('div', { class: 'cd3-chips' }, opts.chips.map(name => mkEl('div', { class: 'cd3-chip' }, [
+        mkEl('span', { class: 'cd3-chip-ic', 'aria-hidden': 'true', html: FILE_IC }),
+        mkEl('span', { class: 'cd3-chip-name' }, name),
+        mkEl('span', { class: 'cd3-chip-tag' }, 'scanned')
+      ]))))
+    }
+    kids.push(mkEl('div', { class: stacked ? 'cd3-acts' : 'cd-acts' }, btns))
+    const box = mkEl('div', { class: 'cd-box', role: 'dialog' }, kids)
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(cancelValue) } }, [box])
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { (box.querySelector('.cd3-primary') || box.querySelector('.btn-p') || box.querySelector('button')).focus() } catch {} }, 0)
+  })
+}
+
+// Consolidated batch embed confirmation (alpha). One dialog for a multi-file
+// drop: per-file size + estimated time, all selected by default, live total.
+// Resolves to an array of selected doc ids, or null if cancelled.
+function confirmEmbedBatch(plans, caps) {
+  return new Promise(resolve => {
+    let done = false
+    const k = n => n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.max(0, Math.round(n)))
+    const items = plans.map(p => ({ id: p.doc.id, name: p.doc.name, size: p.doc.size || 0, tokens: p.plan.est, chunks: p.plan.toEmbed.length, sel: true }))
+    const onKey = e => { if (e.key === 'Escape') finish(null); else if (e.key === 'Enter' && !okBtn.disabled) okBtn.click() }
+    function finish(v) { if (done) return; done = true; document.removeEventListener('keydown', onKey); try { ov.remove() } catch {} ; resolve(v) }
+
+    const totalLbl = mkEl('span', { class: 'eb-total' })
+    const okBtn = mkEl('button', { class: 'cd-ok', onclick: () => { const ids = items.filter(i => i.sel).map(i => i.id); finish(ids.length ? ids : null) } })
+    const cancelBtn = mkEl('button', { class: 'cd-cancel', onclick: () => finish(null) }, 'Cancel')
+
+    function refresh() {
+      const selItems = items.filter(i => i.sel)
+      const selTokens = selItems.reduce((s, i) => s + i.tokens, 0)
+      const secs = selItems.reduce((s, i) => s + embedSecs(i.tokens, caps), 0) + embedWaitSecs(selTokens, caps)
+      totalLbl.textContent = selItems.length + ' of ' + items.length + ' selected' + (selItems.length ? ' \u00b7 ' + fmtEmbedDur(secs) + ' total' : '')
+      okBtn.textContent = selItems.length === items.length ? ('Embed all (' + items.length + ')') : ('Embed selected (' + selItems.length + ')')
+      okBtn.disabled = selItems.length === 0
+    }
+
+    const rows = items.map(it => {
+      const chk = mkEl('span', { class: 'eb-check' }, '\u2713')
+      const row = mkEl('div', { class: 'eb-row', role: 'checkbox', 'aria-checked': 'true' }, [
+        chk,
+        mkEl('div', { class: 'eb-inf' }, [
+          mkEl('div', { class: 'eb-name' }, it.name),
+          mkEl('div', { class: 'eb-sz' }, fmtSz(it.size))
+        ]),
+        mkEl('div', { class: 'eb-right' }, [
+          mkEl('div', { class: 'eb-time' }, fmtEmbedDur(embedSecs(it.tokens, caps))),
+          mkEl('div', { class: 'eb-cnt' }, it.chunks + ' chunks')
+        ])
+      ])
+      row.addEventListener('click', () => {
+        it.sel = !it.sel
+        row.classList.toggle('eb-off', !it.sel)
+        row.setAttribute('aria-checked', it.sel ? 'true' : 'false')
+        chk.textContent = it.sel ? '\u2713' : ''
+        refresh()
+      })
+      return row
+    })
+
+    let msg
+    if (caps && caps.remaining != null) {
+      msg = 'About ' + k(caps.remaining) + ' tokens are left this minute, so this batch will queue and embed in the background. You can keep chatting while it runs.'
+    } else {
+      msg = 'This batch will embed in the background. You can keep chatting while it runs.'
+    }
+
+    const box = mkEl('div', { class: 'cd-box eb-box', role: 'dialog' }, [
+      mkEl('div', { class: 'cd-title' }, items.length === 1 ? 'Embed this file?' : ('Embed ' + items.length + ' files?')),
+      mkEl('div', { class: 'cd-msg' }, msg),
+      mkEl('div', { class: 'eb-list' }, rows),
+      mkEl('div', { class: 'eb-foot' }, [totalLbl, mkEl('div', { class: 'eb-acts' }, [cancelBtn, okBtn])])
+    ])
+    const ov = mkEl('div', { class: 'cd-overlay', onclick: e => { if (e.target === ov) finish(null) } }, [box])
+    refresh()
+    document.body.appendChild(ov)
+    document.addEventListener('keydown', onKey)
+    setTimeout(() => { try { okBtn.focus() } catch {} }, 0)
+  })
+}
+
+async function saveSP() {
+  // A pending gateway pick (or a changed key) is committed HERE, not on click,
+  // and only after the key is verified against that gateway. If verification
+  // fails the connection is left exactly as it was - every other setting on this
+  // panel still saves, so a gateway being briefly down can't block the whole form.
+  const _gwTarget = pendingGateway()
+  const _gwChanged = _gwTarget !== currentGateway()
+  const _keyTyped = (document.getElementById('s-key').value || '').trim()
+  const _keyChanged = _keyTyped && _keyTyped !== (creds.apiKey || '')
+  let _gwErr = null
+  if (_gwChanged || _keyChanged) {
+    const btn = document.querySelector('#sp .btn-sv')
+    const label = btn ? btn.textContent : ''
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking key…' }
+    const r = await applyGatewayChange(_gwTarget, _keyTyped)
+    if (btn) { btn.disabled = false; btn.textContent = label }
+    if (!r.ok) { _gwErr = r.error; clearPendingGateway() }
+  }
   const prevEmbedKey = creds.embedApiKey || ''
-  creds.apiKey       = document.getElementById('s-key').value.trim()||creds.apiKey
+  // If a gateway switch was attempted and failed, the typed key belongs to the
+  // gateway we did NOT move to - adopting it here would overwrite the working
+  // key of the gateway we are still on.
+  if (!(_gwErr && _gwChanged)) creds.apiKey = document.getElementById('s-key').value.trim()||creds.apiKey
   creds.model        = document.getElementById('s-mdl').value.trim()||creds.model
   creds.systemPrompt = document.getElementById('s-sys').value.trim()
   const tokInput = parseInt(document.getElementById('s-tok-v-input').value)
@@ -596,12 +843,21 @@ function saveSP() {
   creds.topK         = parseInt(document.getElementById('s-topk').value)
   creds.embedApiKey  = document.getElementById('s-embk').value.trim() || creds.embedApiKey
   creds.embedModelId = document.getElementById('s-embm').value.trim() || creds.embedModelId
+  const _wv = (document.getElementById('s-embwarn').value || '').trim()
+  const _mv = (document.getElementById('s-embmax').value || '').trim()
+  creds.embedWarnTokens = (!_wv || /^auto$/i.test(_wv)) ? 'auto' : Math.max(0, parseInt(_wv) || 0)
+  creds.embedMaxTokens  = (!_mv || /^auto$/i.test(_mv)) ? 'auto' : Math.max(0, parseInt(_mv) || 0)
   creds.classification = ((typeof _clsState!=='undefined' && _clsState.sp) || creds.classification || inferTier(creds.model) || 'cce')
   // Mirror into D.settings so persist() also carries these to disk
-  D.settings = credsToSettings(creds)
+  D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
   saveSettings(D.settings)
   persist()
-  closeSP(); toast('Settings saved','ok')
+  closeSP()
+  // Be explicit when the connection did NOT change - a quiet "Settings saved"
+  // would leave the user believing they had switched gateway when they hadn't.
+  if (_gwErr) toast(_gwErr + ' Other settings were saved.', 'err')
+  else if (_gwChanged) toast('Settings saved - connected to ' + _gwTarget, 'ok')
+  else toast('Settings saved','ok')
   // Validate a new/changed embedding key NOW (one tiny embed call) so a wrong or
   // truncated key is caught with a clear message instead of silently 401'ing on
   // the first RAG embed. Non-blocking: settings are already saved.
@@ -622,6 +878,148 @@ async function checkEmbedKey() {
     toast('Embedding key error: ' + e.message, 'err')
   }
 }
+// =============================================================================
+// Endpoint info (shared with the gateway picker): loads the active upstream
+// endpoint from the server so the health pill can badge a non-PlatformAI
+// gateway. The server-side *.gov.sg allowlist is the real guard.
+// === endpoint-dev ===
+var lclEndpoint = null   // { active: {name, modelUrl, embedUrl, model}, isDefault, presets }
+
+async function loadEndpointInfo() {
+  try {
+    const r = await fetch(proxyUrl('/api/endpoint'))
+    if (!r.ok) return null
+    lclEndpoint = await r.json()
+    return lclEndpoint
+  } catch (e) { return null }
+}
+
+// ' \u00b7 Name' suffix for the health pill whenever we are NOT on PlatformAI,
+// so a forgotten dev switch is impossible to miss.
+function endpointBadge() {
+  return (lclEndpoint && lclEndpoint.active && lclEndpoint.isDefault === false)
+    ? ' \u00b7 ' + (lclEndpoint.active.name || lclEndpoint.active.modelUrl)
+    : ''
+}
+
+// Load once at boot so the health-pill badge is correct before Settings opens.
+try { setTimeout(function () { loadEndpointInfo().then(function () { if (typeof renderGatewaySeg === 'function') renderGatewaySeg() }) }, 800) } catch (e) {}
+// === end endpoint-dev ===
+// =============================================================================
+// Gateway picker (Connection + Connect modal): PlatformAI vs NC3 (Dev) as a
+// first-class choice. Keys are stored PER GATEWAY (D.settings.gwVault) so
+// switching restores the key you used last time; the endpoint rides the
+// server's /api/endpoint mechanism.
+// === gateway ===
+function currentGateway() {
+  if (!lclEndpoint || lclEndpoint.isDefault !== false) return 'PlatformAI'
+  const a = lclEndpoint.active || {}
+  const k = (lclEndpoint.presets || [])[1] || {}   // presets[1] = the second user gateway
+  return a.modelUrl === k.modelUrl ? (k.name || 'Gateway') : 'Custom'
+}
+
+function gwVault() {
+  D.settings = D.settings || {}
+  D.settings.gwVault = D.settings.gwVault || {}
+  return D.settings.gwVault
+}
+
+function keyStoreFor(name) {
+  // All gateway keys live in one per-gateway vault, keyed by gateway name.
+  return gwVault()
+}
+
+// Pending (unsaved) gateway pick. Clicking a segment only SELECTS - it never
+// touches the server endpoint and never writes to disk. The switch is applied by
+// Save, and only after the key is verified against that gateway. This is also
+// what stops a stalled server turning repeated clicks into a burst of endpoint
+// switches and settings writes: there is nothing in flight to pile up.
+let _pendingGw = null
+
+function pendingGateway() { return _pendingGw || currentGateway() }
+function clearPendingGateway() { _pendingGw = null; renderGatewaySeg() }
+
+function setGateway(name, where) {
+  if (typeof demoOn === 'function' && demoOn()) { toast('Demo mode - gateway not changed', 'info'); renderGatewaySeg(); return }
+  const presets = (lclEndpoint && lclEndpoint.presets) || []
+  if (presets.length && !presets.find(function (p) { return p.name === name })) {
+    toast('Gateway presets unavailable - restart the LCL server (old server.txt?)', 'err'); return
+  }
+  _pendingGw = (name === currentGateway()) ? null : name
+  // Show the key stored for the SELECTED gateway so it is clear whether one
+  // exists - still only in the input; nothing is committed until Save.
+  const saved = keyStoreFor(name)[name] || {}
+  const kEl = document.getElementById('s-key'); if (kEl) kEl.value = saved.apiKey || ''
+  const eEl = document.getElementById('s-embk'); if (eEl) eEl.value = saved.embedApiKey || ''
+  const mEl = document.getElementById('m-key'); if (mEl) mEl.value = saved.apiKey || ''
+  renderGatewaySeg()
+  if (typeof lclCrumb === 'function') lclCrumb('gateway_pick', { gw: name, where: where, pending: !!_pendingGw })
+}
+
+// Verify a key against a gateway WITHOUT switching to it, then commit the switch.
+// On any failure nothing changes - endpoint, vault and creds are all left alone.
+async function applyGatewayChange(name, apiKey) {
+  const presets = (lclEndpoint && lclEndpoint.presets) || []
+  const target = presets.find(function (p) { return p.name === name }) || presets[0]
+  if (!target) return { ok: false, error: 'Gateway presets unavailable' }
+  if (!apiKey) return { ok: false, error: 'Not switched - enter your ' + name + ' API key first.' }
+  let d = {}
+  try {
+    const r = await httpPost('/api/testkey', { modelUrl: target.modelUrl, apiKey: apiKey, model: (creds && creds.model) || '' })
+    try { d = await r.json() } catch (e) {}
+  } catch (e) { return { ok: false, error: 'Not switched - could not reach the LCL server (' + e.message + ').' } }
+  if (!d || !d.ok) {
+    const why = (d && d.reason) === 'auth' ? 'that key was rejected by ' + name
+      : (d && d.reason) === 'timeout' ? name + ' did not respond'
+      : (d && d.reason) === 'network' ? 'could not reach ' + name
+      : (d && d.reason) === 'tls' ? 'the TLS certificate was not trusted'
+      : (d && d.error) || 'the key check failed'
+    return { ok: false, error: 'Not switched - ' + why }
+  }
+  // Key verified: stash the OUTGOING gateway's keys, then switch the endpoint.
+  const curName = (lclEndpoint && lclEndpoint.active && lclEndpoint.active.name) || currentGateway()
+  if (creds) keyStoreFor(curName)[curName] = { apiKey: creds.apiKey || '', embedApiKey: creds.embedApiKey || '', embedModelId: creds.embedModelId || '' }
+  try {
+    const r = await httpPost('/api/endpoint', { name: target.name, modelUrl: target.modelUrl, embedUrl: target.embedUrl || '', model: '' })
+    let e2 = {}; try { e2 = await r.json() } catch (e) {}
+    if (!r.ok) return { ok: false, error: 'Gateway switch failed: ' + ((e2 && e2.error) || ('HTTP ' + r.status)) }
+    lclEndpoint = { active: e2.active, isDefault: !!(e2.active && presets[0] && e2.active.modelUrl === presets[0].modelUrl), presets: presets }
+  } catch (e) { return { ok: false, error: 'Gateway switch failed: ' + e.message } }
+  _pendingGw = null
+  if (typeof lclCrumb === 'function') lclCrumb('gateway_set', { gw: name, verified: true })
+  return { ok: true }
+}
+
+function renderGatewaySeg() {
+  const cur = pendingGateway()   // highlight the pending pick until Save commits it
+  ;['sp', 'modal'].forEach(function (w) {
+    const seg = document.getElementById('gw-seg-' + w); if (!seg) return
+    const btns = seg.querySelectorAll ? seg.querySelectorAll('.seg-btn') : []
+    btns.forEach(function (b) { b.classList.toggle('on', b.dataset.gw === cur) })
+    const note = document.getElementById('gw-note-' + w)
+    if (note) note.textContent = cur === 'Custom' ? 'A custom endpoint override is active \u2014 it overrides the gateway pick.' : (w === 'modal' ? 'Pick the gateway your key was issued for.' : 'Keys are saved per gateway \u2014 switching restores the key you used last time.')
+  })
+  const keyLbl = (cur === 'PlatformAI' || cur === 'Custom') ? 'GovTech Models API Key' : cur + ' API Key'
+  const lbl = document.getElementById('s-key-label')
+  if (lbl) lbl.textContent = keyLbl
+  const mlbl = document.getElementById('m-key-label')
+  if (mlbl) mlbl.textContent = keyLbl
+  // Embedding section: read-only banner reflecting the Connection gateway pick
+  // (users run ONE source). Orange = Kepler, neutral = PlatformAI, amber = custom.
+  const banner = document.getElementById('gw-emb-banner')
+  if (banner && lclEndpoint) {
+    const ps = lclEndpoint.presets || []
+    const act = lclEndpoint.active || {}
+    const p = cur === 'Custom' ? act : ((ps || []).find(function (x) { return x.name === cur }) || ps[0])
+    const embUrl = (p && p.embedUrl) || ''
+    banner.className = cur === 'Custom' ? 'gw-custom' : (cur === 'PlatformAI' ? '' : 'gw-kepler')
+    const tEl = banner.querySelector('.gwb-title')
+    if (tEl) tEl.textContent = cur === 'Custom' ? 'Embedding via custom endpoint' : 'Embedding via ' + cur
+    const uEl = banner.querySelector('.gwb-url')
+    if (uEl) uEl.textContent = embUrl || 'none \u2014 file embedding & RAG disabled'
+  }
+}
+// === end gateway ===
 
 // =============================================================================
 // Theme
@@ -669,4 +1067,88 @@ function initSidebar() {
   const collapsed = localStorage.getItem('lcl_sb_collapsed') === '1'
   document.body.classList.toggle('sb-collapsed', collapsed)
   updateSidebarToggle(collapsed)
+}
+
+// Click 'RAG' in the embed panel to open a small info box (how RAG works + the
+// Search mode options). Toggles; closes on outside click, Escape, or re-click.
+function toggleRagInfo(e) {
+  if (e) {
+    e.stopPropagation()
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return
+    if (e.type === 'keydown') e.preventDefault()
+  }
+  const box = document.getElementById('rag-info')
+  if (!box) return
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return }
+  box.classList.remove('hidden')
+  const onDoc = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return
+    if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('.rag-term')))) return
+    box.classList.add('hidden')
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onDoc, true)
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onDoc, true)
+  }, 0)
+}
+
+// OCR status chip (top bar, beside Embed). Reflects ocrState() with a coloured
+// dot; the click popover offers Test engine + Clear engine.
+function renderOcrChip() {
+  const st = (typeof ocrState === 'function') ? ocrState() : 'idle'
+  const prog = (typeof ocrProgress === 'function') ? ocrProgress() : null
+  const dot = document.getElementById('ocr-dot')
+  const chip = document.getElementById('ocr-chip')
+  const lblEl = document.getElementById('ocr-chip-label')
+  const statusEl = document.getElementById('ocr-status')
+  const tog = document.getElementById('ocr-toggle')
+  if (prog && prog.total) {
+    const p = 'Running OCR \u2014 ' + prog.done + '/' + prog.total
+    if (dot) dot.className = 'ocr-dot ocr-proc'
+    if (lblEl) lblEl.textContent = 'OCR ' + prog.done + '/' + prog.total
+    if (chip) chip.setAttribute('data-tip-bottom', p)
+    if (statusEl) { statusEl.textContent = p; statusEl.style.display = '' }
+  } else {
+    // 'ready' shows no status line - the green 'On' toggle already says it; a 'Ready' line is redundant.
+    const labels = { idle: 'Ready when needed', loading: 'Downloading engine\u2026', ready: '', blocked: 'Unavailable \u2014 engine blocked' }
+    const label = (st in labels) ? labels[st] : labels.idle
+    if (dot) dot.className = 'ocr-dot ocr-' + st
+    if (lblEl) lblEl.textContent = 'OCR'
+    if (chip) chip.setAttribute('data-tip-bottom', 'OCR \u2014 ' + (label || 'On'))
+    if (statusEl) { statusEl.textContent = label; statusEl.style.display = label ? '' : 'none' }
+  }
+  if (tog) {
+    const on = st === 'ready'
+    tog.classList.toggle('on', on)
+    tog.setAttribute('aria-checked', on ? 'true' : 'false')
+    tog.disabled = (st === 'loading')
+    const se = document.getElementById('ocr-eng-state')
+    if (se) { se.textContent = (st === 'loading') ? 'Enabling\u2026' : (on ? 'On' : 'Off'); se.classList.toggle('on', on) }
+  }
+}
+
+function toggleOcrInfo(e) {
+  if (e) {
+    e.stopPropagation()
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return
+    if (e.type === 'keydown') e.preventDefault()
+  }
+  const box = document.getElementById('ocr-info')
+  if (!box) return
+  renderOcrChip()
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return }
+  box.classList.remove('hidden')
+  const onDoc = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return
+    if (ev.type !== 'keydown' && (box.contains(ev.target) || (ev.target.closest && ev.target.closest('#ocr-chip')))) return
+    box.classList.add('hidden')
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onDoc, true)
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onDoc, true)
+  }, 0)
 }
