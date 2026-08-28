@@ -6,6 +6,10 @@ function initDragDrop() {
 
   document.addEventListener('dragover', e => {
     e.preventDefault()
+    // Reflect where the drop will go: docs (embed) when the panel is open or Shift
+    // is held, else the message (attach) — same routing as the drop handler below.
+    const msg = overlay.querySelector('.drop-msg')
+    if (msg) msg.textContent = ((typeof dpOpen !== 'undefined' && dpOpen) || e.shiftKey) ? 'Drop files to embed' : 'Drop files to attach'
     overlay.classList.add('active')
   })
 
@@ -26,6 +30,30 @@ function initDragDrop() {
     } else {
       handleAttach(files)
     }
+  })
+}
+
+// Paste an image straight into the composer (e.g. a screenshot) -> attach flow,
+// the same path drag-drop uses, so the preview + "Run OCR, then attach" dialog
+// fire automatically. Non-image pastes fall through to normal text paste.
+function initPasteImages() {
+  const el = document.getElementById('msg-in')
+  if (!el) return
+  el.addEventListener('paste', e => {
+    const items = (e.clipboardData && e.clipboardData.items) || []
+    const files = []
+    for (const it of items) {
+      if (it.kind === 'file' && it.type && it.type.indexOf('image/') === 0) {
+        const f = it.getAsFile()
+        if (!f) continue
+        // Clipboard images are usually unnamed or 'image.png'; give a unique, extensioned name.
+        const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')
+        files.push(/\.[a-z0-9]+$/i.test(f.name || '') ? f : new File([f], 'pasted-' + Date.now() + '.' + ext, { type: f.type }))
+      }
+    }
+    if (!files.length) return   // no image on the clipboard -> let the textarea paste text normally
+    e.preventDefault()          // don't dump binary/garbage into the textarea
+    if (typeof handleAttach === 'function') handleAttach(files)
   })
 }
 
