@@ -9,10 +9,16 @@ let busy    = false
 let dpOpen  = false
 let inflightCtl = null  // AbortController for the current streaming request
 let skillsCache = []    // [{ id, title, bytes, mtime }] populated on connect
+let lastBudget = { tokLimit: null, tokRemaining: null, ts: 0 }   // latest /api/ratelimit snapshot (token meter + embed caps)
+let embedTally = []    // [{ ts, tokens }] rolling 60s record of embeds for the cumulative budget gate
 let pendingRetry = null // { cancel() } when a 429 or 5xx retry is scheduled
 let retry5xxCount = 0  // how many consecutive 5xx auto-retries have fired
+let rlWindowUntil = 0  // ms epoch the shared token window is expected to reset (set from the last 429; self-expires). Drives the pre-send rate-limit guard.
+let compacting = null  // chatId currently being compacted (scopes the spinner to THAT chat), else null
+const compactOpen = {} // chatId -> bool: whether the collapsed 'earlier messages compacted' block is expanded in the UI
 const RETRY_STEPS_MS = [10000, 20000, 60000]  // shared escalation: inactivity cutoff + 5xx retry backoff (429 excluded)
 let ragStickyChunks = []
+let ragKeywordIndexCache = { signature: '', index: null, records: [] }   // v0.67e: MiniSearch keyword-index cache (invalidated on embed/remove)
 
 // =============================================================================
 // Reliability layer: fetchWithRetry + health pill
@@ -76,3 +82,61 @@ async function fetchWithRetry(url, opts, cfg) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
+
+// Client-side debug logging: mirror browser console errors/warnings + uncaught
+// errors to the server (/api/clientlog), which tees them into debug_logs.txt on
+// the alpha channel so tester bug reports capture the browser side too. Fire-and-
+// forget; guarded so it can never throw or recurse.
+;(function () {
+  const _cerr = console.error.bind(console)
+  const _cwarn = console.warn.bind(console)
+  const _clog = console.log.bind(console)
+  const _cinfo = (console.info || console.log).bind(console)
+  function ship(level, args, tag) {
+    try {
+      const body = (args || []).map(a => {
+        try { return typeof a === 'string' ? a : (a && a.message) || JSON.stringify(a) }
+        catch { return String(a) }
+      }).join(' ')
+      const msg = ((tag ? tag + ' ' : '') + body).slice(0, 2000)
+      fetch((typeof proxyUrl === 'function') ? proxyUrl('/api/clientlog') : '/api/clientlog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: level, msg: msg }) }).catch(function () {})
+    } catch (e) {}
+  }
+  console.error = function () { const a = [].slice.call(arguments); _cerr.apply(console, a); ship('error', a) }
+  console.warn  = function () { const a = [].slice.call(arguments); _cwarn.apply(console, a); ship('warn', a) }
+  // console.log/info are tagged [console] and shipped too; the SERVER only records
+  // them on the alpha channel (see handleClientLog) so stable terminals stay clean.
+  console.log   = function () { const a = [].slice.call(arguments); _clog.apply(console, a); ship('info', a, '[console]') }
+  console.info  = function () { const a = [].slice.call(arguments); _cinfo.apply(console, a); ship('info', a, '[console]') }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('error', function (e) { ship('error', [(e && e.message) || 'window error', e && e.filename, e && (e.lineno + ':' + e.colno)]) })
+    window.addEventListener('unhandledrejection', function (e) { ship('error', ['unhandledrejection', (e && e.reason && e.reason.message) || String(e && e.reason)]) })
+  }
+})();
+
+// Action breadcrumbs: mirror key UI actions (not their content) to the server
+// so alpha bug reports show "user did X, then error Y". Metadata only — event
+// name + safe key/values (model, byte sizes, ids), never message text. Local
+// only (tees into debug_logs.txt); no remote telemetry. Fire-and-forget.
+function lclCrumb(event, meta) {
+  try {
+    let s = String(event || 'action')
+    if (meta && typeof meta === 'object') {
+      const parts = []
+      for (const k in meta) {
+        if (!Object.prototype.hasOwnProperty.call(meta, k)) continue
+        let v = meta[k]
+        if (v == null) continue
+        v = String(v).replace(/\s+/g, ' ').slice(0, 80)
+        parts.push(k + '=' + v)
+      }
+      if (parts.length) s += ' ' + parts.join(' ')
+    }
+    fetch((typeof proxyUrl === 'function') ? proxyUrl('/api/clientlog') : '/api/clientlog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: 'info', msg: '[crumb] ' + s.slice(0, 500) })
+    }).catch(function () {})
+  } catch (e) {}
+}
+if (typeof window !== 'undefined') window.lclCrumb = lclCrumb;
