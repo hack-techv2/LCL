@@ -173,6 +173,18 @@ async function connect() {
 
   btn.disabled = true; btn.textContent = 'Connecting…'
   setHealth('warn', 'Connecting')
+  // A gateway chosen in this modal is only SELECTED, never applied on click.
+  // Apply it now - applyGatewayChange verifies the key against that gateway
+  // first, so a bad key leaves the endpoint untouched.
+  if (typeof _pendingGw !== 'undefined' && _pendingGw && typeof applyGatewayChange === 'function') {
+    const gwRes = await applyGatewayChange(_pendingGw, apiKey)
+    if (!gwRes || !gwRes.ok) {
+      errEl.textContent = (gwRes && gwRes.error) || 'Gateway switch failed'
+      errEl.classList.add('show'); setHealth('err', 'Failed')
+      btn.disabled = false; btn.textContent = 'Connect'
+      return
+    }
+  }
   try {
     // Escalate max_tokens until the model accepts it (1 → 16 → 32).
     // Some providers (e.g. GPT) reject very low values with a 400/422.
