@@ -1,7 +1,12 @@
-# LCL Changelog — v0.67d
+# LCL Changelog — v0.67e
 
-All notable changes to Local Comet LLM. Everything below is part of the v0.67d
+All notable changes to Local Comet LLM. Everything below is part of the v0.67e
 release.
+
+> **Why 0.67e:** the in-app updater offers a build only when the release tag is
+> strictly newer than the running `APP_VERSION`. A second v0.67d release would
+> compare equal, so every existing stable install would report "up to date" and
+> never receive this work. The bump is what makes the update reachable.
 
 ## 27 Aug 2026 - Chat titles: no more HTML as a title, and rename actually works (alpha)
 
