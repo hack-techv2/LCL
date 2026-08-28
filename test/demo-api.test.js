@@ -28,7 +28,7 @@ require(TMP)   // server.txt starts listening on 127.0.0.1:PORT as a side effect
 function req(opts, body) {
   return new Promise(res => {
     const r = http.request(Object.assign({ host: '127.0.0.1', port: PORT }, opts), resp => {
-      let d = ''; resp.on('data', c => d += c); resp.on('end', () => res({ status: resp.statusCode, body: d }))
+      let d = ''; resp.on('data', c => d += c); resp.on('end', () => res({ status: resp.statusCode, headers: resp.headers, body: d }))
     })
     r.on('error', e => res({ status: 0, body: 'ERR ' + e.message }))
     if (body) r.write(body)
@@ -116,6 +116,27 @@ const CASES = [
     const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[500]] boom', true))
     check('T15 marker [[500]]', r.status === 500 && /demo 500/.test(r.body))
   } },
+  { id: 'T25 [[toobig]] unwinnable 429', tags: ['errors'], fn: async () => {
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[toobig]] summarise everything', true))
+    const okBody = r.status === 429 && /Limit type: tokens/.test(r.body) && /Remaining: 200000/.test(r.body) && /Current limit: 200000/.test(r.body)
+    const okHdr = r.headers && r.headers['retry-after'] === '60' && !!r.headers['reset_at'] && r.headers['rate_limit_type'] === 'tokens'
+    check('T25 [[toobig]] unwinnable 429', okBody && okHdr, 'status=' + r.status + ' hdr=' + okHdr)
+  } },
+  { id: 'T42 [[budgetexceeded]] flat 429, no rate-limit fields', tags: ['errors'], fn: async () => {
+    // Overall API-key budget exhaustion (15 Jul log): a bare-string 429 body with NO
+    // reset/limit/remaining. The client classifies this TERMINAL (see client-logic
+    // C48) and must NOT auto-retry; here we assert the demo reproduces the shape.
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[budgetexceeded]] hello', true))
+    const body = json(r.body)
+    const okBody = r.status === 429 && /budget\(s\) exceeded/.test(r.body) && typeof (body && body.error) === 'string'
+    const noRlFields = !/Limit resets at:/.test(r.body) && !/Current limit:/.test(r.body) && !/Remaining:/.test(r.body)
+    check('T42 [[budgetexceeded]] flat 429, no rate-limit fields', okBody && noRlFields, 'status=' + r.status + ' flat=' + (typeof (body && body.error) === 'string'))
+  } },
+  { id: 'T26 oversize payload 429', tags: ['errors'], fn: async () => {
+    const big = 'x '.repeat(500000)   // ~1MB -> ~250k tokens, over the 200k cap
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat(big, true))
+    check('T26 oversize payload 429', r.status === 429 && /Remaining: 200000/.test(r.body), 'status=' + r.status)
+  } },
   { id: 'T16 embed dim consistency', tags: ['embed', 'rag'], fn: async () => {
     const s = json((await req({ method: 'POST', path: '/api/embed', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', input: 'x' }))).body).data[0].embedding.length
     const b = json((await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: ['x'] }))).body).embeddings[0].length
@@ -143,6 +164,176 @@ const CASES = [
     const t0 = Date.now(); const s = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[slow]] go', true)); const slow = Date.now() - t0
     const t1 = Date.now(); const f = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('fast baseline', true)); const fast = Date.now() - t1
     check('T20 [[slow]] cadence', s.status === 200 && slow > fast * 2, 'slow=' + slow + 'ms fast=' + fast + 'ms')
+  } },
+  { id: 'T21 embed streamed progress', tags: ['embed'], fn: async () => {
+    const inputs = Array.from({ length: 20 }, (_, k) => 'chunk number ' + k + ' lorem ipsum dolor')
+    const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs }))
+    const prog = /"type":"progress"/.test(r.body)
+    const pace = /"type":"pacing"/.test(r.body)
+    const doneLine = (r.body.split('\n').find(l => /"type":"done"/.test(l)) || '').replace(/^data:\s*/, '')
+    const dj = json(doneLine)
+    check('T21 embed streamed progress', r.status === 200 && prog && pace && (dj.embeddings || []).length === 20 && dj.embeddings[0].length === 1024, 'progress=' + prog + ' pacing=' + pace)
+  } },
+  { id: 'T22 [[embedfail]] then retry', tags: ['embed', 'retry'], fn: async () => {
+    const payload = JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: ['[[embedfail]] resume me please'] })
+    const a = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, payload)
+    const b = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, payload)
+    const bj = json(b.body)
+    check('T22 [[embedfail]] then retry', /"type":"error"/.test(a.body) && b.status === 200 && (bj.embeddings || []).length === 1, 'firstErr=' + /"type":"error"/.test(a.body) + ' retry=' + b.status)
+  } },
+  // --- 2 Jul 2026 batch: rate-limit pacing / truncation-guard contracts --------
+  { id: 'T27 [[embed429]] server window-wait', tags: ['embed', 'retry'], fn: async () => {
+    // ONE request: the server hits the window, emits pacing ticks, retries, done.
+    // (Contract behind handleEmbedBatch's 429 loop - vs T22 where the CLIENT retries.)
+    const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: ['[[embed429]] window survivor'] }))
+    const pace = /"type":"pacing"/.test(r.body), errFrame = /"type":"error"/.test(r.body)
+    const doneLine = (r.body.split('\n').find(l => /"type":"done"/.test(l)) || '').replace(/^data:\s*/, '')
+    const dj = json(doneLine)
+    check('T27 [[embed429]] server window-wait', r.status === 200 && pace && !errFrame && (dj.embeddings || []).length === 1, 'pacing=' + pace + ' err=' + errFrame)
+  } },
+  { id: 'T28 [[429]] full gateway body', tags: ['errors', 'retry'], fn: async () => {
+    // Body must carry the real gateway fields the client parses (limit/remaining/reset).
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[429]] realistic body probe', true))
+    const lim = (r.body.match(/Current limit:\s*(\d+)/) || [])[1]
+    const rem = (r.body.match(/Remaining:\s*(\d+)/) || [])[1]
+    const stamp = (r.body.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC/) || [])[1]
+    const typeOk = /Limit type: tokens/.test(r.body)
+    check('T28 [[429]] full gateway body', r.status === 429 && lim === '200000' && rem === '0' && !!stamp && typeOk, 'lim=' + lim + ' rem=' + rem + ' stamp=' + stamp)
+  } },
+  { id: 'T29 [[429partial]] drained-window body', tags: ['errors', 'retry'], fn: async () => {
+    // Remaining: 58944 verbatim from the 21:45:46 log - the fixture behind the
+    // too-big misclassification fix (must parse as PARTIAL, i.e. wait-don't-split).
+    const p = chat('[[429partial]] wait not split', true)
+    const a = await req({ method: 'POST', path: '/api/chat', headers: H }, p)
+    const rem = (a.body.match(/Remaining:\s*(\d+)/) || [])[1]
+    const b = await req({ method: 'POST', path: '/api/chat', headers: H }, p)
+    check('T29 [[429partial]] drained-window body', a.status === 429 && rem === '58944' && b.status === 200, 'rem=' + rem + ' then ' + b.status)
+  } },
+  { id: 'T30 [[streamdie]] mid-stream error frame', tags: ['chat', 'errors'], fn: async () => {
+    // Stream starts (200 + deltas) then dies: error frame present, NO finish/[DONE].
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[streamdie]] truncate me', true))
+    const hasDelta = /"delta":\{"content"/.test(r.body)
+    const hasErr = /"error":"upstream stream error/.test(r.body)
+    const finished = /\[DONE\]/.test(r.body) || /"finish_reason":"stop"/.test(r.body)
+    check('T30 [[streamdie]] mid-stream error frame', r.status === 200 && hasDelta && hasErr && !finished, 'delta=' + hasDelta + ' err=' + hasErr + ' finished=' + finished)
+  } },
+  { id: 'T31 stream terminal usage chunk', tags: ['chat'], fn: async () => {
+    // Real gateway sends usage in a terminal chunk; the client learns est->real
+    // inflation from it. [[usage]] marker text skips the every-5 auto-429 counter.
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[usage]] measure me', true))
+    const uLine = (r.body.split('\n').find(l => /"usage"/.test(l)) || '').replace(/^data:\s*/, '')
+    const u = json(uLine).usage || {}
+    const ok = typeof u.prompt_tokens === 'number' && typeof u.total_tokens === 'number' && u.total_tokens > u.prompt_tokens
+    check('T31 stream terminal usage chunk', r.status === 200 && ok, 'usage=' + JSON.stringify(u))
+  } },
+  { id: 'T32 [[toobig]] Remaining is near-full', tags: ['errors'], fn: async () => {
+    // The new client rule: too-big -> split ONLY when Remaining >= 95% of limit.
+    const big = 'x'.repeat(900000)
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[toobig]] ' + big, true))
+    const lim = Number((r.body.match(/Current limit:\s*(\d+)/) || [])[1])
+    const rem = Number((r.body.match(/Remaining:\s*(\d+)/) || [])[1])
+    check('T32 [[toobig]] Remaining is near-full', r.status === 429 && lim > 0 && rem >= lim * 0.95, 'rem=' + rem + '/' + lim)
+  } },
+  { id: 'T33 [[truncate]] finish_reason length', tags: ['chat'], fn: async () => {
+    // Token-cap cut-off: full stream, finish_reason 'length', usage still present.
+    const r = await req({ method: 'POST', path: '/api/chat', headers: H }, chat('[[truncate]] cut me off', true))
+    const lenFin = /"finish_reason":"length"/.test(r.body)
+    const doneOk = /\[DONE\]/.test(r.body)
+    const usageOk = /"usage"/.test(r.body)
+    check('T33 [[truncate]] finish_reason length', r.status === 200 && lenFin && doneOk && usageOk, 'len=' + lenFin + ' usage=' + usageOk)
+  } },
+  { id: 'T34 CORS: file:// (Origin null) preflight allowed', tags: ['gate'], fn: async () => {
+    // The double-click-index.html workflow: file:// pages send Origin: null.
+    const r = await req({ method: 'OPTIONS', path: '/api/health', headers: { origin: 'null', 'access-control-request-private-network': 'true' } })
+    const acao = r.headers['access-control-allow-origin']
+    const hdrs = String(r.headers['access-control-allow-headers'] || '')
+    const pna = r.headers['access-control-allow-private-network']
+    check('T34 CORS: file:// (Origin null) preflight allowed', r.status === 204 && acao === 'null' && /x-lcl-demo/.test(hdrs) && pna === 'true', 'acao=' + acao + ' pna=' + pna)
+  } },
+  { id: 'T35 CORS: internet origin gets no grant', tags: ['gate'], fn: async () => {
+    const r = await req({ method: 'OPTIONS', path: '/api/health', headers: { origin: 'https://evil.example' } })
+    check('T35 CORS: internet origin gets no grant', r.status === 204 && !r.headers['access-control-allow-origin'], 'acao=' + (r.headers['access-control-allow-origin'] || 'none'))
+  } },
+  { id: 'T36 endpoint: default + URL presets', tags: ['gate'], fn: async () => {
+    const r = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const ok = r.active && r.active.modelUrl === "https://api.ai.tech.gov.sg/platform/models/chat/completions" && r.active.embedUrl === "https://api.ai.tech.gov.sg/platform/models/embeddings" && r.isDefault === true &&
+      Array.isArray(r.presets) && r.presets.length === 2 && r.presets[1].name === 'NC3 (Dev)' && r.presets[1].modelUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions' && r.presets[1].embedUrl === 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings'
+    check('T36 endpoint: default + URL presets', ok, 'active=' + (r.active && r.active.modelUrl) + ' presets=' + (r.presets && r.presets.length))
+  } },
+  { id: 'T37 endpoint: set kepler URL, persists, reset clears', tags: ['gate'], fn: async () => {
+    const s1 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'NC3 Dev', modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: '' }))).body)
+    const g1 = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const s2 = json((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "https://api.ai.tech.gov.sg/platform/models/chat/completions" }))).body)
+    const g2 = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const ok = s1.ok === true && g1.active.modelUrl === "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion" && g1.active.name === 'NC3 Dev' && g1.active.embedUrl === '' && g1.isDefault === false && s2.ok === true && g2.isDefault === true
+    check('T37 endpoint: set kepler URL, persists, reset clears', ok, 'set=' + (g1.active && g1.active.modelUrl) + '/' + g1.isDefault + ' reset=' + g2.isDefault)
+  } },
+  { id: 'T38 endpoint: non-gov.sg / malformed URLs refused', tags: ['gate'], fn: async () => {
+    const bad = ['https://evil.example.com/v1', 'http://gov.sg.attacker.io/kepler', 'http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', 'https://api.ai.tech.gov.sg.evil.com/v1', 'ftp://dev-nc3.csa.gov.sg/x', 'https://u:p@dev-nc3.csa.gov.sg/x', 'dev-nc3.csa.gov.sg/kepler']
+    const rs = []
+    for (const u of bad) rs.push((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: u }))).status)
+    // good model URL + bad embed URL must also be refused
+    rs.push((await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: 'https://evil.example.com/emb' }))).status)
+    const g = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    check('T38 endpoint: non-gov.sg / malformed URLs refused', rs.every(s => s === 400) && g.isDefault === true, 'statuses=' + rs.join(','))
+  } },
+  { id: 'T39 endpoint without embeddings URL refuses embeds (clear error)', tags: ['gate', 'embed'], fn: async () => {
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'NC3 Dev', modelUrl: "https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion", embedUrl: '' }))
+    const e1 = await req({ method: 'POST', path: '/api/embed' }, JSON.stringify({ apiKey: 'not-demo-key', modelId: 'm', input: 'x' }))
+    const e2 = await req({ method: 'POST', path: '/api/embed-batch' }, JSON.stringify({ apiKey: 'not-demo-key', modelId: 'm', inputs: ['x'] }))
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: "https://api.ai.tech.gov.sg/platform/models/chat/completions" }))
+    const ok = e1.status === 400 && /embeddings URL/.test(e1.body) && e2.status === 400 && /embeddings URL/.test(e2.body)
+    check('T39 endpoint without embeddings URL refuses embeds (clear error)', ok, 'embed=' + e1.status + ' batch=' + e2.status)
+  } },
+  { id: 'T40 persist (/api/data) must NOT wipe the endpoint override', tags: ['gate'], fn: async () => {
+    // 7 Jul field log: switch to Kepler, then the client's debounced persist()
+    // replaced appData.settings (no endpoint key) and the next stream silently
+    // went back to PlatformAI. The endpoint is server-owned and must survive.
+    const cur = json((await req({ method: 'GET', path: '/api/data' })).body)
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'Kepler', modelUrl: 'https://nc3.gov.sg/kepler/v1/chat/completion', embedUrl: 'https://nc3.gov.sg/kepler/v1/embeddings' }))
+    const clientCopy = Object.assign({}, cur, { settings: Object.assign({}, cur.settings || {}) })
+    delete clientCopy.settings.endpoint   // the client never carries it
+    await req({ method: 'POST', path: '/api/data', headers: H }, JSON.stringify(clientCopy))
+    const g = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions' }))
+    const ok = g.active && g.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completion' && g.isDefault === false
+    check('T40 persist (/api/data) must NOT wipe the endpoint override', ok, 'after-persist=' + (g.active && g.active.modelUrl) + '/' + g.isDefault)
+  } },
+  { id: 'T41 client-sent endpoint cannot override the server endpoint', tags: ['gate'], fn: async () => {
+    // Gateway-switch revert bug: after /api/endpoint set the endpoint, the client's
+    // debounced /api/config + /api/data saves still carried the OLD endpoint and
+    // re-wrote it. endpoint is server-owned: only /api/endpoint may change it.
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ name: 'Kepler', modelUrl: 'https://nc3.gov.sg/kepler/v1/chat/completions', embedUrl: 'https://nc3.gov.sg/kepler/v1/embeddings' }))
+    // /api/config carrying a stale endpoint must be ignored.
+    await req({ method: 'POST', path: '/api/config', headers: H }, JSON.stringify({ endpoint: { name: 'Stale', modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions', embedUrl: '' }, maxTokens: 4096 }))
+    const afterCfg = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    // /api/data carrying a stale endpoint must be ignored.
+    const cur = json((await req({ method: 'GET', path: '/api/data' })).body)
+    const clientCopy = Object.assign({}, cur, { settings: Object.assign({}, cur.settings || {}, { endpoint: { name: 'Stale2', modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completion', embedUrl: '' } }) })
+    await req({ method: 'POST', path: '/api/data', headers: H }, JSON.stringify(clientCopy))
+    const afterData = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    // Switch to PlatformAI (clears override); a following config save must not resurrect it.
+    await req({ method: 'POST', path: '/api/endpoint', headers: H }, JSON.stringify({ modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions' }))
+    await req({ method: 'POST', path: '/api/config', headers: H }, JSON.stringify({ endpoint: { name: 'Zombie', modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions', embedUrl: '' } }))
+    const afterClear = json((await req({ method: 'GET', path: '/api/endpoint' })).body)
+    const ok = afterCfg.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completions' &&
+               afterData.active.modelUrl === 'https://nc3.gov.sg/kepler/v1/chat/completions' &&
+               afterClear.isDefault === true
+    check('T41 client-sent endpoint cannot override the server endpoint', ok, 'cfg=' + (afterCfg.active && afterCfg.active.modelUrl) + ' data=' + (afterData.active && afterData.active.modelUrl) + ' cleared=' + afterClear.isDefault)
+  } },
+  { id: 'T23 budget meter + decrement', tags: ['embed', 'rag'], fn: async () => {
+    const g = () => req({ method: 'GET', path: '/api/ratelimit', headers: H })
+    const r1 = json((await g()).body)
+    await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs: Array.from({ length: 12 }, (_, k) => 'budget chunk ' + k + ' lorem ipsum dolor sit amet consectetur') }))
+    const r2 = json((await g()).body)
+    check('T23 budget meter + decrement', r1.tokLimit === 200000 && typeof r2.tokRemaining === 'number' && r2.tokRemaining < r1.tokRemaining, 'rem ' + r1.tokRemaining + ' -> ' + r2.tokRemaining)
+  } },
+  { id: 'T24 embed hard cap', tags: ['embed'], fn: async () => {
+    const big = 'x'.repeat(60000)                        // ~15k tokens each
+    const inputs = Array.from({ length: 16 }, () => big)  // ~960k chars => ~240k tokens > 180k fallback cap
+    const r = await req({ method: 'POST', path: '/api/embed-batch', headers: H }, JSON.stringify({ apiKey: 'DEMOKEY', modelId: 'demo', inputs }))
+    const j = json(r.body)
+    check('T24 embed hard cap', r.status === 413 && /exceeds the token cap/i.test(j.error || ''), 'status=' + r.status)
   } },
 ]
 
