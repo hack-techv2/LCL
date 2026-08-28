@@ -45,7 +45,52 @@ const MODEL_TIERS = {
 
 const EMBED_TIERS = {
   cce: [ { label: 'Embedding models', ids: ['cohere.embed-english-v3','cohere.embed-multilingual-v3','gemini-embedding-001'] } ],
-  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0'] } ],
+  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0','gemini-embedding-2'] } ],
+}
+
+// ---------------------------------------------------------------------------
+// Model context windows (tokens) — powers query-aware full-document injection
+// (dynamic scaling, v0.67e item 2). Source: PlatformAI Models panel
+// (see MODEL_CONTEXT_REFERENCE.md). Keyed by prefix-stripped base model+version;
+// provider prefixes (azure./bedrock./vertex_ai./rsn./cce./rsn.vertex_ai.) do NOT
+// change the window. Unknown / "Custom…" ids fall back to CFG.DOC_FULLTEXT_FLOOR.
+// ---------------------------------------------------------------------------
+const MODEL_CONTEXT = {
+  'claude-3-5-sonnet': 200000, 'claude-haiku-4-5': 200000,
+  'claude-opus-4-1': 200000,  'claude-opus-4-5': 200000,
+  'claude-opus-4-6': 1000000, 'claude-opus-4-7': 1000000, 'claude-opus-4-8': 1000000,
+  'claude-sonnet-4-0': 1000000, 'claude-sonnet-4-5': 1000000, 'claude-sonnet-4-6': 1000000,
+  'gpt-4o': 128000, 'gpt-4o-mini': 128000, 'gpt-4o-pt': 128000,
+  'gpt-4.1': 1047576, 'gpt-4.1-mini': 1047576, 'gpt-4.1-nano': 1047576,
+  'o3': 200000, 'o3-mini': 200000, 'o4-mini': 200000,
+  'gpt-5': 272000, 'gpt-5-mini': 272000, 'gpt-5-nano': 272000,
+  'gpt-5.1': 272000, 'gpt-5.2': 272000, 'gpt-5.2-chat': 111616, 'gpt-5.3-codex': 272000,
+  'gpt-5.4': 1050000, 'gpt-5.4-pro': 1050000, 'gpt-5.5': 1050000,
+  'gemini-2.5-flash': 1048576, 'gemini-2.5-flash-pt': 1048576, 'gemini-2.5-flash-lite': 1048576,
+  'gemini-2.5-pro': 1048576, 'gemini-3-flash-preview': 1048576,
+  'gemini-3.1-flash-lite': 1000000, 'gemini-3.1-flash-lite-preview': 1048576,
+  'gemini-3.1-pro-preview': 1048576, 'gemini-3.5-flash': 1000000,
+}
+// Embed models: max input tokens per request (governs chunk/batch sizing, item 8).
+const EMBED_MAX_TOKENS = {
+  'cohere.embed-english-v3': 512, 'cohere.embed-multilingual-v3': 512,
+  'cohere.embed-v4:0': 128000, 'gemini-embedding-001': 2048, 'gemini-embedding-2': 8192,
+  'text-embedding-3-large': 8192, 'text-embedding-3-small': 8192, 'text-embedding-ada-002': 8192,
+}
+function normalizeModelId(id) {
+  return (id || '').trim().replace(/^(rsn\.vertex_ai\.|rsn\.|cce\.|azure\.|bedrock\.|vertex_ai\.)/, '')
+}
+// Chat-model context window in tokens, or null when unknown (caller uses floor).
+function getModelContext(id) { return MODEL_CONTEXT[normalizeModelId(id)] || null }
+// Embed-model max input tokens, or null when unknown.
+function getEmbedMaxTokens(id) { return EMBED_MAX_TOKENS[(id || '').trim()] || null }
+// clampTopK: constrain Top-K to CFG bounds (3-10, default 5) — v0.67e item 5.
+function clampTopK(v) {
+  const n = parseInt(v, 10)
+  const min = CFG.TOP_K_MIN || 3
+  const max = CFG.TOP_K_MAX || 10
+  const dft = CFG.DEFAULT_TOP_K || 5
+  return Math.max(min, Math.min(max, isNaN(n) ? dft : n))
 }
 
 function tierGroups(kind, tier) {
