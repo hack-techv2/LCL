@@ -6,6 +6,7 @@ function renderAll() {
   renderChatList(); renderTopbar(); renderMessages(); renderDocPanel(); updateDocsBtn()
   updateSendBtn()
   renderSkillPicker(); renderSkillChip()
+  if (typeof renderOcrChip === 'function') renderOcrChip()
 }
 
 function renderTopbar() {
@@ -17,9 +18,14 @@ function renderTopbar() {
 // embedding key is also configured. Used by setHealth() callers.
 function connectedLabel() {
   if (!creds) return 'Idle'
-  return (creds.embedApiKey && creds.embedModelId)
-    ? 'Chat + embed'
-    : 'Chat only'
+  // '+ OCR' shows when the engine is ON (ready). The live 'n/N' progress stays on
+  // the OCR chip only - the pill shows the steady on/off state, not the count.
+  const ocrOn = (typeof ocrState === 'function') && ocrState() === 'ready'
+  const embed = !!(creds.embedApiKey && creds.embedModelId)
+  let base = 'Chat'
+  if (ocrOn) base += ' + OCR'
+  if (embed) base += ' + embed'
+  return base + (typeof endpointBadge === 'function' ? endpointBadge() : '')
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +131,7 @@ function chatItemEl(c) {
 
   const text = mkEl('div', { class: 'chat-item-text', title: title }, [
     mkEl('div', { class: 'chat-title' }, mkEl('span', { class: 'chat-title-inner' }, title)),
-    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' * ' + fmtDate(c.updatedAt))
+    mkEl('div', { class: 'chat-meta' }, n + ' msg' + (n !== 1 ? 's' : '') + ' · ' + fmtDate(c.updatedAt))
   ])
 
   const inner = mkEl('div', { class: 'chat-item-inner' }, [
@@ -223,20 +229,74 @@ function renderMessages() {
     }
     el.innerHTML = ''
     el.appendChild(empty)
+    if (typeof renderAttachTray === 'function') renderAttachTray()
     return
   }
 
   const inner = document.createElement('div')
   inner.className = 'msgs-inner'
-  chat.messages.forEach(m => {
+  // Compaction affordance: while a summary call is in flight show the spinner; once
+  // compacted show a collapsed 'Earlier messages compacted' pill that hides the folded
+  // messages (click to expand them back in place - they are never deleted).
+  const _cp = chat.compaction
+  const _isCompacting = (typeof compacting !== 'undefined' && compacting && compacting === chat.id)   // spinner only in the chat being compacted
+  const _open = !!(typeof compactOpen !== 'undefined' && compactOpen[chat.id])
+  let _startRender = 0
+  if (_cp && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length && typeof compactionPillEl === 'function') {
+    inner.appendChild(compactionPillEl(chat, _open))
+    if (!_open) _startRender = _cp.uptoIndex
+  }
+  chat.messages.slice(_startRender).forEach(m => {
     const t = typeof m.content === 'string' ? m.content : m.content?.find?.(b => b.type === 'text')?.text || '[attachment]'
     const div = buildMsgEl(m.role === 'user' ? 'user' : 'ai', t, new Date(m.ts), m.sources, m.fileNames, m.errored)
+    // Persisted truncation/filter notes (incl. the Continue button) - previously
+    // these existed only on the live bubble and vanished on re-render/reload.
+    if (m.role !== 'user' && typeof attachMsgFlags === 'function') attachMsgFlags(div, m)
+    if (m.role !== 'user' && typeof enhanceCodeBlocks === 'function') enhanceCodeBlocks(div)
     inner.appendChild(div)
   })
+  // Transient compacting spinner goes at the BOTTOM of the thread (where the view
+  // scrolls to and where the reply will land), so it's visible even in a long chat -
+  // at the top it sat above the fold, off-screen (only the health pill showed it).
+  if (_isCompacting && typeof compactingIndicatorEl === 'function') inner.appendChild(compactingIndicatorEl())
   el.innerHTML = ''
   el.appendChild(inner)
   el.scrollTop = el.scrollHeight
   refreshTailActions()
+  if (typeof renderAttachTray === 'function') renderAttachTray()
+}
+
+// Collapsed 'Earlier messages compacted' pill. Click/Enter toggles whether the
+// folded (summarised) messages are shown in place. The messages are never
+// deleted - collapsing just hides them from the view; expanding renders them all.
+function compactionPillEl(chat, open) {
+  const n = (chat.compaction && chat.compaction.uptoIndex) || 0
+  const pill = mkEl('div', {
+    class: 'compact-pill' + (open ? ' open' : ''),
+    role: 'button', tabindex: '0',
+    title: open ? 'Hide the earlier messages again' : 'Show the earlier messages'
+  }, [
+    mkEl('span', { class: 'compact-caret', 'aria-hidden': 'true' }, open ? '\u25be' : '\u25b8'),
+    mkEl('span', { class: 'compact-title' }, 'Earlier messages compacted'),
+    mkEl('span', { class: 'compact-meta' }, open ? 'showing all \u2014 click to collapse' : (n + ' messages \u2014 click to expand'))
+  ])
+  const toggle = function () {
+    try { compactOpen[chat.id] = !compactOpen[chat.id] } catch (e) {}
+    if (typeof lclCrumb === 'function') lclCrumb('compact_toggle', { open: !open })
+    renderMessages()
+  }
+  pill.addEventListener('click', toggle)
+  pill.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
+  return pill
+}
+
+// Transient in-progress indicator shown while the compaction summary call runs.
+function compactingIndicatorEl() {
+  return mkEl('div', { class: 'compact-pill compacting' }, [
+    mkEl('span', { class: 'compact-spin', 'aria-hidden': 'true' }),
+    mkEl('span', { class: 'compact-title' }, 'Compacting earlier messages'),
+    mkEl('span', { class: 'compact-meta' }, 'summarising to keep this chat fast\u2026')
+  ])
 }
 
 function appendMsg(role, text, date, sources, fileNames, errored) {
@@ -383,7 +443,6 @@ function appendTyping() {
   return div
 }
 
-// ---------------------------------------------------------------------------
 // merged from 73-render-docpanel.js
 // ---------------------------------------------------------------------------
 
@@ -394,26 +453,104 @@ function appendTyping() {
 function renderDocPanel() {
   const el   = document.getElementById('dp-body')
   const chat = curChat()
+  const _pastCb = document.getElementById('dp-use-past-embeddings')
+  if (_pastCb && typeof chatUsesPastEmbeddings === 'function') _pastCb.checked = chatUsesPastEmbeddings(chat)
+  const _mode = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
+  document.querySelectorAll('#dp-search-mode .dp-seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === _mode))
+  // Always-visible caption: teaches the ACTIVE mode at the moment of choice
+  // (hover tooltips keep the long form; the old intro paragraph is gone).
+  const _capEl = document.getElementById('dp-mode-cap')
+  if (_capEl) {
+    const _past = (typeof chatUsesPastEmbeddings === 'function') && chatUsesPastEmbeddings(chat)
+    _capEl.textContent = (_mode === 'specific'
+      ? 'Always searches for relevant passages only — best for many or large files.'
+      : _mode === 'whole'
+        ? 'Sends full documents when they fit the window — best for summaries and reviews.'
+        : 'Finds the most relevant passages; small files are sent whole.') + (_past ? ' Includes other chats’ files.' : '')
+  }
   const docs = chat?.docs||[]
+  const _cnt = document.getElementById('dp-count')
+  if (_cnt) {
+    const _tot = docs.reduce((n, d) => n + (d.size || 0), 0)
+    _cnt.textContent = docs.length ? String(docs.length) : ''
+    _cnt.title = docs.length ? (docs.length + ' file' + (docs.length > 1 ? 's' : '') + ' · ' + fmtSz(_tot)) : ''
+  }
+  const _clr = document.getElementById('dp-clear')
+  if (_clr) _clr.classList.toggle('hidden', docs.length < 2)
   el.innerHTML = ''
   if (!docs.length) {
     el.append(mkEl('div', { class: 'dp-empty', html: 'No files attached.<br>Upload files to use as context for this chat.' }))
     return
   }
   for (const d of docs) {
-    const ext   = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
+    const ext    = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase()
     const status = d.status || 'pending'
-    const stCls = d.status === 'ready' ? 'ready' : d.status === 'error' ? 'error' : 'pending'
-    el.append(mkEl('div', { class: 'doc-card' }, [
+    const infKids = [
+      mkEl('div', { class: 'doc-name' }, [ mkEl('span', { class: 'doc-name-inner' }, d.name) ]),
+      mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' · ' + (d.chunks?.length || 0) + ' chunks'),
+    ]
+    if (status === 'embedding') {
+      // Live progress bar driven by doc.embedProgress (set from embedBatch SSE).
+      // No progress data yet (or 0 total) -> indeterminate sliding bar.
+      const p     = d.embedProgress || {}
+      const pace  = p.state === 'pacing'
+      const total = p.total || 0
+      const done  = p.done  || 0
+      const indet = !total
+      const pct   = total ? Math.round(done / total * 100) : 0
+      const fill  = mkEl('div', {
+        class: 'doc-prog-fill' + (pace ? ' pace' : '') + (indet ? ' indet' : ''),
+        style: indet ? null : 'width:' + pct + '%',
+      })
+      const lbl = pace
+        ? 'Rate limit — resuming in ' + (p.waitSec || 0) + 's'
+        : (total ? 'Embedding ' + pct + '%' : 'Embedding…')
+      infKids.push(mkEl('div', { class: 'doc-prog' }, [
+        mkEl('div', { class: 'doc-prog-track' }, [fill]),
+        mkEl('div', { class: 'doc-prog-meta' }, [
+          mkEl('span', { class: 'doc-prog-lbl' + (pace ? ' pace' : '') }, lbl),
+          mkEl('span', { class: 'doc-prog-cnt' }, total ? done + '/' + total : ''),
+        ]),
+      ]))
+    } else {
+      const stCls   = status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'pending'
+      const stKids  = [ mkEl('span', { class: 'doc-st ' + stCls }, status === 'pending' ? 'waiting to embed…' : status) ]
+      if (status === 'error') {
+        stKids.push(mkEl('button',
+          { class: 'doc-retry', title: d.error || 'Retry embedding', onclick: (e) => retryEmbed(d.id, e) },
+          [ mkEl('span', { class: 'doc-retry-ic' }, '↻'), 'Retry' ]))
+      }
+      infKids.push(mkEl('div', { class: 'doc-st-row' }, stKids))
+    }
+    el.append(mkEl('div', { class: 'doc-card doc-' + status }, [
       mkEl('div', { class: 'doc-ext' }, ext),
-      mkEl('div', { class: 'doc-inf' }, [
-        mkEl('div', { class: 'doc-name' }, d.name),
-        mkEl('div', { class: 'doc-sz' }, fmtSz(d.size) + ' * ' + (d.chunks?.length || 0) + ' chunks'),
-        mkEl('span', { class: 'doc-st ' + stCls }, status),
-      ]),
+      mkEl('div', { class: 'doc-inf' }, infKids),
       mkEl('button', { class: 'doc-del', title: 'Remove', onclick: (e) => removeDoc(d.id, e) }, 'x'),
     ]))
   }
+  setupDocNameScroll()
+}
+
+// Scroll an overflowing doc filename on hover (same ping-pong as chat titles).
+function setupDocNameScroll() {
+  document.querySelectorAll('#dp-body .doc-card').forEach(card => {
+    const box = card.querySelector('.doc-name')
+    const inner = card.querySelector('.doc-name-inner')
+    if (!box || !inner) return
+    card.onmouseenter = () => {
+      if (!box.clientWidth) return
+      const over = inner.scrollWidth - box.clientWidth
+      if (over > 4) {
+        inner.style.setProperty('--mq', '-' + over + 'px')
+        inner.style.setProperty('--mqd', Math.max(3, over / 22) + 's')
+        inner.classList.add('mq')
+      }
+    }
+    card.onmouseleave = () => {
+      inner.classList.remove('mq')
+      inner.style.removeProperty('--mq')
+    }
+  })
 }
 
 function updateDocsBtn() {
@@ -426,4 +563,211 @@ function updateDocsBtn() {
   btn.setAttribute('data-tip-bottom-left',
     hasEmbed ? 'Embedding configured — RAG ready' :
                'Embed API key not set — click to configure')
+}
+
+// =============================================================================
+// Budget snapshot (no UI). The sidebar token meter was removed: the upstream
+// gateway omits the x-ratelimit-* headers on streamed chats, so the meter could
+// only ever move on embeds and was blind to chat burn — misleading, and it cost
+// a constant 10s poll. The snapshot is still fetched ON DEMAND (before an embed,
+// and refreshed after one) to drive the embed "won't fit" gate (resolveEmbedCaps).
+// /api/ratelimit only reads the server's last-seen snapshot — zero API tokens.
+// =============================================================================
+async function refreshBudget() {
+  try {
+    const r = await httpGet('/api/ratelimit')
+    if (!r || !r.ok) return
+    const rl = await r.json()
+    if (rl && rl.tokLimit != null && typeof lastBudget !== 'undefined') {
+      lastBudget = { tokLimit: rl.tokLimit, tokRemaining: rl.tokRemaining, ts: Date.now() }
+    }
+  } catch {}
+}
+
+// =============================================================================
+// Code-block tools: Copy + Download on every fenced block, plus an auto-opening
+// sandboxed Preview for the renderable types (HTML / CSV / SVG / Markdown). The
+// toolbar sits at the BOTTOM of each block (so it stays reachable under long
+// code / previews). Enhancement is idempotent and runs on COMPLETE messages
+// only (renderMessages + stream completion), never mid-stream, and re-attaches
+// on every re-render because the message body is rebuilt from chat.messages.
+// =============================================================================
+const CODE_EXT = { html:'html', htm:'html', markdown:'md', md:'md', python:'py', py:'py', javascript:'js', js:'js', jsx:'jsx', typescript:'ts', ts:'ts', json:'json', csv:'csv', tsv:'tsv', sql:'sql', bash:'sh', sh:'sh', shell:'sh', css:'css', svg:'svg', xml:'xml', yaml:'yaml', yml:'yaml', text:'txt', plaintext:'txt' }
+const CODE_PREVIEWABLE = { html:1, csv:1, svg:1, md:1, markdown:1 }
+
+function codeBlockLang(codeEl) {
+  const m = String(codeEl.className || '').match(/language-([\w-]+)/i)
+  let lang = m ? m[1].toLowerCase() : ''
+  if (!lang) {
+    const head = String(codeEl.textContent || '').slice(0, 200).trim().toLowerCase()
+    if (head.indexOf('<!doctype html') === 0 || head.indexOf('<html') === 0) lang = 'html'
+    else if (head.indexOf('<svg') === 0) lang = 'svg'
+  }
+  return lang
+}
+function codeExtFor(lang) { return CODE_EXT[lang] || 'txt' }
+function codeMimeFor(lang) { return ({ html:'text/html', svg:'image/svg+xml', csv:'text/csv', md:'text/markdown', markdown:'text/markdown', json:'application/json', css:'text/css', js:'text/javascript', javascript:'text/javascript' })[lang] || 'text/plain' }
+function codeFilename(lang, src) {
+  let base = ''
+  if (lang === 'html') { const t = src.match(/<title[^>]*>([^<]+)<\/title>/i); if (t) base = t[1] }
+  if (!base) { const h = src.match(/^\s{0,3}#\s+(.+)$/m); if (h) base = h[1] }
+  base = String(base || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  return (base || 'lcl-snippet') + '.' + codeExtFor(lang)
+}
+function codeCopyText(text, done) {
+  const ok = () => { if (done) done() }
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(ok).catch(() => codeCopyFallback(text, ok)); return } } catch (e) {}
+  codeCopyFallback(text, ok)
+}
+function codeCopyFallback(text, ok) {
+  try { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); if (ok) ok() } catch (e) {}
+}
+function codeDownload(text, filename, mime) {
+  try {
+    const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = filename
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => { try { URL.revokeObjectURL(url) } catch (e) {} }, 2000)
+  } catch (e) { if (typeof toast === 'function') toast('Download failed: ' + ((e && e.message) || e), 'err') }
+}
+// Minimal RFC-4180-ish CSV parse (quoted fields + "" escapes) -> HTML table.
+function codeCsvRows(src) {
+  const rows = []; let row = [], field = '', q = false
+  const s = String(src).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (q) { if (ch === '"') { if (s[i + 1] === '"') { field += '"'; i++ } else q = false } else field += ch }
+    else if (ch === '"') q = true
+    else if (ch === ',') { row.push(field); field = '' }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else field += ch
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row) }
+  return rows.filter(r => !(r.length === 1 && r[0] === ''))
+}
+function codeCsvTable(src) {
+  const rows = codeCsvRows(src); if (!rows.length) return null
+  const tbl = mkEl('table', { class: 'code-csv' })
+  rows.forEach((r, i) => {
+    const tr = mkEl('tr')
+    r.forEach(c => tr.appendChild(mkEl(i === 0 ? 'th' : 'td', {}, c)))
+    tbl.appendChild(tr)
+  })
+  return tbl
+}
+// Sandboxed HTML preview. allow-scripts only (opaque origin - cannot touch LCL,
+// its key, storage, or the proxy). Injected CSP allows remote images/fonts/
+// scripts + inline, but blocks connect-src / form-action so the page can't
+// beacon or POST data out. No allow-same-origin / popups / top-navigation / modals.
+// Build the CSP-injected document string shared by the inline frame and the
+// full-browser tab, so both run under identical restrictions.
+function codeHtmlDoc(src) {
+  const csp = "default-src 'none'; img-src * data: blob:; media-src * data: blob:; font-src * data:; " +
+    "style-src * 'unsafe-inline' data:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; " +
+    "connect-src 'none'; form-action 'none'; frame-src 'none'; base-uri 'none'"
+  const meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
+  let doc = String(src)
+  if (/<head[^>]*>/i.test(doc)) doc = doc.replace(/<head[^>]*>/i, m => m + meta)
+  else if (/<html[^>]*>/i.test(doc)) doc = doc.replace(/<html[^>]*>/i, m => m + '<head>' + meta + '</head>')
+  else doc = meta + doc
+  return doc
+}
+function codeHtmlFrame(src) {
+  const f = document.createElement('iframe')
+  f.className = 'code-preview-frame'
+  f.setAttribute('sandbox', 'allow-scripts')
+  f.setAttribute('referrerpolicy', 'no-referrer')
+  f.setAttribute('loading', 'lazy')
+  f.srcdoc = codeHtmlDoc(src)
+  return f
+}
+function codeAttrEscape(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+// Open the HTML in a real browser tab, at full browser size. The tab loads a
+// bare shell (no script, nothing sensitive) that hosts the SAME sandboxed
+// iframe (allow-scripts + CSP) as the inline preview - so the page gets the
+// whole window but still can't read LCL's key/storage or reach the proxy.
+function codeOpenInTab(src) {
+  try {
+    const inner = codeAttrEscape(codeHtmlDoc(src))
+    const shell = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>LCL preview</title>' +
+      '<style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100vw;height:100vh;display:block}</style></head>' +
+      '<body><iframe sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc="' + inner + '"></iframe></body></html>'
+    const url = URL.createObjectURL(new Blob([shell], { type: 'text/html' }))
+    const w = window.open(url, '_blank')
+    setTimeout(() => { try { URL.revokeObjectURL(url) } catch (e) {} }, 60000)
+    if (!w && typeof toast === 'function') toast('Allow pop-ups to open the preview in a new tab')
+  } catch (e) {}
+}
+function codeSvgPreview(src) {
+  const img = document.createElement('img')   // data-URL <img> never executes embedded SVG scripts
+  img.className = 'code-preview-svg'
+  img.alt = 'SVG preview'
+  try { img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(String(src)) } catch (e) {}
+  return img
+}
+function codePreviewNode(lang, src) {
+  try {
+    if (lang === 'html') return codeHtmlFrame(src)
+    if (lang === 'svg') return codeSvgPreview(src)
+    if (lang === 'csv') { const t = codeCsvTable(src); return t ? mkEl('div', { class: 'code-preview-scroll' }, t) : null }
+    if (lang === 'md' || lang === 'markdown') return mkEl('div', { class: 'code-preview-md', html: fmt(src) })
+  } catch (e) {}
+  return null
+}
+// Attach the bottom toolbar (+ auto-open preview) to every <pre> code block in a
+// COMPLETE message element. Idempotent: skips a <pre> already inside a .code-wrap.
+function enhanceCodeBlocks(scope) {
+  if (!scope || typeof mkEl !== 'function') return
+  const body = (scope.classList && scope.classList.contains('msg-body')) ? scope : (scope.querySelector ? scope.querySelector('.msg-body') : null)
+  if (!body) return
+  const pres = body.querySelectorAll('pre')
+  for (let i = 0; i < pres.length; i++) {
+    const pre = pres[i]
+    if (pre.parentElement && pre.parentElement.classList.contains('code-wrap')) continue
+    const codeEl = pre.querySelector('code') || pre
+    const src = codeEl.textContent || ''
+    if (!src.trim()) continue
+    const lang = codeBlockLang(codeEl)
+    const fname = codeFilename(lang, src)
+    const wrap = mkEl('div', { class: 'code-wrap' })
+    pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre)
+
+    const canPreview = !!CODE_PREVIEWABLE[lang]
+    let previewHost = null
+    if (canPreview) {
+      const node = codePreviewNode(lang, src)
+      if (node) { previewHost = mkEl('div', { class: 'code-preview' }, node); wrap.appendChild(previewHost) }
+    }
+
+    const bar = mkEl('div', { class: 'code-bar' })
+    if (previewHost && lang === 'html') bar.appendChild(mkEl('span', { class: 'code-sandbox' }, 'isolated sandbox \u00b7 scripts + remote assets on'))
+    else if (previewHost) bar.appendChild(mkEl('span', { class: 'code-sandbox' }, 'preview'))
+    const btns = mkEl('span', { class: 'code-btns' })
+    const copyLabel = lang === 'html' ? 'Copy HTML' : 'Copy'
+    const copyBtn = mkEl('button', { class: 'code-btn', type: 'button' }, copyLabel)
+    copyBtn.addEventListener('click', () => codeCopyText(src, () => { copyBtn.textContent = 'Copied'; setTimeout(() => { copyBtn.textContent = copyLabel }, 1500) }))
+    const dlBtn = mkEl('button', { class: 'code-btn', type: 'button', title: 'Download ' + fname }, 'Download ' + fname)
+    dlBtn.addEventListener('click', () => codeDownload(src, fname, codeMimeFor(lang)))
+    btns.appendChild(copyBtn); btns.appendChild(dlBtn)
+    if (previewHost) {
+      // Collapse the raw source by default once a preview exists - the reader
+      // mostly wants the rendered result; a toggle reveals the code on demand.
+      const srcLabel = (lang === 'html') ? 'HTML' : 'source'
+      pre.classList.add('code-src-tall')   // shown source matches the preview height
+      pre.style.display = 'none'
+      const srcTog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Show ' + srcLabel)
+      srcTog.addEventListener('click', () => { const hidden = pre.style.display === 'none'; pre.style.display = hidden ? '' : 'none'; srcTog.textContent = (hidden ? 'Hide ' : 'Show ') + srcLabel })
+      const tog = mkEl('button', { class: 'code-btn', type: 'button' }, 'Hide preview')
+      tog.addEventListener('click', () => { const open = previewHost.style.display !== 'none'; previewHost.style.display = open ? 'none' : ''; tog.textContent = open ? 'Show preview' : 'Hide preview' })
+      btns.appendChild(srcTog); btns.appendChild(tog)
+      if (lang === 'html') {
+        const tabBtn = mkEl('button', { class: 'code-btn code-open-tab', type: 'button', title: 'Open the preview in a new browser tab (still sandboxed)' }, 'Open in browser')
+        tabBtn.addEventListener('click', () => codeOpenInTab(src))
+        btns.appendChild(tabBtn)
+      }
+    }
+    bar.appendChild(btns)
+    wrap.appendChild(bar)
+  }
 }
