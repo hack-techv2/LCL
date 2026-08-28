@@ -51,13 +51,53 @@ function restartBanner() {
   console.log('')
 }
 const BIND_HOST = '127.0.0.1'   // localhost only - do not expose on LAN
-const API_HOST = 'api.ai.tech.gov.sg'
+const API_HOST = 'api.ai.tech.gov.sg'   // default upstream (PlatformAI)
+// --- Switchable upstream (Settings -> System -> Developer) ------------------
+// The active endpoint persists in appData.settings.endpoint {name, modelUrl,
+// embedUrl, model}. Full URLs so the path can differ per gateway (kepler:
+// https://dev-nc3.csa.gov.sg/kepler/v1/...). HTTPS ONLY (per CL). embedUrl blank = file
+// embedding/RAG disabled at that endpoint. model blank = keep the user's model
+// (kepler proxies PlatformAI, so the same model ids work).
+// SECURITY: URL hostnames are validated against *.gov.sg so this local proxy
+// can never be steered to an arbitrary internet host (the repo is public).
+const ENDPOINT_PRESETS = [
+  { name: 'PlatformAI', modelUrl: 'https://api.ai.tech.gov.sg/platform/models/chat/completions', embedUrl: 'https://api.ai.tech.gov.sg/platform/models/embeddings', model: '' },
+  // Second preset = the second USER gateway. Currently the kepler DEV box so
+  // stable users can test (CL, 7 Jul); swap to prod Kepler (nc3.gov.sg) when live.
+  { name: 'NC3 (Dev)',  modelUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/chat/completions', embedUrl: 'https://dev-nc3.csa.gov.sg/kepler/v1/embeddings', model: '' }
+]
+function validEndpointUrl(u, allowEmpty) {
+  if (u == null || String(u).trim() === '') return !!allowEmpty
+  if (typeof u !== 'string' || u.length > 500) return false
+  let p
+  try { p = new URL(u.trim()) } catch (e) { return false }
+  if (p.protocol !== 'https:') return false   // https only (per CL, 7 Jul)
+  if (p.username || p.password) return false
+  return /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+gov\.sg$/.test(p.hostname.toLowerCase())
+}
+function activeEndpoint() {
+  let e = (typeof appData !== 'undefined' && appData && appData.settings && appData.settings.endpoint) || null
+  // Migrate the first-cut {host} shape to the URL shape.
+  if (e && e.host && !e.modelUrl) e = { name: e.name || e.host, modelUrl: 'https://' + e.host + '/platform/models/chat/completions', embedUrl: 'https://' + e.host + '/platform/models/embeddings' }
+  if (e && validEndpointUrl(e.modelUrl, false) && validEndpointUrl(e.embedUrl, true)) {
+    return { name: String(e.name || 'Custom').slice(0, 40), modelUrl: e.modelUrl.trim(), embedUrl: String(e.embedUrl || '').trim(), model: String(e.model || '').slice(0, 80) }
+  }
+  return ENDPOINT_PRESETS[0]
+}
+function upstreamTarget(kind) {   // kind: 'chat' (default) | 'embed'
+  const a = activeEndpoint()
+  const u = new URL(kind === 'embed' ? (a.embedUrl || a.modelUrl) : a.modelUrl)
+  return { protocol: u.protocol, hostname: u.hostname, port: u.port ? parseInt(u.port, 10) : 443, path: u.pathname + (u.search || '') }
+}
+// The EFFECTIVE upstream URL for debug logs — always the active endpoint (kepler
+// included), never the legacy pathName constants the handlers pass around.
+function targetUrlStr(t) { return t.protocol + '//' + t.hostname + (t.port === 443 ? '' : ':' + t.port) + t.path }
 const CHAT_PATH = '/platform/models/chat/completions'
 const EMBED_PATH = '/platform/models/embeddings'
 const DEMOKEY = 'DEMOKEY'   // #demo sentinel key — see the Demo API block below
 
 // --- Auto-update: checks GitHub releases for this repo ---
-const APP_VERSION = '0.67d'
+const APP_VERSION = '0.67e'
 const UPDATE_REPO = 'hack-techv2/LCL'
 const UPDATE_FILES = ['index.html', 'server.txt']
 let _updateCache = { ts: 0, data: null }
@@ -84,6 +124,102 @@ function resolveLCLDir() {
 }
 
 const LCL_DIR = resolveLCLDir()
+
+// ---------------------------------------------------------------------------
+// Alpha file logging. When the user is on the 'alpha' update channel, mirror
+// ALL server console output to LCL/debug_logs.txt so testers can capture a full
+// session and send it back for diagnosis. Stable users write nothing and the
+// console output is unchanged in every mode. Secrets and payloads are already
+// masked / truncated at the call sites (maskSecret / previewText), so the file
+// inherits that redaction — we never write more than the console already shows.
+// Gated dynamically (readChannel is re-checked per line) so toggling the channel
+// in Settings starts/stops file logging without a restart.
+// ---------------------------------------------------------------------------
+const util = require('util')
+const DEBUG_LOG_FILE   = path.join(LCL_DIR, 'debug_logs.txt')
+const DEBUG_LOG_BACKUP = path.join(LCL_DIR, 'debug_logs.1.txt')
+const DEBUG_LOG_MAX    = 5 * 1024 * 1024   // rotate at ~5 MB, keep one .1 backup
+let _dbgStream = null
+let _dbgBytes  = 0
+function fileLogActive() {
+  // readChannel() reads appData, defined later; guard against any early-boot or
+  // load error and default to OFF so logging can never crash the server.
+  try { return typeof readChannel === 'function' && readChannel() === 'alpha' } catch { return false }
+}
+const _stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '')
+function dbgRotateIfNeeded() {
+  if (_dbgBytes < DEBUG_LOG_MAX) return
+  try { if (_dbgStream) { _dbgStream.end(); _dbgStream = null } } catch {}
+  try { fs.renameSync(DEBUG_LOG_FILE, DEBUG_LOG_BACKUP) } catch {}
+  _dbgBytes = 0
+}
+// Local-timezone log timestamp (ISO 8601 with the machine's UTC offset), e.g.
+// 2026-07-02T08:29:36.477+08:00 — so console + debug_logs.txt read in the user's
+// wall clock, not UTC. The gateway's own stamps (reset_at) stay as sent.
+function _logStamp(d) {
+  d = d || new Date()
+  const p = (n, w) => String(n).padStart(w || 2, '0')
+  const off = -d.getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const oh = p(Math.floor(Math.abs(off) / 60)), om = p(Math.abs(off) % 60)
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+         p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' +
+         p(d.getMilliseconds(), 3) + sign + oh + ':' + om
+}
+// Central secret scrubber for ALL log output. Upstream error envelopes echo secrets
+// back — notably a 429 throttling body carries the FULL api_key in clear — and these
+// lines are logged verbatim AND persisted to debug_logs.txt (which testers share). By
+// scrubbing HERE, at the shared sink, no key/token reaches the terminal or the file no
+// matter which call site logged it — no per-call-site discipline required.
+function sanitizeSecrets(s) {
+  return String(s == null ? '' : s)
+    .replace(/(api[_-]?key["'\s:=]*)[A-Za-z0-9._\-]{8,}/gi, '$1[redacted]')
+    .replace(/\b(sk-[A-Za-z0-9_\-]{2,4})[A-Za-z0-9_\-]{6,}/g, '$1…[redacted]')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._\-]{6,}/gi, '$1[redacted]')
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, '[redacted]')
+}
+// Format one console arg to a string the same way the file sink does, then scrub — so
+// the terminal and debug_logs.txt read identically and both are secret-free.
+function _sanitizeParts(args) {
+  return args.map(a => sanitizeSecrets(typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity })))
+}
+function dbgWrite(level, args, ts) {
+  if (!fileLogActive()) return
+  try {
+    dbgRotateIfNeeded()
+    if (!_dbgStream) {
+      _dbgStream = fs.createWriteStream(DEBUG_LOG_FILE, { flags: 'a' })
+      try { _dbgBytes = fs.existsSync(DEBUG_LOG_FILE) ? fs.statSync(DEBUG_LOG_FILE).size : 0 } catch { _dbgBytes = 0 }
+    }
+    const body = args.map(a => (typeof a === 'string' ? a : util.inspect(a, { depth: 4, breakLength: Infinity }))).join(' ')
+    const line = (ts || _logStamp()) + ' [' + level + '] ' + sanitizeSecrets(_stripAnsi(body)) + '\n'
+    _dbgStream.write(line)
+    _dbgBytes += Buffer.byteLength(line)
+  } catch {}
+}
+// Tee console -> file. Originals are preserved; a log call must never throw.
+// An in-process restart (REPL "reloading server.txt") re-evaluates this module in
+// the SAME process, where console.log is already our wrapper. Binding it again
+// would wrap the wrapper: every reload adds another '<iso> [log]' prefix, re-runs
+// _sanitizeParts per layer, writes the line to debug_logs.txt once per layer, and
+// multiplies the bytes pushed to the Windows console - which is what makes the
+// stdout stall (QuickEdit/selection) bite so easily. Capture the TRUE originals
+// once per process and reuse them on every reload.
+const _consoleOrig = globalThis.__lclConsoleOrig || (globalThis.__lclConsoleOrig = {
+  log:   console.log.bind(console),
+  warn:  console.warn.bind(console),
+  error: console.error.bind(console)
+})
+const _origConsoleLog   = _consoleOrig.log
+const _origConsoleWarn  = _consoleOrig.warn
+const _origConsoleError = _consoleOrig.error
+// Console lines carry the SAME '<iso> [level]' prefix as the file sink (one shared
+// timestamp per call) so the terminal and debug_logs.txt read identically.
+// Scrub secrets ONCE per call, then feed the SAME cleaned parts to both the terminal
+// and the file sink, so neither can carry a key/token (e.g. a 429 body's api_key).
+console.log   = (...a) => { const ts = _logStamp(); const p = _sanitizeParts(a); _origConsoleLog(ts + ' [log]', ...p);     dbgWrite('log',  p, ts) }
+console.warn  = (...a) => { const ts = _logStamp(); const p = _sanitizeParts(a); _origConsoleWarn(ts + ' [warn]', ...p);   dbgWrite('warn', p, ts) }
+console.error = (...a) => { const ts = _logStamp(); const p = _sanitizeParts(a); _origConsoleError(ts + ' [error]', ...p); dbgWrite('error', p, ts) }
 
 // ---------------------------------------------------------------------------
 // Update channel TLS. A TLS-intercepting proxy (Zscaler) re-signs the GitHub
@@ -206,6 +342,26 @@ function loadEmbedCache() {
   }
 }
 
+// Atomic write with OneDrive/antivirus resilience. Write a .tmp then rename over
+// the target; OneDrive-synced (and AV-scanned) folders transiently lock the file
+// mid-rename (EPERM/EBUSY/EACCES), so retry a few times, then fall back to a
+// direct write so a synced-folder lock never silently loses the save.
+function atomicWrite(dest, data) {
+  const tmp = dest + '.tmp'
+  fs.writeFileSync(tmp, data)
+  let lastErr
+  for (let i = 0; i < 5; i++) {
+    try { fs.renameSync(tmp, dest); return }
+    catch (e) {
+      lastErr = e
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY' && e.code !== 'EACCES') break
+      try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 80) } catch {}
+    }
+  }
+  try { fs.writeFileSync(dest, data); try { fs.unlinkSync(tmp) } catch {} ; return }
+  catch (e2) { try { fs.unlinkSync(tmp) } catch {} ; throw lastErr || e2 }
+}
+
 function saveEmbedCache() {
   try {
     const entries = Object.entries(embedCache)
@@ -213,7 +369,7 @@ function saveEmbedCache() {
       const buf = Buffer.allocUnsafe(8)
       buf.writeUInt32BE(MAGIC, 0)
       buf.writeUInt32LE(0, 4)
-      const et = EMBED_CACHE_FILE + '.tmp'; fs.writeFileSync(et, buf); fs.renameSync(et, EMBED_CACHE_FILE)
+      atomicWrite(EMBED_CACHE_FILE, buf)
       return
     }
     let totalSize = 8
@@ -233,7 +389,7 @@ function saveEmbedCache() {
         buf.writeUInt16LE(encodeFloat16(vec[j]), offset); offset += 2
       }
     }
-    const et = EMBED_CACHE_FILE + '.tmp'; fs.writeFileSync(et, buf); fs.renameSync(et, EMBED_CACHE_FILE)
+    atomicWrite(EMBED_CACHE_FILE, buf)
   } catch (e) {
     elog('cache save error: ' + e.message)
   }
@@ -298,9 +454,7 @@ function loadData() {
 
 function saveData(data) {
   try {
-    const tmp = DATA_FILE + '.tmp'
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
-    fs.renameSync(tmp, DATA_FILE)
+    atomicWrite(DATA_FILE, JSON.stringify(data, null, 2))
   } catch (e) {
     log.error('[saveData] error:', e.message)
   }
@@ -355,9 +509,50 @@ function maskSecret(v) {
   return v.slice(0, 4) + '...' + v.slice(-4)
 }
 
-function previewText(v, max = 4000) {
-  if (!v) return ''
-  return v.length > max ? v.slice(0, max) + ' ...[truncated]' : v
+// Sensitive-content logger for request/response payloads. Both the live console
+// AND the alpha file sink (debug_logs.txt) receive ONLY a byte count + short
+// sha256 — never the content — so prompts/responses (incl. any RESTRICTED
+// material) are neither shown on the terminal nor persisted to disk.
+function logSensitive(label, raw) {
+  if (LOG_LEVEL < LOG_LEVELS.debug) return
+  const s = String(raw == null ? '' : raw)
+  const digest = crypto.createHash('sha256').update(s).digest('hex').slice(0, 12)
+  // Redact EVERYWHERE — the live console AND the file sink get only a byte count +
+  // short sha256, never the content, so prompts/responses (incl. RESTRICTED
+  // material) are not exposed on the terminal or persisted to disk.
+  const redacted = label + ' [redacted ' + Buffer.byteLength(s) + ' bytes, sha256:' + digest + ']'
+  _origConsoleLog(redacted)
+  dbgWrite('log', [redacted])
+}
+// Error/diagnostic bodies (HTTP != 200) are API error envelopes, not user
+// content, so we log them in CLEAR (truncated) to aid debugging — e.g. a 429's
+// limit type + any reset / Retry-After hint. Never used for 200 bodies.
+function previewErr(raw) {
+  const s = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim()
+  return s.length > 1500 ? s.slice(0, 1500) + '…(' + Buffer.byteLength(s) + ' bytes)' : s
+}
+
+// Detect a non-200 that came from a forward/interception proxy (Squid/Zscaler)
+// rather than the upstream app: an empty body whose only routing header is a
+// proxy 'via', with none of the app's own markers (json content-type,
+// x-models-call-id, x-ratelimit-*). Returns a one-line diagnostic for the log,
+// or '' when the response looks like a genuine app reply. This turns the
+// otherwise-blank "non-200 body (403) =" line into an actionable message.
+function proxyBlockNote(statusCode, headers, body) {
+  try {
+    const h = headers || {}
+    const blen = Buffer.byteLength(String(body == null ? '' : body))
+    const via = h['via'] || h['Via']
+    const appMarker = !!(h['x-models-call-id'] ||
+      /json/i.test(h['content-type'] || '') ||
+      Object.keys(h).some(k => /^x-ratelimit/i.test(k)))
+    if (via && /squid|zscaler|proxy/i.test(String(via)) && blen === 0 && !appMarker) {
+      return 'NOTE: HTTP ' + statusCode + ' with an EMPTY body and only a forward-proxy header (via: ' +
+        via + ') - blocked at the network egress proxy, not by the upstream app. ' +
+        'The destination host is likely not allowlisted for egress. This is a network/proxy issue.'
+    }
+  } catch {}
+  return ''
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +598,12 @@ function getLastRateLimit(apiKey) {
   return rateLimitSnapshots.get(snapshotKey(apiKey)) || null
 }
 function setLastRateLimit(apiKey, rl) {
-  if (rl) rateLimitSnapshots.set(snapshotKey(apiKey), { ...rl, ts: Date.now() })
+  if (rl) {
+    rateLimitSnapshots.set(snapshotKey(apiKey), { ...rl, ts: Date.now() })
+    log.debug('[rl] snapshot SET key=' + snapshotKey(apiKey) +
+              ' tok=' + rl.tokRemaining + '/' + rl.tokLimit +
+              ' req=' + rl.reqRemaining + '/' + rl.reqLimit)
+  }
 }
 
 // Keep-alive pool so we don't pay a fresh TLS handshake on every call.
@@ -411,11 +611,13 @@ function setLastRateLimit(apiKey, rl) {
 const upstreamAgent = new https.Agent({
   rejectUnauthorized: false,   // handshake proceeds; trust is verified in tlsGateFails (allows Zscaler interception)
   keepAlive: true,
-  keepAliveMsecs: 30_000,
+  keepAliveMsecs: 10_000,   // retire idle sockets sooner so we don't reuse one the
+                           // gateway/Zscaler already closed (was 30s -> frequent ECONNRESET)
   maxSockets: 8,
   maxFreeSockets: 4,
   timeout: 60_000
 })
+// (http:// upstreams were briefly supported on 7 Jul, then removed same day: CL confirmed kepler is https.)
 
 // ---------------------------------------------------------------------------
 // Change 2: TLS/CERT RETRY FIX — destroy socket on cert/TLS errors
@@ -423,10 +625,12 @@ const upstreamAgent = new https.Agent({
 function callGccJsonOnce(pathName, apiKey, payload, cb) {
   const bodyStr = JSON.stringify(payload)
 
+  const _tgt = upstreamTarget(/embed/i.test(pathName) ? 'embed' : 'chat')   // full-URL endpoint: scheme+host+path
   const opts = {
-    hostname: API_HOST,
-    port: 443,
-    path: pathName,
+    protocol: _tgt.protocol,
+    hostname: _tgt.hostname,
+    port: _tgt.port,
+    path: _tgt.path,
     method: 'POST',
     agent: upstreamAgent,
     headers: {
@@ -442,10 +646,10 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   log.debug('')
   log.debug('========== OUTBOUND REQUEST ==========')
   log.debug('[api] time       =', new Date().toISOString())
-  log.debug('[api] hostname   =', opts.hostname)
-  log.debug('[api] path       =', opts.path)
+  log.debug('[api] url        =', targetUrlStr(_tgt))
   log.debug('[api] auth       =', maskSecret(apiKey))
-  dlog('[api] payload    =', previewText(bodyStr))
+  logSensitive('[api] payload    =', bodyStr)
+  log.debug('[api] payload    ~' + Math.ceil(Buffer.byteLength(bodyStr) / 4) + ' tokens (est)')
   log.debug('======================================')
   log.debug('')
 
@@ -469,25 +673,39 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
       return done(Object.assign(new Error('TLS certificate not trusted: ' + ae), { code: ae }))
     }
     let body = ''
+    let chunkCount = 0
 
     log.debug('[api] response status  =', upstreamRes.statusCode)
     dlog('[api] response headers =', upstreamRes.headers)
 
     upstreamRes.on('data', chunk => {
       body += chunk
-      log.debug('[api] chunk bytes =', Buffer.byteLength(chunk))
+      chunkCount++
+      // Per-chunk byte lines are extremely noisy (dozens per embed batch) and
+      // used to drown the log. Off by default; set LCL_LOG_CHUNKS=1 to restore.
+      if (process.env.LCL_LOG_CHUNKS) log.debug('[api] chunk bytes =', Buffer.byteLength(chunk))
     })
 
     upstreamRes.on('end', () => {
-      dlog('[api] response body length =', body.length)
-      dlog('[api] response body =', previewText(body))
+      dlog('[api] response body   | ' + chunkCount + ' chunks | ' + body.length + ' bytes')
+      logSensitive('[api] response body =', body)
+      if (upstreamRes.statusCode !== 200) {
+        log.warn('[api] error body (' + upstreamRes.statusCode + ', ' + Buffer.byteLength(body) + ' bytes) = ' + (previewErr(body) || '(empty)'))
+        const _pnote = proxyBlockNote(upstreamRes.statusCode, upstreamRes.headers, body)
+        if (_pnote) log.warn('[api] ' + _pnote)
+      }
+      const rlTag = '[api ' + (/embed/i.test(pathName) ? 'embed' : 'chat') + ']'
+      const rlHdrKeys = Object.keys(upstreamRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
+      log.debug(rlTag + ' x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
       const rl = extractRateLimit(upstreamRes.headers)
       if (rl) {
         // One-line summary so console scans cleanly without dumping full headers.
         const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
-        log.debug('[api] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
+        log.debug(rlTag + ' rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
                     '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
         setLastRateLimit(apiKey, rl)
+      } else {
+        log.debug(rlTag + ' rate-limit ABSENT')
       }
       done(null, {
         statusCode: upstreamRes.statusCode || 500,
@@ -519,11 +737,27 @@ function callGccJsonOnce(pathName, apiKey, payload, cb) {
   }, 120_000)
 
   req.on('socket', socket => {
+    // Pooled keep-alive sockets are reused across requests; wire each socket's
+    // listeners exactly ONCE so reuse doesn't pile up secureConnect/error
+    // handlers (this was the source of the MaxListenersExceededWarning seen when
+    // embedding many files at once). secureConnect doesn't re-fire on a reused
+    // socket anyway, so there's nothing to miss.
+    if (socket._lclWired) return
+    socket._lclWired = true
     log.debug('[api] socket assigned')
     socket.on('secureConnect', () => {
-      log.debug('[api] TLS connected')
-      log.debug('[api] authorized =', socket.authorized)
-      log.debug('[api] authorizationError =', socket.authorizationError || '(none)')
+      // authorized:false with an unknown-issuer error is EXPECTED behind a
+      // Zscaler TLS-intercepting proxy \u2014 trust is verified in tlsGateFails().
+      // Label it clearly so the log doesn't read like a failure.
+      const ae = String(socket.authorizationError || '')
+      if (socket.authorized) {
+        log.debug('[api] TLS connected (chain trusted)')
+      } else if (_ISSUER_ERRS.test(ae) && chainIsZscaler(socket)) {
+        log.debug('[api] TLS connected (Zscaler-intercepted, trusted)')
+      } else {
+        log.debug('[api] TLS connected; authorized =', socket.authorized,
+                  '; authorizationError =', ae || '(none)')
+      }
     })
     // Change 2: destroy socket on cert/TLS errors to force fresh connection on retry
     socket.on('error', err => {
@@ -569,7 +803,8 @@ function callGccJson(pathName, apiKey, payload, cb, opts = {}) {
         if (err) return true
         if (!upstream) return true
         const s = upstream.statusCode
-        if (s === 502 || s === 503 || s === 504 || s === 429) return true
+        if (s === 429) return !opts.no429Retry   // embed batch owns 429s (a window wait beats 150ms retries)
+        if (s === 502 || s === 503 || s === 504) return true
         const b = upstream.body
         if (!b || !b.trim()) return true
         // Non-JSON response from what should be a JSON endpoint.
@@ -599,9 +834,97 @@ function handleGetConfig(req, res) {
 function handleSaveConfig(req, res) {
   readBody(req, (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
+    // The endpoint override is SERVER-owned — only /api/endpoint may set or clear
+    // it. A gateway switch clears/sets it via /api/endpoint, then the client fires
+    // a debounced settings save whose D.settings still carries the OLD endpoint;
+    // if we merged that, the switch would be reverted milliseconds later. So never
+    // let /api/config change the endpoint.
+    if (body && Object.prototype.hasOwnProperty.call(body, 'endpoint')) delete body.endpoint
     appData.settings = Object.assign(appData.settings || {}, body)
     saveData(appData)
     json(res, { ok: true })
+  })
+}
+
+// --- Switchable upstream endpoint (Settings -> System -> Developer) ---------
+function handleGetEndpoint(req, res) {
+  const a = activeEndpoint()
+  json(res, { active: a, isDefault: a.modelUrl === ENDPOINT_PRESETS[0].modelUrl, presets: ENDPOINT_PRESETS })
+}
+
+function handleSetEndpoint(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+    const modelUrl = String((body && body.modelUrl) || '').trim()
+    const embedUrl = String((body && body.embedUrl) || '').trim()
+    const model    = String((body && body.model) || '').trim().slice(0, 80)
+    if (!modelUrl || modelUrl === ENDPOINT_PRESETS[0].modelUrl) {   // back to default = clear override
+      if (appData.settings) delete appData.settings.endpoint
+      saveData(appData)
+      console.log('  API endpoint           ->  ' + ENDPOINT_PRESETS[0].modelUrl + ' (default)')
+      return json(res, { ok: true, active: activeEndpoint() })
+    }
+    if (!validEndpointUrl(modelUrl, false)) return json(res, { error: 'Model URL not allowed: must be an http(s) URL on a *.gov.sg host, e.g. http://dev-nc3.csa.gov.sg/kepler/v1/chat/completion' }, 400)
+    if (!validEndpointUrl(embedUrl, true)) return json(res, { error: 'Embeddings URL not allowed: must be blank or an http(s) URL on a *.gov.sg host' }, 400)
+    const preset = ENDPOINT_PRESETS.find(p => p.modelUrl === modelUrl)
+    const name = String((body && body.name) || (preset && preset.name) || 'Custom').slice(0, 40)
+    appData.settings = Object.assign(appData.settings || {}, { endpoint: { name, modelUrl, embedUrl, model } })
+    saveData(appData)
+    console.log('  API endpoint           ->  ' + modelUrl + ' (' + name + (embedUrl ? '' : '; no embeddings URL') + ')')
+    json(res, { ok: true, active: activeEndpoint() })
+  })
+}
+
+// POST /api/testkey - verify an API key against a gateway WITHOUT switching the
+// active endpoint, so Settings can gate a connection change on a working key.
+// One minimal non-streaming completion. The URL goes through the SAME *.gov.sg
+// allowlist as a real endpoint change, so this cannot be used to probe arbitrary
+// hosts. The key is masked in logs and never persisted.
+function handleTestKey(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+    const modelUrl = String((body && body.modelUrl) || '').trim()
+    const apiKey   = String((body && body.apiKey) || '').trim()
+    const model    = String((body && body.model) || '').trim().slice(0, 80)
+    if (!apiKey) return json(res, { ok: false, reason: 'nokey', error: 'Enter an API key first.' })
+    if (apiKey === DEMOKEY) return json(res, { ok: true, status: 200, demo: true })
+    if (!validEndpointUrl(modelUrl, false)) {
+      return json(res, { ok: false, reason: 'badurl', error: 'Endpoint URL not allowed (must be a *.gov.sg host).' })
+    }
+    let u; try { u = new URL(modelUrl) } catch { return json(res, { ok: false, reason: 'badurl', error: 'Endpoint URL could not be parsed.' }) }
+    const payload = JSON.stringify({ model: model || undefined, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false })
+    const opts = {
+      protocol: u.protocol, hostname: u.hostname, port: u.port ? parseInt(u.port, 10) : 443,
+      path: u.pathname + (u.search || ''), method: 'POST', agent: upstreamAgent,
+      headers: {
+        'x-api-key': apiKey, 'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload), 'Accept': 'application/json', 'User-Agent': 'curl/8.0.0'
+      }
+    }
+    log.debug('[testkey] url =', targetUrlStr(opts), ' auth =', maskSecret(apiKey))
+    let settled = false
+    const finish = (o) => { if (settled) return; settled = true; json(res, o) }
+    const upReq = https.request(opts, up => {
+      if (tlsGateFails(up.socket)) {
+        const ae = String(up.socket.authorizationError || 'TLS not trusted')
+        up.resume(); try { up.socket.destroy() } catch {}
+        return finish({ ok: false, reason: 'tls', error: 'TLS certificate not trusted (' + ae + ')' })
+      }
+      let buf = ''
+      up.on('data', d => { if (buf.length < 4000) buf += d.toString('utf8') })
+      up.on('end', () => {
+        const sc = up.statusCode || 0
+        log.debug('[testkey] status =', sc)
+        if (sc >= 200 && sc < 300) return finish({ ok: true, status: sc })
+        let msg = ''
+        try { const j = JSON.parse(buf); msg = (j && j.error && (j.error.message || j.error)) || (j && j.message) || '' } catch {}
+        const reason = (sc === 401 || sc === 403) ? 'auth' : (sc === 429 ? 'ratelimit' : 'http')
+        finish({ ok: false, status: sc, reason, error: sanitizeSecrets(String(msg || ('HTTP ' + sc))).slice(0, 300) })
+      })
+    })
+    upReq.on('error', e => finish({ ok: false, reason: 'network', error: sanitizeSecrets(String((e && e.message) || e)).slice(0, 300) }))
+    upReq.setTimeout(20000, () => { try { upReq.destroy() } catch {} ; finish({ ok: false, reason: 'timeout', error: 'No response after 20s.' }) })
+    upReq.write(payload); upReq.end()
   })
 }
 
@@ -614,8 +937,10 @@ function handleSaveConfig(req, res) {
 // ---------------------------------------------------------------------------
 function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   const bodyStr = JSON.stringify(payload)
+  const streamStart = Date.now()   // for time-to-first-byte + total duration
+  const _tgt = upstreamTarget('chat')   // streaming = chat only
   const opts = {
-    hostname: API_HOST, port: 443, path: pathName, method: 'POST',
+    protocol: _tgt.protocol, hostname: _tgt.hostname, port: _tgt.port, path: _tgt.path, method: 'POST',
     agent: upstreamAgent,
     headers: {
       'x-api-key': apiKey,
@@ -630,9 +955,10 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
   log.debug('')
   log.debug('========== STREAMING OUTBOUND ==========')
   log.debug('[stream] time     =', new Date().toISOString())
-  log.debug('[stream] path     =', pathName)
+  log.debug('[stream] url      =', targetUrlStr(_tgt))
   log.debug('[stream] auth     =', maskSecret(apiKey))
-  dlog('[stream] payload  =', previewText(bodyStr))
+  logSensitive('[stream] payload  =', bodyStr)
+  log.debug('[stream] payload  ~' + Math.ceil(Buffer.byteLength(bodyStr) / 4) + ' tokens (est)')
   log.debug('========================================')
 
   const upReq = https.request(opts, upRes => {
@@ -645,12 +971,24 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       return
     }
     log.debug('[stream] response status  =', upRes.statusCode)
+    // Full response headers (parity with the buffered path). Chat streams
+    // previously logged only the x-ratelimit presence check, so the GovTech
+    // correlation id was invisible for the app's main workload.
+    dlog('[stream] response headers =', upRes.headers)
+    log.debug('[stream] call-id  =', (upRes.headers && upRes.headers['x-models-call-id']) || '(none)')
+    // Diagnostic: which (if any) x-ratelimit-* headers the STREAMING response
+    // carried. The token meter only refreshes when these are present; if the
+    // gateway omits them on text/event-stream this line proves it.
+    const rlHdrKeys = Object.keys(upRes.headers || {}).filter(k => /^x-ratelimit/i.test(k))
+    log.debug('[stream] x-ratelimit headers seen: ' + (rlHdrKeys.length ? rlHdrKeys.join(', ') : 'NONE'))
     const rl = extractRateLimit(upRes.headers)
     if (rl) {
       setLastRateLimit(apiKey, rl)
       const fmt = (rem, lim) => (rem == null ? '?' : rem) + '/' + (lim == null ? '?' : lim)
       log.debug('[stream] rate-limit  req=' + fmt(rl.reqRemaining, rl.reqLimit) +
                   '  tok=' + fmt(rl.tokRemaining, rl.tokLimit))
+    } else {
+      log.debug('[stream] rate-limit ABSENT — token meter will NOT refresh from this chat')
     }
 
     // Non-200: drain the body and surface it as a single JSON error event.
@@ -658,7 +996,10 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       let body = ''
       upRes.on('data', c => body += c)
       upRes.on('end', () => {
-        dlog('[stream] non-200 body =', previewText(body))
+        const _blen = Buffer.byteLength(body)
+        log.warn('[stream] non-200 body (' + upRes.statusCode + ', ' + _blen + ' bytes) = ' + (previewErr(body) || '(empty)'))
+        const _pnote = proxyBlockNote(upRes.statusCode, upRes.headers, body)
+        if (_pnote) log.warn('[stream] ' + _pnote)
         if (!res.headersSent) {
           res.writeHead(upRes.statusCode, { 'Content-Type': 'application/json; charset=utf-8' })
         }
@@ -677,22 +1018,77 @@ function callGccStreaming(pathName, apiKey, payload, res, timeoutMs) {
       'Cache-Control': 'no-cache',
       'Connection':    'keep-alive'
     })
-    upRes.on('data', chunk => res.write(chunk))
-    upRes.on('end', () => { log.debug('[stream] upstream end'); try { res.end() } catch {} })
+    // Response-side metrics for the stream. We must not buffer the whole body
+    // (could be RESTRICTED + large), so we track only counters plus a small
+    // rolling tail used to parse the terminal usage / finish_reason event.
+    let sseBytes = 0, sseEvents = 0, firstByteMs = null
+    let sseTail = ''
+    const TAIL_MAX = 8192
+    upRes.on('data', chunk => {
+      if (firstByteMs === null) {
+        firstByteMs = Date.now() - streamStart
+        log.debug('[stream] first byte  =', firstByteMs + 'ms')
+        // Streaming has started — tighten from the first-byte budget to the per-token
+        // inactivity window (which resets on every subsequent chunk).
+        try { upReq.setTimeout(inactivityMs, () => onStreamTimeout('inactivity', inactivityMs)) } catch (e) {}
+      }
+      sseBytes += Buffer.byteLength(chunk)
+      const s = chunk.toString('utf8')
+      let idx = -1
+      while ((idx = s.indexOf('data:', idx + 1)) !== -1) sseEvents++
+      sseTail = (sseTail + s).slice(-TAIL_MAX)
+      res.write(chunk)
+    })
+    upRes.on('end', () => {
+      const totalMs = Date.now() - streamStart
+      // Parse the last meaningful SSE data payload for usage + finish_reason.
+      // Counts only — never the message text — so nothing sensitive is logged.
+      let usage = null, finish = null
+      try {
+        const lines = sseTail.split(/\r?\n/).filter(l => l.startsWith('data:'))
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const payload = lines[i].slice(5).trim()
+          if (!payload || payload === '[DONE]') continue
+          try {
+            const obj = JSON.parse(payload)
+            if (!usage && obj && obj.usage) usage = obj.usage
+            if (!finish && obj && obj.choices && obj.choices[0] && obj.choices[0].finish_reason)
+              finish = obj.choices[0].finish_reason
+            if (usage && finish) break
+          } catch {}
+        }
+      } catch {}
+      log.debug('[stream] upstream end   | ' + sseEvents + ' events | ' + sseBytes +
+                ' bytes | ttfb ' + (firstByteMs == null ? '?' : firstByteMs) + 'ms | total ' +
+                totalMs + 'ms | finish ' + (finish || '?'))
+      if (usage) {
+        const g = (k) => (usage[k] == null ? '?' : usage[k])
+        log.debug('[stream] usage         | prompt ' + g('prompt_tokens') +
+                  ' | completion ' + g('completion_tokens') + ' | total ' + g('total_tokens'))
+      }
+      try { res.end() } catch {}
+    })
     upRes.on('error', err => {
       log.warn('[stream] upstream stream error =', err.message)
+      try { res.write('data: ' + JSON.stringify({ error: 'upstream stream error: ' + err.message }) + '\n\n') } catch {}
       try { res.end() } catch {}
     })
   })
 
-  // Inactivity timeout (no NEW bytes for this long) escalates per client retry
-  // attempt (10s -> 20s -> 60s), passed in via streamTimeoutMs. The socket timer
-  // resets on every token, so it only fires on a genuine stall. Clamped 5s-120s.
+  // Two-phase timeout. BEFORE the first byte, a large prompt can take tens of seconds
+  // for the model to start streaming, so a short cutoff here spuriously 502s a good
+  // request (16 Jul log: ~100k-token turns tripped the old 10s window). Give the FIRST
+  // byte a generous budget, then switch to the tighter per-token inactivity window once
+  // streaming has started (a mid-stream stall IS a real failure). The socket timer
+  // resets on every byte. timeoutMs (client escalation 10/20/60s) is the inter-token
+  // value; the first-byte budget floors well above it. Both clamped.
   const inactivityMs = Math.min(120000, Math.max(5000, Number(timeoutMs) || 60000))
-  upReq.setTimeout(inactivityMs, () => {
-    log.warn('[stream] inactivity timeout (' + Math.round(inactivityMs / 1000) + 's)')
+  const firstByteMsBudget = Math.min(180000, Math.max(inactivityMs, 90000))
+  const onStreamTimeout = (phase, ms) => {
+    log.warn('[stream] ' + phase + ' timeout (' + Math.round(ms / 1000) + 's)')
     upReq.destroy(new Error('Upstream inactivity timeout'))
-  })
+  }
+  upReq.setTimeout(firstByteMsBudget, () => onStreamTimeout('first-byte', firstByteMsBudget))
 
   upReq.on('error', err => {
     log.error('[stream] request error =', err.message)
@@ -792,7 +1188,7 @@ const DEMO_REPLY_CODE = [
   '',
   'That exercises fenced code-block rendering.'
 ].join('\n')
-const DEMO_RL = { reqRemaining: 58, reqLimit: 60, tokRemaining: 95000, tokLimit: 100000 }
+const DEMO_RL = { reqRemaining: 58, reqLimit: 60, tokRemaining: 142000, tokLimit: 200000 }
 
 // Most recent user text from an OpenAI-style payload (marker detection / routing).
 function demoLastUserText(payload) {
@@ -815,13 +1211,36 @@ function demoLastUserText(payload) {
 const _demo429 = new Map()
 let _demoChatN = 0   // streamed-message counter for the auto rate-limit demo
 function demoResetStamp(secs) { return new Date(Date.now() + (secs || 5) * 1000).toISOString().replace('T', ' ').replace(/\..*/, '') + ' UTC' }
+function demoOverLimitError(remaining) {
+  const stamp = demoResetStamp(60)
+  return {
+    status: 429,
+    headers: { 'retry-after': '60', rate_limit_type: 'tokens', reset_at: stamp, 'x-models-call-id': 'demo-' + Math.random().toString(16).slice(2, 10) },
+    body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY. Limit type: tokens. Current limit: 200000, Remaining: ' + remaining + '. Limit resets at: ' + stamp, type: 'None', param: 'None', code: '429' } }
+  }
+}
 function demoErrorFor(text) {
   if (/\[\[401\]\]/.test(text)) return { status: 401, body: { error: { message: 'Invalid API key (demo 401)', type: 'auth' } } }
   if (/\[\[500\]\]/.test(text)) return { status: 500, body: { error: { message: 'Internal server error (demo 500)' } } }
   if (/\[\[429\]\]/.test(text)) {
     const n = (_demo429.get(text) || 0) + 1; _demo429.set(text, n)
-    if (n <= 1) return { status: 429, body: { error: { message: 'Rate limit exceeded (demo 429). Limit resets at: ' + demoResetStamp(5) } } }
+    // Full gateway body format (2 Jul log fixture) so the client's limit429 /
+    // remaining429 / resetMs parsing is exercised in demo, not just the status.
+    if (n <= 1) return { status: 429, headers: { 'retry-after': '5', rate_limit_type: 'tokens' }, body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo 429). Limit type: tokens. Current limit: 200000, Remaining: 0. Limit resets at: ' + demoResetStamp(5), type: 'None', param: 'None', code: '429' } } }
     return null
+  }
+  if (/\[\[429partial\]\]/.test(text)) {
+    // Partially-drained window (Remaining: 58944 verbatim from the 21:45:46 log)
+    // - the case that must classify as WAIT, never "too big -> split".
+    const n = (_demo429.get(text) || 0) + 1; _demo429.set(text, n)
+    if (n <= 1) return { status: 429, headers: { 'retry-after': '2', rate_limit_type: 'tokens' }, body: { error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo partial). Limit type: tokens. Current limit: 200000, Remaining: 58944. Limit resets at: ' + demoResetStamp(2), type: 'None', param: 'None', code: '429' } } }
+    return null
+  }
+  if (/\[\[budgetexceeded\]\]/.test(text)) {
+    // Overall API-key BUDGET exhaustion (15 Jul log): a flat 429 whose body is a bare
+    // string with NO reset/limit/remaining fields. Fails EVERY time (never clears) so
+    // the client must classify it TERMINAL and NOT auto-retry.
+    return { status: 429, body: { error: '1 budget(s) exceeded' } }
   }
   return null
 }
@@ -841,15 +1260,15 @@ function demoVector(text, dim) {
 function demoChatStream(res, payload) {
   const text = demoLastUserText(payload)
   const err = demoErrorFor(text)
-  if (err) { res.writeHead(err.status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(err.body)); return }
+  if (err) { res.writeHead(err.status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, err.headers || {})); res.end(JSON.stringify(err.body)); return }
   // Auto rate-limit: every 5th streamed message returns a retryable 429 with a
   // near-future reset time, so the countdown + auto-retry UI runs naturally. The
   // client re-sends after the reset (that attempt isn't the 5th, so it streams).
   if (!/\[\[/.test(text)) {
     _demoChatN++
     if (_demoChatN % 5 === 0) {
-      res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8' })
-      res.end(JSON.stringify({ error: { message: 'Rate limit reached (demo — auto every 5 messages). Limit resets at: ' + demoResetStamp(5) } }))
+      res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'retry-after': '5', rate_limit_type: 'tokens' })
+      res.end(JSON.stringify({ error: { message: 'Rate limit exceeded for api_key: DEMOKEY (demo auto every 5 messages). Limit type: tokens. Current limit: 200000, Remaining: 0. Limit resets at: ' + demoResetStamp(5), type: 'None', param: 'None', code: '429' } }))
       return
     }
   }
@@ -861,12 +1280,25 @@ function demoChatStream(res, payload) {
   const reply = /code|snippet|function|script/i.test(text) ? DEMO_REPLY_CODE : DEMO_REPLY_MD
   const slow  = /\[\[slow\]\]/.test(text)
   const toks  = reply.match(/\s+|\S+/g) || [reply]
+  // [[streamdie]]: die MID-stream after a few tokens - an error frame, then end
+  // with NO finish/[DONE] (mirrors the proxy's behaviour when the upstream socket
+  // dies; the 21:47 log stall). Exercises the client's truncation guard.
+  const dieAt = /\[\[streamdie\]\]/.test(text) ? 6 : 0
+  const finReason = /\[\[truncate\]\]/.test(text) ? 'length' : 'stop'   // [[truncate]] = token-cap cut-off
   let i = 0, done = false
   res.on('close', () => { done = true })
   const tick = () => {
     if (done || res.writableEnded) return
+    if (dieAt && i >= dieAt) {
+      res.write('data: ' + JSON.stringify({ error: 'upstream stream error: socket hang up (demo [[streamdie]])' }) + '\n\n')
+      res.end(); return
+    }
     if (i >= toks.length) {
-      res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\n')
+      res.write('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: finReason }] }) + '\n\n')
+      // Terminal usage chunk like the real gateway (est x ~1.8, per the 2 Jul logs)
+      // - feeds the client's adaptive est->real inflation learning in #demo.
+      const _pTok = Math.round((JSON.stringify(payload || {}).length / 4) * 1.8)
+      res.write('data: ' + JSON.stringify({ usage: { prompt_tokens: _pTok, completion_tokens: toks.length, total_tokens: _pTok + toks.length } }) + '\n\n')
       res.write('data: [DONE]\n\n'); res.end(); return
     }
     res.write('data: ' + JSON.stringify({ choices: [{ delta: { content: toks[i] }, finish_reason: null }] }) + '\n\n')
@@ -888,8 +1320,19 @@ function demoChatJson(payload) {
 // Serve a /api/chat demo request (stream or buffered, honouring markers).
 function demoServeChat(res, body) {
   const finalPayload = { ...(body.payload || {}), model: body.modelId || 'demo' }
+  const _txt = demoLastUserText(finalPayload)
+  // Over-cap requests are rejected WITHOUT burning budget — the real gateway keeps
+  // Remaining at the full limit on such a 429 (see debug_logs). Marker OR genuine
+  // payload size triggers it, reproducing the 6-doc whole-doc summary that hangs.
+  if (/\[\[toobig\]\]/.test(_txt) || Math.ceil(JSON.stringify(finalPayload).length / 4) > 200000) {
+    const e = demoOverLimitError(200000)
+    res.writeHead(e.status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, e.headers))
+    res.end(JSON.stringify(e.body))
+    return
+  }
+  demoBurn(estTokens(_txt) + 300)
   if (finalPayload.stream === true) return demoChatStream(res, finalPayload)
-  const err = demoErrorFor(demoLastUserText(finalPayload))
+  const err = demoErrorFor(_txt)
   if (err) return json(res, err.body, err.status)
   return json(res, demoChatJson(finalPayload))
 }
@@ -899,6 +1342,117 @@ function demoEmbed(inputs) {
   const arr = Array.isArray(inputs) ? inputs : [inputs]
   return { model: 'demo', _rateLimit: DEMO_RL,
     data: arr.map((t, idx) => ({ object: 'embedding', index: idx, embedding: demoVector(String(t)) })) }
+}
+
+// Shared token estimate (~4 chars/token). One source of truth for the budget
+// meter's cumulative tally, the demo burn-down, and (Phase 2) the embed cap.
+function estTokens(texts) {
+  const arr = Array.isArray(texts) ? texts : [texts]
+  let chars = 0
+  for (const t of arr) chars += String(t == null ? '' : t).length
+  return Math.ceil(chars / 4)
+}
+
+// #demo overall token budget (chat + embed share it) — a mutable per-minute
+// remaining that the demo paths draw down so the sidebar meter visibly moves
+// offline. Real mode uses the live rate-limit snapshot from upstream headers.
+let _demoTok = 142000
+const DEMO_TOK_LIMIT = 200000
+function demoBurn(tokens) {
+  _demoTok = Math.max(0, _demoTok - (tokens || 0))
+  return _demoTok
+}
+
+// GET /api/ratelimit — latest overall token budget for the active key. #demo
+// returns the live burn-down; real mode returns the most recent snapshot (null
+// fields until the first upstream response populates it).
+function handleRateLimit(req, res) {
+  if (req.headers['x-lcl-demo'] === '1') {
+    return json(res, { tokLimit: DEMO_TOK_LIMIT, tokRemaining: _demoTok, reqLimit: 60, reqRemaining: 58, ts: Date.now() })
+  }
+  const settings = appData.settings || {}
+  // Fall back on the lookup RESULT, not the key string: if chat and embed use
+  // different keys, the chat-key snapshot may be empty while the embed-key one is
+  // populated (or vice-versa). The old `apiKey || embedApiKey` only ever queried
+  // the chat key when it was set, so an embed-only snapshot was invisible.
+  const rl = getLastRateLimit(settings.apiKey) || getLastRateLimit(settings.embedApiKey) || {}
+  // Dedupe the meter poll: the client reads this every second, so only log when
+  // the snapshot actually changes (kills a repetitive line from the log).
+  const _rlLine = '[rl] /api/ratelimit read chatKey=' + snapshotKey(settings.apiKey) +
+            ' embedKey=' + snapshotKey(settings.embedApiKey) +
+            ' -> ' + (rl.tokRemaining != null ? ('tok=' + rl.tokRemaining + '/' + rl.tokLimit) : 'no snapshot')
+  if (_rlLine !== handleRateLimit._last) { handleRateLimit._last = _rlLine; log.debug(_rlLine) }
+  json(res, { tokLimit: rl.tokLimit ?? null, tokRemaining: rl.tokRemaining ?? null, reqLimit: rl.reqLimit ?? null, reqRemaining: rl.reqRemaining ?? null, ts: rl.ts ?? null })
+}
+
+// Hard token cap for an embed request (backstop). Settings override wins;
+// otherwise ~90% of the live per-minute limit (was 50% — too aggressive, it
+// blocked normal documents); else a 180k fallback.
+function resolveEmbedHardCap(body) {
+  const st = appData.settings || {}
+  const ov = (typeof st.embedMaxTokens === 'number' && st.embedMaxTokens > 0) ? st.embedMaxTokens : null
+  if (ov) return ov
+  const rl = getLastRateLimit(st.embedApiKey || (body && body.apiKey) || '')
+  if (rl && rl.tokLimit) return Math.round(rl.tokLimit * 0.9)
+  return 180000
+}
+
+// Demo /api/embed-batch. Small batches answer instantly (JSON) as before; larger
+// inputs stream simulated per-batch `progress` (+ one `pacing` tick) then `done`,
+// so the client's per-doc progress bar actually advances in #demo. A chunk whose
+// text carries the [[embedfail]] marker fails ONCE per input set then succeeds on
+// retry, exercising the error pill + Retry (resume) path.
+const _demoEmbedFail = new Map()
+const DEMO_EMBED_BATCH = 8
+function demoServeEmbedBatch(res, body) {
+  const ins     = (body.inputs || []).map(String)
+  demoBurn(estTokens(ins))
+  const modelId = body.modelId || 'demo'
+  const mkHash  = t => hashText(modelId + ':' + t)
+  const sse  = () => res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
+  const send = o => res.write('data: ' + JSON.stringify(o) + '\n\n')
+
+  if (ins.some(t => t.includes('[[embedfail]]'))) {
+    const key = hashText('embedfail:' + ins.join('\u0001'))
+    const n = (_demoEmbedFail.get(key) || 0) + 1; _demoEmbedFail.set(key, n)
+    if (n <= 1) { sse(); send({ type: 'error', message: 'Embeddings error 503 (demo [[embedfail]] marker)' }); return res.end() }
+  }
+
+  // [[embed429]]: the batch hits the rate-limit window and the SERVER waits it out
+  // and retries (handleEmbedBatch's real 429 loop) - ONE request that emits pacing
+  // ticks then done, never an error frame. Mirrors the 19:41 log's embed_fail fix.
+  if (ins.some(t => t.includes('[[embed429]]'))) {
+    sse()
+    ;(async () => {
+      elog('batch 1/1 hit 429 (remaining=0) - waiting 2s for the window, retry 1/4 (demo [[embed429]])')
+      for (let sec = 2; sec >= 1; sec--) { send({ type: 'pacing', waitSec: sec, done: 0, total: ins.length, batchDone: 1, batchTotal: 1 }); await sleep(150) }
+      send({ type: 'progress', done: ins.length, total: ins.length, batchDone: 1, batchTotal: 1 })
+      send({ type: 'done', embeddings: ins.map(t => demoVector(t)), hashes: ins.map(t => mkHash(t)) })
+      res.end()
+    })()
+    return
+  }
+
+  if (ins.length <= DEMO_EMBED_BATCH) {
+    return json(res, { embeddings: ins.map(t => demoVector(t)), hashes: ins.map(t => mkHash(t)) })
+  }
+
+  sse()
+  const total = ins.length
+  const batchTotal = Math.ceil(total / DEMO_EMBED_BATCH)
+  ;(async () => {
+    let done = 0
+    for (let b = 1; b <= batchTotal; b++) {
+      if (b === 2) {
+        for (let sec = 2; sec >= 1; sec--) { send({ type: 'pacing', waitSec: sec, done, total, batchDone: b, batchTotal }); await sleep(250) }
+      }
+      await sleep(200)
+      done = Math.min(total, done + DEMO_EMBED_BATCH)
+      send({ type: 'progress', done, total, batchDone: b, batchTotal })
+    }
+    send({ type: 'done', embeddings: ins.map(t => demoVector(t)), hashes: ins.map(t => mkHash(t)) })
+    res.end()
+  })()
 }
 
 function handleChat(req, res) {
@@ -937,6 +1491,7 @@ function handleEmbed(req, res) {
     const _g = demoGate(req, body)
     if (demo401(res, _g)) return
     if (_g === 'serve') return json(res, demoEmbed(body.input ?? body.text))
+    if (!activeEndpoint().embedUrl) return json(res, { error: 'This endpoint has no embeddings URL - switch back to PlatformAI to embed files.' }, 400)
 
     const { apiKey, modelId, input, text } = body
     const finalInput = input ?? text
@@ -981,29 +1536,49 @@ function embedLimitsFor(modelId) {
   return { batch: 96, maxChars: 2000 }   // conservative default
 }
 
-function callGccJsonAsync(pathName, apiKey, payload) {
+function callGccJsonAsync(pathName, apiKey, payload, opts) {
   return new Promise((resolve, reject) => {
     callGccJson(pathName, apiKey, payload, (err, upstream) => {
       if (err) return reject(err)
       resolve(upstream)
-    })
+    }, opts)
   })
+}
+
+// A corporate proxy (Zscaler/Squid) answers an unreachable or blocked upstream
+// with a 5xx HTML error page ("The requested URL could not be retrieved"), not
+// JSON. Turn that into a plain, actionable message instead of dumping raw HTML
+// (e.g. "Non-JSON response: <!DOCTYPE html>...") into the doc's embed error.
+// Returns null when the response is NOT a gateway/HTML error, so the caller
+// keeps its own (JSON) message.
+function gatewayErrorMessage(upstream, label) {
+  label = label || 'service'
+  const s = (upstream && upstream.statusCode) || 0
+  const body = (upstream && upstream.body) || ''
+  const looksHtml    = /^\s*<(?:!doctype|html)/i.test(body)
+  const proxyBlocked = /could not be retrieved|\(squid\)|access denied|zscaler/i.test(body)
+  if (looksHtml || proxyBlocked || (s >= 500 && s < 600)) {
+    return 'The ' + label + ' endpoint is temporarily unavailable' + (s ? ' (HTTP ' + s + ')' : '') +
+           (proxyBlocked ? ' - the network proxy could not reach it' : '') +
+           '. This is usually transient - please try again in a moment.'
+  }
+  return null
 }
 
 async function callStandardBatchEmbed(apiKey, modelId, texts) {
   elog('batch embed | ' + texts.length + ' chunks')
-  const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts })
+  const upstream = await callGccJsonAsync(EMBED_PATH, apiKey, { model: modelId, input: texts }, { no429Retry: true })
 
   if (!upstream.body || !upstream.body.trim()) {
-    throw new Error('Empty response from embeddings (status ' + upstream.statusCode + ')')
+    throw new Error(gatewayErrorMessage(upstream, 'embeddings') || ('Empty response from embeddings (status ' + upstream.statusCode + ')'))
   }
 
   let data
   try { data = JSON.parse(upstream.body) }
-  catch { throw new Error('Non-JSON response: ' + upstream.body.slice(0, 200)) }
+  catch { throw new Error(gatewayErrorMessage(upstream, 'embeddings') || ('Non-JSON response: ' + upstream.body.slice(0, 200))) }
 
   if (upstream.statusCode >= 400) {
-    throw new Error('Embeddings error ' + upstream.statusCode + ': ' + JSON.stringify(data))
+    throw new Error(gatewayErrorMessage(upstream, 'embeddings') || ('Embeddings error ' + upstream.statusCode + ': ' + JSON.stringify(data)))
   }
 
   const sorted = (data?.data || []).sort((a, b) => a.index - b.index)
@@ -1043,17 +1618,36 @@ async function waitForEmbedHeadroom(apiKey, tokenEst, notify) {
   rateLimitSnapshots.delete(snapshotKey(apiKey))   // window reset - re-measure next call
 }
 
+// Parse the gateway's 429 error text (surfaced as "Embeddings error 429: {...}").
+// The body's Remaining + "Limit resets at" are real-time and reliable (stream
+// headers are not) - same contract the client uses in postClassified.
+function parse429Body(msg) {
+  const s = String(msg || '')
+  const out = { is429: /error 429\b/i.test(s), resetMs: null, remaining: null }
+  const m = s.match(/Limit resets at:\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s*UTC/i)
+  if (m) { const t = Date.parse(m[1] + 'T' + m[2] + 'Z'); if (!isNaN(t) && t > Date.now()) out.resetMs = t }
+  const r = s.match(/Remaining:\s*(\d+)/i)
+  if (r) out.remaining = Number(r[1])
+  return out
+}
+
 async function handleEmbedBatch(req, res) {
   readBody(req, async (err, body) => {
     if (err) return json(res, { error: err.message }, 400)
 
+    // Hard cap backstop: refuse an embed estimated above the token ceiling, so a
+    // bypassed/oversized request can't blow the shared per-minute budget.
+    const _capInputs = body.inputs || []
+    if (_capInputs.length) {
+      const estMiss = estTokens(_capInputs)
+      const hardCap = resolveEmbedHardCap(body)
+      if (estMiss > hardCap) return json(res, { error: 'Embed exceeds the token cap (~' + estMiss + ' > ' + hardCap + ' tokens). Reduce the file or raise "Block above" in Settings.' }, 413)
+    }
+
     const _g = demoGate(req, body)
     if (demo401(res, _g)) return
-    if (_g === 'serve') {
-      const ins = body.inputs || []
-      return json(res, { embeddings: ins.map(t => demoVector(String(t))),
-                         hashes: ins.map(t => hashText((body.modelId || 'demo') + ':' + t)) })
-    }
+    if (_g === 'serve') return demoServeEmbedBatch(res, body)
+    if (!activeEndpoint().embedUrl) return json(res, { error: 'This endpoint has no embeddings URL - switch back to PlatformAI to embed files.' }, 400)
 
     const settings = appData.settings || {}
     const apiKey   = settings.embedApiKey  || body.apiKey
@@ -1111,7 +1705,30 @@ async function handleEmbedBatch(req, res) {
           send({ type: 'pacing', waitSec: secsLeft, done: chunksEmbedded, total: totalMisses,
                  batchDone: batchNum, batchTotal: totalBatches }))
 
-        const embeddings = await callStandardBatchEmbed(apiKey, modelId, batchTexts)
+        // A 429 here means the shared window is exhausted (e.g. a summary run on
+        // the same key). Wait it out (using the 429 body's reset stamp) and retry
+        // the batch, instead of failing the whole doc after the fast retries.
+        let embeddings = null
+        for (let rlTry = 0; ; rlTry++) {
+          try { embeddings = await callStandardBatchEmbed(apiKey, modelId, batchTexts); break }
+          catch (e) {
+            const p = parse429Body(e.message)
+            if (!p.is429 || rlTry >= 4) throw e
+            let waitMs = p.resetMs ? (p.resetMs - Date.now() + 1500) : 61000
+            waitMs = Math.max(5000, Math.min(90000, waitMs))
+            elog('batch ' + batchNum + '/' + totalBatches + ' hit 429 (remaining=' + p.remaining + ') - waiting ' +
+                 Math.round(waitMs / 1000) + 's for the window, retry ' + (rlTry + 1) + '/4')
+            let remainMs = waitMs
+            while (remainMs > 0) {
+              send({ type: 'pacing', waitSec: Math.ceil(remainMs / 1000), done: chunksEmbedded, total: totalMisses,
+                     batchDone: batchNum, batchTotal: totalBatches })
+              const step = Math.min(3000, remainMs)
+              await sleep(step)
+              remainMs -= step
+            }
+            rateLimitSnapshots.delete(snapshotKey(apiKey))   // window reset - drop the stale snapshot
+          }
+        }
 
         for (let i = 0; i < embeddings.length; i++) {
           const origIdx  = batchOrigIdx[i]
@@ -1241,6 +1858,17 @@ function handleSaveData(req, res) {
     }
     if (body.updateChannel === undefined && appData.updateChannel !== undefined) {
       body.updateChannel = appData.updateChannel
+    }
+    // The endpoint override is SERVER-owned (set via /api/endpoint) - the client's
+    // settings copy never carries it, so a full /api/data save must not wipe it.
+    // (7 Jul log: Kepler set, then a debounced persist() replaced settings and the
+    // very next stream silently went back to PlatformAI.)
+    // endpoint is SERVER-owned (only /api/endpoint may change it). ALWAYS take the
+    // server's current value and IGNORE any (possibly stale) endpoint the client
+    // sent, so a full /api/data save can neither wipe NOR revert a gateway switch.
+    if (body.settings) {
+      if (appData.settings && appData.settings.endpoint) body.settings.endpoint = appData.settings.endpoint
+      else delete body.settings.endpoint
     }
     // Strip full embedding vectors — only embHash is needed on disk
     if (body && body.chats) {
@@ -1540,9 +2168,10 @@ async function handleUpdateApply(req, res) {
     // Integrity gate is the SHA-256 above; server.txt was already syntax-checked
     // by build.js before upload, so no redundant runtime check here.
     const applied = swapInFiles(verified)
+    const skills = await syncBundledSkills(ref)   // pull bundled skills from the same ref (best-effort)
     _alphaCache = { ts: 0, data: null }
     json(res, {
-      ok: true, channel: ch, ref, applied, unchanged,
+      ok: true, channel: ch, ref, applied, unchanged, skills,
       restartNeeded: applied.includes('server.txt'),
       refreshNeeded: applied.includes('index.html')
     })
@@ -1691,7 +2320,8 @@ async function restoreStable() {
     bufs[f] = await downloadVerified(tag, f, want)
   }
   const applied = swapInFiles(bufs)
-  return { tag, applied }
+  const skills = await syncBundledSkills(tag)   // pull bundled skills from the release tag (best-effort)
+  return { tag, applied, skills }
 }
 // .stable backup helpers — keep a verbatim copy of the stable files so a revert
 // can fall back to them when GitHub is unreachable.
@@ -1737,6 +2367,58 @@ function swapInFiles(bufs) {
   return applied
 }
 
+// --- Bundled skill sync (pulled by the updater) ------------------------------
+// Local record of which skill ids THIS install pulled as "bundled", so an update
+// can refresh/remove them without ever touching skills the user created. Runtime
+// only (git-ignored); NOT the repo's skills/manifest.json.
+const BUNDLED_RECORD = path.join(SKILLS_DIR, '.bundled.json')
+function readBundledRecord() {
+  try { const a = JSON.parse(fs.readFileSync(BUNDLED_RECORD, 'utf8')); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+function writeBundledRecord(ids) {
+  try { fs.mkdirSync(SKILLS_DIR, { recursive: true }); fs.writeFileSync(BUNDLED_RECORD, JSON.stringify(ids)) }
+  catch (e) { log.warn('[skills] record write failed: ' + ((e && e.message) || e)) }
+}
+// Pull the repo's BUNDLED skills for `ref` into the local skills folder. The repo's
+// skills/manifest.json { "bundled": [ids] } is the source of truth: each listed skill
+// is (re)written so fixes propagate; a previously-bundled id dropped from the manifest
+// is removed; skills the USER created (any id NOT in the manifest AND NOT in our local
+// record) are NEVER touched. Best-effort - any failure logs and leaves skills as-is so a
+// flaky GitHub call can't break the core update. Returns { installed, removed } or { skipped }.
+async function syncBundledSkills(ref) {
+  try {
+    const mf = await ghFetchFile(ref, 'skills/manifest.json')
+    if (mf.statusCode !== 200) { log.debug('[skills] no manifest @' + ref + ' (HTTP ' + mf.statusCode + ') - skipping'); return { skipped: true } }
+    let wanted = []
+    try { const j = JSON.parse(mf.buf.toString('utf8')); if (j && Array.isArray(j.bundled)) wanted = j.bundled.filter(id => typeof id === 'string' && isValidSlug(id)) }
+    catch { log.warn('[skills] manifest parse failed @' + ref); return { skipped: true, badManifest: true } }
+    fs.mkdirSync(SKILLS_DIR, { recursive: true })
+    const prev = readBundledRecord()
+    const installed = []
+    for (const id of wanted) {
+      const dl = await ghFetchFile(ref, 'skills/' + id + '.md')
+      if (dl.statusCode !== 200) { log.warn('[skills] bundled ' + id + ' fetch HTTP ' + dl.statusCode + ' - kept as-is'); if (prev.includes(id)) installed.push(id); continue }
+      const dest = path.join(SKILLS_DIR, id + '.md'), tmp = dest + '.tmp'
+      try { fs.writeFileSync(tmp, dl.buf); fs.renameSync(tmp, dest); installed.push(id) }
+      catch (e) { log.warn('[skills] write ' + id + ' failed: ' + ((e && e.message) || e)) }
+    }
+    // Remove ids we PREVIOUSLY installed as bundled that are no longer in the manifest.
+    // Only ids from our own record are eligible - user-created skills never appear here.
+    const removed = []
+    for (const id of prev) {
+      if (wanted.includes(id) || !isValidSlug(id)) continue
+      try { const p = path.join(SKILLS_DIR, id + '.md'); if (fs.existsSync(p)) { fs.unlinkSync(p); removed.push(id) } }
+      catch (e) { log.warn('[skills] remove ' + id + ' failed: ' + ((e && e.message) || e)) }
+    }
+    writeBundledRecord(installed)
+    if (installed.length || removed.length) log.info('[skills] bundled sync @' + ref + ' | installed ' + installed.length + ' | removed ' + removed.length)
+    return { installed, removed }
+  } catch (e) {
+    log.warn('[skills] bundled sync failed: ' + ((e && e.message) || e))
+    return { error: (e && e.message) || String(e) }
+  }
+}
+
 // Download + verify + atomically swap UPDATE_FILES for a given git ref. The
 // SHA-256 from that ref's checksums.txt is the integrity gate. Returns
 // { applied, unchanged }; throws (applying nothing) if any file fails.
@@ -1752,8 +2434,9 @@ async function applyRef(ref) {
     verified[f] = await downloadVerified(ref, f, want)
   }
   const applied = swapInFiles(verified)
+  const skills = await syncBundledSkills(ref)   // pull bundled skills from the same ref (best-effort)
   _alphaCache = { ts: 0, data: null }
-  return { applied, unchanged }
+  return { applied, unchanged, skills }
 }
 
 function handleUpdateChannel(req, res) {
@@ -1870,6 +2553,27 @@ function handleUpdateSimulate(req, res) {
 
 // Route table: 'METHOD path' -> handler. Dynamic /skills/:id and the static
 // fallback are handled below. Adding an endpoint is one entry here.
+// Client-side debug logging: the browser POSTs its console errors/warnings +
+// uncaught errors here; they route through the leveled logger so they tee into
+// debug_logs.txt on the alpha channel (and print to the server console). Size-
+// capped; the client is trusted only for a short message string.
+function handleClientLog(req, res) {
+  readBody(req, (err, body) => {
+    if (!err && body) {
+      try {
+        const level = body.level === 'error' ? 'error' : body.level === 'warn' ? 'warn' : 'info'
+        const msg = String(body.msg == null ? '' : body.msg).slice(0, 2000)
+        // Captured browser console.log/info lines are tagged [console] and are
+        // verbose; only record them on the alpha channel so stable users' server
+        // terminals (and debug_logs.txt) aren't flooded. Errors/warns always log.
+        if (msg.indexOf('[console]') === 0 && !(typeof readChannel === 'function' && readChannel() === 'alpha')) { json(res, { ok: true }); return }
+        log[level]('[client] ' + msg)
+      } catch {}
+    }
+    json(res, { ok: true })
+  })
+}
+
 const ROUTES = {
   'POST /api/chat':           handleChat,
   'POST /api/embed':          handleEmbed,
@@ -1887,6 +2591,11 @@ const ROUTES = {
   'POST /api/update/restart': handleUpdateRestart,
   'POST /api/update/simulate': handleUpdateSimulate,
   'GET /api/health':          (req, res) => json(res, { ok: true, version: APP_VERSION }),
+  'GET /api/ratelimit':       handleRateLimit,
+  'GET /api/endpoint':        handleGetEndpoint,
+  'POST /api/endpoint':       handleSetEndpoint,
+  'POST /api/testkey':        handleTestKey,
+  'POST /api/clientlog':      handleClientLog,
   'GET /skills':              handleSkillsList,
   'POST /skills/reload':      handleSkillsList,
 }
@@ -1899,14 +2608,23 @@ const server = http.createServer((req, res) => {
     return
   }
 
-  // Reflect the loopback origin only; no wildcard CORS.
+  // Reflect only safe local origins; no wildcard CORS (/api/data holds local
+  // chat history + settings). Origin 'null' is what file:// pages send - required
+  // for the double-click-index.html workflow (v0.67e proxy-origin shim).
   const origin = req.headers.origin
-  if (origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin)) {
+  const allowOrigin = origin === 'null' ||
+    (origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin))
+  if (allowOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Vary', 'Origin')
   }
+  // Chrome Private Network Access preflight: another local origin -> 127.0.0.1.
+  // Safe to allow only because the localhost host-guard above already ran.
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true')
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-lcl-demo')
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204)
@@ -1989,7 +2707,9 @@ function startupLog() {
   console.log('  Bound interface        ->  ' + BIND_HOST + ' (loopback only - not reachable from LAN)')
   console.log('  Folder                 ->  ' + LCL_DIR)
   console.log('  Data file              ->  ' + DATA_FILE)
-  console.log('  API Host               ->  ' + API_HOST)
+  const _ep = activeEndpoint()
+  const _epDef = _ep.modelUrl === ENDPOINT_PRESETS[0].modelUrl
+  console.log('  API endpoint           ->  ' + _ep.modelUrl + (_epDef ? '' : '  (' + _ep.name + ' - Developer override' + (_ep.embedUrl ? '' : '; no embeddings URL') + ')'))
   console.log('  Version                ->  v' + APP_VERSION)
   console.log('  Updates TLS            ->  ' + caStatus())
   console.log('  Channel                ->  ' + readChannel())
