@@ -4,17 +4,96 @@
 // Factory for the in-memory creds object so its shape + defaults live in ONE
 // place (was hand-built in init/connect/demo). Accepts `model` or `modelId`;
 // callers that compute classification pass it in.
+
+// --- Shared RAG memory (v0.67e item 3): search current chat's docs + optionally
+// prior chats' docs. Migration (upgradePersistedDocsForRag) intentionally omitted
+// (item 6: old docs are re-embedded, not migrated). ---
+function docMemoryKey(doc) {
+  return doc?.id || [doc?.name || 'doc', doc?.size || 0, doc?.addedAt || 0].join('|')
+}
+
+function chatUsesPastEmbeddings(chat) {
+  // Default OFF — a chat searches only its own uploaded files unless the user
+  // explicitly enables shared past-chat embeddings from the Embed panel.
+  return !!(chat && chat.usePastEmbeddings === true)
+}
+
+function setPastEmbeddingsForChat(on) {
+  const chat = curChat()
+  if (!chat) return
+  chat.usePastEmbeddings = !!on
+  chat.updatedAt = Date.now()
+  ragStickyChunks = []
+  ragKeywordIndexCache = { signature: '', index: null, records: [] }
+  persist()
+  renderDocPanel()
+  updateDocsBtn()
+  toast(on ? 'Past embeddings enabled for this chat' : 'Past embeddings disabled for this chat', on ? 'ok' : 'info')
+}
+
+// Per-chat RAG search mode: 'auto' (whole doc if it fits, else search), 'specific'
+// (always search relevant passages), 'whole' (always send the full document).
+function chatSearchMode(chat) {
+  const m = chat && chat.searchMode
+  return (m === 'specific' || m === 'whole') ? m : 'auto'
+}
+function setSearchMode(mode) {
+  const chat = curChat()
+  if (!chat) return
+  chat.searchMode = (mode === 'specific' || mode === 'whole') ? mode : 'auto'
+  chat.updatedAt = Date.now()
+  ragStickyChunks = []
+  persist()
+  renderDocPanel()
+  const label = chat.searchMode === 'specific' ? 'Specific (search passages)'
+              : chat.searchMode === 'whole' ? 'Whole document'
+              : 'Auto'
+  toast('Search mode: ' + label, 'info')
+}
+
+function getRagMemoryDocs(chat) {
+  const out = []
+  const seen = new Set()
+  const addDoc = d => {
+    if (!d) return
+    const key = docMemoryKey(d)
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(d)
+  }
+
+  // Prefer the active chat's own files first. Past/shared embeddings are optional
+  // per chat and controlled from the Embed panel checkbox.
+  for (const d of (chat?.docs || [])) addDoc(d)
+  if (chatUsesPastEmbeddings(chat)) {
+    for (const ch of Object.values(D.chats || {})) {
+      if (chat && ch.id === chat.id) continue
+      for (const d of (ch.docs || [])) addDoc(d)
+    }
+  }
+  return out
+}
+
+function findDocInAnyChat(docId) {
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    const idx = ch.docs.findIndex(d => d.id === docId)
+    if (idx !== -1) return { chat: ch, idx, doc: ch.docs[idx] }
+  }
+  return null
+}
 function makeCreds(o){ o=o||{}; return {
   apiKey: o.apiKey||'', model: o.model||o.modelId||'',
   maxTokens: o.maxTokens||CFG.DEFAULT_MAX_TOKENS, systemPrompt: o.systemPrompt||'',
   chunkSize: o.chunkSize||CFG.DEFAULT_CHUNK_SIZE, topK: o.topK||CFG.DEFAULT_TOP_K,
   embedApiKey: o.embedApiKey||'', embedModelId: o.embedModelId||'',
+  embedWarnTokens: (o.embedWarnTokens==null?'auto':o.embedWarnTokens), embedMaxTokens: (o.embedMaxTokens==null?'auto':o.embedMaxTokens),
   classification: o.classification||'' } }
 // Inverse mapping for the on-disk settings shape (model -> modelId).
 function credsToSettings(c){ return {
   apiKey: c.apiKey, modelId: c.model, maxTokens: c.maxTokens, systemPrompt: c.systemPrompt,
   chunkSize: c.chunkSize, topK: c.topK, embedApiKey: c.embedApiKey||'',
-  embedModelId: c.embedModelId||'', classification: c.classification } }
+  embedModelId: c.embedModelId||'', embedWarnTokens: c.embedWarnTokens||'auto', embedMaxTokens: c.embedMaxTokens||'auto', classification: c.classification } }
 
 async function init() {
   // Demo mode (?demo=1) seeds sample content and skips all network work.
@@ -71,7 +150,7 @@ async function connect() {
     const model = (document.getElementById('cfg-mdl')?.value.trim()) || 'cce.claude-opus-4-6'
     const dErr = document.getElementById('modal-err'), dBtn = document.getElementById('connect-btn')
     if (dErr) dErr.classList.remove('show')
-    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting...' }
+    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Connecting…' }
     setHealth('warn','Connecting')
     try {
       const r = await httpPost('/api/chat', { apiKey: DEMOKEY_CLIENT, modelId: model, payload: { messages:[{role:'user',content:'Hi'}], max_tokens:16, stream:false } })
@@ -92,8 +171,20 @@ async function connect() {
   errEl.classList.remove('show'); errEl.textContent = ''
   if (!apiKey) { errEl.textContent='API key required'; errEl.classList.add('show'); return }
 
-  btn.disabled = true; btn.textContent = 'Connecting...'
+  btn.disabled = true; btn.textContent = 'Connecting…'
   setHealth('warn', 'Connecting')
+  // A gateway chosen in this modal is only SELECTED, never applied on click.
+  // Apply it now - applyGatewayChange verifies the key against that gateway
+  // first, so a bad key leaves the endpoint untouched.
+  if (typeof _pendingGw !== 'undefined' && _pendingGw && typeof applyGatewayChange === 'function') {
+    const gwRes = await applyGatewayChange(_pendingGw, apiKey)
+    if (!gwRes || !gwRes.ok) {
+      errEl.textContent = (gwRes && gwRes.error) || 'Gateway switch failed'
+      errEl.classList.add('show'); setHealth('err', 'Failed')
+      btn.disabled = false; btn.textContent = 'Connect'
+      return
+    }
+  }
   try {
     // Escalate max_tokens until the model accepts it (1 → 16 → 32).
     // Some providers (e.g. GPT) reject very low values with a 400/422.
@@ -102,7 +193,7 @@ async function connect() {
     let r, rd, connected = false
     for (let ti = 0; ti < tokenBudgets.length; ti++) {
       const budget = tokenBudgets[ti]
-      ;({ r, data: rd } = await fetchWithRetry('/api/chat', {
+      ;({ r, data: rd } = await fetchWithRetry(proxyUrl('/api/chat'), {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ apiKey, modelId:model, payload:{ messages:[{role:'user',content:'Hi'}], max_tokens:budget, stream:false } })
       }, {
@@ -115,7 +206,7 @@ async function connect() {
       if (r.status === 401 || r.status === 403) break
       // On last budget, fall through to error reporting below
       if (ti < tokenBudgets.length - 1 && (r.status === 400 || r.status === 422)) {
-        btn.textContent = 'Retrying...'
+        btn.textContent = 'Retrying…'
         continue
       }
       break
@@ -140,7 +231,7 @@ async function connect() {
   const prevEmbedModelId = creds?.embedModelId || D.settings?.embedModelId || ''
   creds = makeCreds({ apiKey, model, embedApiKey: prevEmbedApiKey, embedModelId: prevEmbedModelId, classification: ((typeof _clsState!=='undefined' && _clsState.cfg) || inferTier(model) || 'cce') })
   // Write settings into D directly — persist() will carry them to disk on every save
-  D.settings = credsToSettings(creds)
+  D.settings = Object.assign({}, D.settings || {}, credsToSettings(creds))
   // Also save via /api/config for immediate server-side update
   await saveSettings(D.settings)
   await persist()  // write D (with settings) to disk right now
@@ -177,7 +268,7 @@ async function disconnect() {
   // prefers /api/config over D.settings, so a stale config would silently
   // auto-reconnect on next launch. Push blank credentials to wipe it.
   await saveSettings({ apiKey:'', modelId:'', embedApiKey:'', embedModelId:'' })
-  setHealth('off', 'Not connected')
+  setHealth('', 'Not connected')
   updateConnectedUI()
   toast('Disconnected', 'ok')
 }
