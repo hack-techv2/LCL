@@ -198,9 +198,21 @@ function dbgWrite(level, args, ts) {
   } catch {}
 }
 // Tee console -> file. Originals are preserved; a log call must never throw.
-const _origConsoleLog   = console.log.bind(console)
-const _origConsoleWarn  = console.warn.bind(console)
-const _origConsoleError = console.error.bind(console)
+// An in-process restart (REPL "reloading server.txt") re-evaluates this module in
+// the SAME process, where console.log is already our wrapper. Binding it again
+// would wrap the wrapper: every reload adds another '<iso> [log]' prefix, re-runs
+// _sanitizeParts per layer, writes the line to debug_logs.txt once per layer, and
+// multiplies the bytes pushed to the Windows console - which is what makes the
+// stdout stall (QuickEdit/selection) bite so easily. Capture the TRUE originals
+// once per process and reuse them on every reload.
+const _consoleOrig = globalThis.__lclConsoleOrig || (globalThis.__lclConsoleOrig = {
+  log:   console.log.bind(console),
+  warn:  console.warn.bind(console),
+  error: console.error.bind(console)
+})
+const _origConsoleLog   = _consoleOrig.log
+const _origConsoleWarn  = _consoleOrig.warn
+const _origConsoleError = _consoleOrig.error
 // Console lines carry the SAME '<iso> [level]' prefix as the file sink (one shared
 // timestamp per call) so the terminal and debug_logs.txt read identically.
 // Scrub secrets ONCE per call, then feed the SAME cleaned parts to both the terminal
@@ -860,6 +872,59 @@ function handleSetEndpoint(req, res) {
     saveData(appData)
     console.log('  API endpoint           ->  ' + modelUrl + ' (' + name + (embedUrl ? '' : '; no embeddings URL') + ')')
     json(res, { ok: true, active: activeEndpoint() })
+  })
+}
+
+// POST /api/testkey - verify an API key against a gateway WITHOUT switching the
+// active endpoint, so Settings can gate a connection change on a working key.
+// One minimal non-streaming completion. The URL goes through the SAME *.gov.sg
+// allowlist as a real endpoint change, so this cannot be used to probe arbitrary
+// hosts. The key is masked in logs and never persisted.
+function handleTestKey(req, res) {
+  readBody(req, (err, body) => {
+    if (err) return json(res, { error: err.message }, 400)
+    const modelUrl = String((body && body.modelUrl) || '').trim()
+    const apiKey   = String((body && body.apiKey) || '').trim()
+    const model    = String((body && body.model) || '').trim().slice(0, 80)
+    if (!apiKey) return json(res, { ok: false, reason: 'nokey', error: 'Enter an API key first.' })
+    if (apiKey === DEMOKEY) return json(res, { ok: true, status: 200, demo: true })
+    if (!validEndpointUrl(modelUrl, false)) {
+      return json(res, { ok: false, reason: 'badurl', error: 'Endpoint URL not allowed (must be a *.gov.sg host).' })
+    }
+    let u; try { u = new URL(modelUrl) } catch { return json(res, { ok: false, reason: 'badurl', error: 'Endpoint URL could not be parsed.' }) }
+    const payload = JSON.stringify({ model: model || undefined, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false })
+    const opts = {
+      protocol: u.protocol, hostname: u.hostname, port: u.port ? parseInt(u.port, 10) : 443,
+      path: u.pathname + (u.search || ''), method: 'POST', agent: upstreamAgent,
+      headers: {
+        'x-api-key': apiKey, 'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload), 'Accept': 'application/json', 'User-Agent': 'curl/8.0.0'
+      }
+    }
+    log.debug('[testkey] url =', targetUrlStr(opts), ' auth =', maskSecret(apiKey))
+    let settled = false
+    const finish = (o) => { if (settled) return; settled = true; json(res, o) }
+    const upReq = https.request(opts, up => {
+      if (tlsGateFails(up.socket)) {
+        const ae = String(up.socket.authorizationError || 'TLS not trusted')
+        up.resume(); try { up.socket.destroy() } catch {}
+        return finish({ ok: false, reason: 'tls', error: 'TLS certificate not trusted (' + ae + ')' })
+      }
+      let buf = ''
+      up.on('data', d => { if (buf.length < 4000) buf += d.toString('utf8') })
+      up.on('end', () => {
+        const sc = up.statusCode || 0
+        log.debug('[testkey] status =', sc)
+        if (sc >= 200 && sc < 300) return finish({ ok: true, status: sc })
+        let msg = ''
+        try { const j = JSON.parse(buf); msg = (j && j.error && (j.error.message || j.error)) || (j && j.message) || '' } catch {}
+        const reason = (sc === 401 || sc === 403) ? 'auth' : (sc === 429 ? 'ratelimit' : 'http')
+        finish({ ok: false, status: sc, reason, error: sanitizeSecrets(String(msg || ('HTTP ' + sc))).slice(0, 300) })
+      })
+    })
+    upReq.on('error', e => finish({ ok: false, reason: 'network', error: sanitizeSecrets(String((e && e.message) || e)).slice(0, 300) }))
+    upReq.setTimeout(20000, () => { try { upReq.destroy() } catch {} ; finish({ ok: false, reason: 'timeout', error: 'No response after 20s.' }) })
+    upReq.write(payload); upReq.end()
   })
 }
 
@@ -2529,6 +2594,7 @@ const ROUTES = {
   'GET /api/ratelimit':       handleRateLimit,
   'GET /api/endpoint':        handleGetEndpoint,
   'POST /api/endpoint':       handleSetEndpoint,
+  'POST /api/testkey':        handleTestKey,
   'POST /api/clientlog':      handleClientLog,
   'GET /skills':              handleSkillsList,
   'POST /skills/reload':      handleSkillsList,
