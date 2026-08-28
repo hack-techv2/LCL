@@ -1,0 +1,1288 @@
+// =============================================================================
+// LCL client-logic harness  (browser-side logic, run under Node)
+// -----------------------------------------------------------------------------
+// Loads the REAL src modules (12-transport, 50-chatprocessing, 30-chatlist,
+// toast from 80-ui) into a vm sandbox with stubbed fetch/DOM, and drives them
+// with FIXTURES TAKEN VERBATIM FROM THE 2 Jul 2026 DEBUG LOGS (429 bodies,
+// Remaining values, stream shapes). Two patches are applied to the source under
+// test, both timing-only: _RL_WINDOW_MS 62000 -> 1500 and the transient-retry
+// sleep 4000 -> 200, so the suite runs in seconds instead of minutes.
+//
+// Run: node test/client-logic.test.js        Exit 0 = all passed (CI-friendly)
+// =============================================================================
+const fs = require('fs'), path = require('path'), vm = require('vm')
+
+const src = f => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8')
+let pass = 0, fail = 0
+// fs.writeSync = SYNCHRONOUS stdout, so a sync-spinning case can never hide
+// already-completed results behind buffering.
+const say = s => { try { fs.writeSync(1, s + String.fromCharCode(10)) } catch { console.log(s) } }
+const check = (name, ok, detail) => { say((ok ? 'PASS' : 'FAIL') + '  ' + name + (detail ? '   ' + detail : '')); ok ? pass++ : fail++ }
+
+// --- source under test (timing patches asserted so drift is caught) ----------
+const T12 = src('12-transport.js')
+let T50 = src('50-chatprocessing.js')
+if (!T50.includes('const _RL_WINDOW_MS = 62000')) { console.log('FAIL  harness: _RL_WINDOW_MS anchor missing'); process.exit(1) }
+T50 = T50.replace('const _RL_WINDOW_MS = 62000', 'const _RL_WINDOW_MS = 1500')
+if (!T50.includes('await abortableSleep(4000, signal)')) { console.log('FAIL  harness: transient-sleep anchor missing'); process.exit(1) }
+T50 = T50.replace('await abortableSleep(4000, signal)', 'await abortableSleep(200, signal)')
+const T30 = src('30-chatlist.js')
+
+// --- fixtures (2 Jul 2026 logs, timestamps made dynamic) ----------------------
+const stamp = ms => new Date(ms).toISOString().replace('T', ' ').replace(/\..*/, '') + ' UTC'
+const RL_BODY = (remaining, resetMs) =>
+  'Rate limit exceeded for api_key: d3adb33fd3adb33fd3adb33fd3adb33fd3adb33fd3adb33fd3adb33fd3adb33f. ' +
+  'Limit type: tokens. Current limit: 200000, Remaining: ' + remaining + '. Limit resets at: ' + stamp(resetMs)
+
+// --- fake fetch responses ------------------------------------------------------
+const enc = new TextEncoder()
+function sseResp(frames) {           // frames: array of strings (already JSON) or '[DONE]'
+  const bytes = frames.map(f => enc.encode('data: ' + f + '\n\n'))
+  let i = 0
+  return {
+    ok: true, status: 200,
+    headers: { get: k => (k.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
+    body: { getReader: () => ({ read: async () => (i < bytes.length ? { done: false, value: bytes[i++] } : { done: true }) }) },
+    text: async () => ''
+  }
+}
+const okStream = (text, usage, finish) => sseResp([
+  JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] }),
+  JSON.stringify({ choices: [{ delta: {}, finish_reason: finish || 'stop' }] }),
+  ...(usage ? [JSON.stringify({ usage })] : []),
+  '[DONE]'
+])
+const rl429 = (remaining, resetMs) => ({ ok: false, status: 429, headers: { get: () => null }, text: async () => JSON.stringify({ error: { message: RL_BODY(remaining, resetMs), type: 'None', param: 'None', code: '429' } }) })
+const errJson = (status, msg) => ({ ok: false, status, headers: { get: () => null }, text: async () => JSON.stringify({ error: { message: msg } }) })
+
+// --- sandbox ------------------------------------------------------------------
+function mkCtx(fetchQueue) {
+  const crumbs = []
+  const sb = {
+    console, setTimeout, clearTimeout, setInterval, clearInterval,
+    TextEncoder, TextDecoder, AbortController,
+    document: { getElementById: () => null, createElement: () => ({ innerHTML: '', children: [], style: {}, appendChild(c) { this.children.push(c) } }) },
+    fetch: async () => { if (!fetchQueue.length) throw new Error('fetch queue empty'); const r = fetchQueue.shift(); return typeof r === 'function' ? r() : r },
+    lclCrumb: (k, d) => crumbs.push(Object.assign({ k }, d)),
+    creds: { model: 'demo', apiKey: 'K', maxTokens: 8192 },
+    CFG: { DEFAULT_MAX_TOKENS: 8192, DEFAULT_CHUNK_SIZE: 800 },
+    estTokens: t => Math.ceil(String(t).length / 4),
+    fmt: s => s,
+    D: { chats: {} }
+  }
+  const ctx = vm.createContext(sb)
+  vm.runInContext(T12, ctx, { filename: '12-transport.js' })
+  vm.runInContext(T50, ctx, { filename: '50-chatprocessing.js' })
+  return { ctx, crumbs, sb, get: expr => vm.runInContext(expr, ctx) }
+}
+
+const CASES = [
+
+  { id: 'C1 postClassified parses the real 429 body', fn: async () => {
+    const q = [rl429(58944, Date.now() + 2000)]
+    const { get } = mkCtx(q)
+    const r = await get('postClassified')('/api/chat', {})
+    const ok = r.kind === 'ratelimit' && r.limit429 === 200000 && r.remaining429 === 58944 && r.resetMs > Date.now()
+    check('C1 postClassified parses the real 429 body', ok, 'kind=' + r.kind + ' rem=' + r.remaining429 + ' lim=' + r.limit429)
+  } },
+
+  { id: 'C2 postClassified kinds: 502 transient, 400 terminal', fn: async () => {
+    const { get } = mkCtx([errJson(502, 'Upstream inactivity timeout'), errJson(400, 'bad request')])
+    const pc = get('postClassified')
+    const a = await pc('/api/chat', {}), b = await pc('/api/chat', {})
+    check('C2 postClassified kinds: 502 transient, 400 terminal', a.kind === 'transient' && b.kind === 'terminal', a.kind + '/' + b.kind)
+  } },
+
+  { id: 'C48 budget(s) exceeded 429 -> terminal, no reset (never auto-retry)', fn: async () => {
+    // 15 Jul log: overall API-key budget exhaustion is a flat 429 body (string,
+    // NO reset/limit/remaining). Must classify TERMINAL so the chat path shows a
+    // plain error and never enters the 60s retry-forever loop.
+    const budget429 = { ok: false, status: 429, headers: { get: () => null }, text: async () => JSON.stringify({ error: '1 budget(s) exceeded' }) }
+    const { get } = mkCtx([budget429])
+    const r = await get('postClassified')('/api/chat', {})
+    const ok = r.kind === 'terminal' && r.status === 429 && r.resetMs == null && r.limit429 == null && r.remaining429 == null
+    check('C48 budget(s) exceeded 429 -> terminal, no reset (never auto-retry)', ok, 'kind=' + r.kind + ' reset=' + r.resetMs)
+  } },
+
+  { id: 'C50 re-send during a rate-limit countdown is blocked, not re-fired (2c)', fn: async () => {
+    // With a 429 countdown pending, a manual re-send used to cancel it and fire straight
+    // into the still-drained window (another 429). Now it blocks with a toast and leaves
+    // the auto-retry running (Stop cancels). No fetch, pendingRetry survives.
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const toasts = []; sb.toast = (m, ty) => toasts.push({ m, ty })
+    sb.document.getElementById = id => (id === 'msg-in' ? { value: 'try again' } : null)
+    let cancelled = false
+    sb.__markCancel = () => { cancelled = true }
+    vm.runInContext('busy = false; chatId = "c1"; pendingRetry = { cancel(){ __markCancel() } }; rlWindowUntil = Date.now() + 42000', ctx)
+    await get('send')()
+    const blocked = crumbs.some(c => c.k === 'send_blocked_ratelimit')
+    const toastOk = toasts.some(x => /retry automatically/i.test(x.m))
+    const notCancelled = cancelled === false
+    const stillPending = vm.runInContext('!!pendingRetry', ctx)
+    check('C50 re-send during a rate-limit countdown blocked, not re-fired (2c)', blocked && toastOk && notCancelled && stillPending,
+      'blocked=' + blocked + ' toast=' + toastOk + ' notCancelled=' + notCancelled + ' stillPending=' + stillPending)
+  } },
+
+  { id: 'C3 truncation guard: mid-stream error frame -> transient', fn: async () => {
+    // The 21:47 stall shape: deltas, then the proxy error frame, NO finish/[DONE].
+    const die = sseResp([
+      JSON.stringify({ choices: [{ delta: { content: 'partial ' }, finish_reason: null }] }),
+      JSON.stringify({ error: 'upstream stream error: socket hang up' })
+    ])
+    const { get } = mkCtx([die])
+    const r = await get('streamChatOnce')({ messages: [] }, null, null)
+    check('C3 truncation guard: mid-stream error frame -> transient', r.ok === false && r.kind === 'transient', 'ok=' + r.ok + ' kind=' + r.kind)
+  } },
+
+  { id: 'C4 streamChatOnce captures terminal usage', fn: async () => {
+    const { get } = mkCtx([okStream('hello', { prompt_tokens: 90, completion_tokens: 10, total_tokens: 100 })])
+    const r = await get('streamChatOnce')({ messages: [] }, null, null)
+    check('C4 streamChatOnce captures terminal usage', r.ok && r.text === 'hello' && r.usage && r.usage.total_tokens === 100, 'usage=' + JSON.stringify(r.usage))
+  } },
+
+  { id: 'C5 near-full 429 -> tooBig (split), fast', fn: async () => {
+    const { get } = mkCtx([rl429(199999, Date.now() + 60000)])
+    const t0 = Date.now()
+    const r = await get('summariseInto')(null, 'doc.html', 'x'.repeat(8000), null, null, null)
+    const ms = Date.now() - t0
+    check('C5 near-full 429 -> tooBig (split), fast', r.text === null && r.tooBig === true && ms < 500, 'ms=' + ms)
+  } },
+
+  { id: 'C6 partial 429 (Remaining: 58944) -> WAIT then retry, never split', fn: async () => {
+    // THE 21:45:46 bug fixture: partially-drained window must wait, not deep-split.
+    // resetMs must be >1s out: the body stamp truncates to whole seconds, and a
+    // stamp that lands in the past parses as no-reset -> 60s default (flaky hang).
+    const { get, crumbs } = mkCtx([rl429(58944, Date.now() + 2500), okStream('recovered summary')])
+    const t0 = Date.now()
+    const r = await get('summariseInto')(null, 'ASG v0.8.html (part 2/2)', 'x'.repeat(8000), null, null, null)
+    const ms = Date.now() - t0
+    const waited = crumbs.some(c => c.k === 'rl_wait' && c.where === 'summary')
+    check('C6 partial 429 -> WAIT then retry, never split', r.text === 'recovered summary' && !r.tooBig && waited && ms >= 900, 'ms=' + ms + ' waited=' + waited)
+  } },
+
+  { id: 'C7 transient 5xx during summary -> retried', fn: async () => {
+    const { get, crumbs } = mkCtx([errJson(502, 'Upstream inactivity timeout'), okStream('after hiccup')])
+    const r = await get('summariseInto')(null, 'doc', 'x'.repeat(8000), null, null, null)
+    const retried = crumbs.some(c => c.k === 'summary_transient_retry')
+    check('C7 transient 5xx during summary -> retried', r.text === 'after hiccup' && retried, 'retried=' + retried)
+  } },
+
+  { id: 'C8 infl learns DOWN/UP from stream usage (EMA)', fn: async () => {
+    const { get } = mkCtx([])
+    const reqTok = t => Math.ceil(JSON.stringify({ messages: [
+      { role: 'system', content: 'You are summarising content for the user. Be faithful and concise.' },
+      { role: 'user', content: 'Summarise this document.\n\n--- d ---\n' + t }
+    ] }).length / 4)
+    const text = 'y'.repeat(40000)
+    const rt = reqTok(text)
+    get('(q => { fetch = q })')(async () => okStream('s', { prompt_tokens: Math.round(rt * 2.2), completion_tokens: 10, total_tokens: Math.round(rt * 2.2) + 10 }))
+    await get('summariseInto')(null, 'd', text, null, null, null)
+    const infl = get('_rlPace.infl')
+    check('C8 infl learns from stream usage (EMA)', infl > 1.9 && infl < 2.1, 'infl=' + infl.toFixed(3) + ' (1.8 -> ~2.0)')
+  } },
+
+  { id: 'C9 pace gate: 2nd oversized part waits BEFORE firing', fn: async () => {
+    const { get, crumbs } = mkCtx([okStream('p1'), okStream('p2')])
+    const big = 'z'.repeat(430000)   // ~107k est, the real part size from the logs
+    const sInto = get('summariseInto')
+    await sInto(null, 'part1', big, null, null, null)
+    const t0 = Date.now()
+    await sInto(null, 'part2', big, null, null, null)
+    const ms = Date.now() - t0
+    const paced = crumbs.some(c => c.k === 'rl_wait' && c.where === 'pace')
+    check('C9 pace gate: 2nd oversized part waits BEFORE firing', paced && ms >= 200, 'paced=' + paced + ' ms=' + ms)
+  } },
+
+  { id: 'C10 map-reduce: parts stay visible (doneEl) + single-level split', fn: async () => {
+    const { get, crumbs } = mkCtx([okStream('P1'), okStream('P2'), okStream('COMBINED')])
+    const bodyEl = { innerHTML: '', children: [], appendChild(c) { this.children.push(c) } }
+    const text = 'w'.repeat(450000)   // est 112.5k > cap -> 2 parts
+    const out = await get('summariseText')(null, 'big.html', text, null, bodyEl, null, 0)
+    const doneEl = bodyEl.children[0]
+    const kept = doneEl && /Part 1: P1/.test(doneEl.innerHTML) && /Part 2: P2/.test(doneEl.innerHTML)
+    const splits = crumbs.filter(c => c.k === 'map_reduce')
+    const singleLevel = splits.length === 1 && splits[0].depth === 0 && splits[0].parts === 2
+    check('C10 map-reduce: parts stay visible + single-level split', out === 'COMBINED' && kept && singleLevel, 'kept=' + kept + ' splits=' + JSON.stringify(splits))
+  } },
+
+  { id: 'C11 embedsActive over D.chats', fn: async () => {
+    const { get, sb } = mkCtx([])
+    sb.D.chats = { a: { docs: [{ status: 'ready' }] }, b: { docs: [{ status: 'ready' }] } }
+    const idle = get('embedsActive')()
+    sb.D.chats.b.docs.push({ status: 'embedding' })
+    const active = get('embedsActive')()
+    sb.D.chats.b.docs[1].status = 'pending'
+    const pending = get('embedsActive')()
+    check('C11 embedsActive over D.chats', idle === false && active === true && pending === true, idle + '/' + active + '/' + pending)
+  } },
+
+  { id: 'C12 deleteChat aborts run + cancels unshared docs only', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    sb.confirmDialog = async () => true
+    sb.sortedChats = () => [{ id: 'y', messages: [1], docs: [] }]
+    sb.persist = () => {}; sb.renderAll = () => {}; sb.newChat = () => {}; sb.renderChatList = () => {}
+    sb.toast = () => {}; sb.gcEmbedCache = async () => {}; sb.mutate = fn => fn(sb.D)
+    const shared = { id: 'd1' }, solo = { id: 'd2' }
+    sb.D.chats = { x: { title: 't', docs: [shared, solo], messages: [] }, y: { docs: [{ id: 'd1' }], messages: [1] } }
+    const ctl = { abortCalled: false, abort() { this.abortCalled = true } }
+    sb.__ctl = ctl
+    vm.runInContext('chatId = "x"; inflightCtl = __ctl', ctx)
+    vm.runInContext(T30, ctx, { filename: '30-chatlist.js' })
+    await get('deleteChat')('x')
+    const crumbOk = crumbs.some(c => c.k === 'delete_chat' && c.abortedRun === true)
+    check('C12 deleteChat aborts run + cancels unshared docs only', ctl.abortCalled === true && solo._cancelled === true && shared._cancelled !== true && crumbOk,
+      'abort=' + ctl.abortCalled + ' solo=' + !!solo._cancelled + ' shared=' + !!shared._cancelled + ' crumb=' + crumbOk)
+  } },
+
+  { id: 'C14 busy send -> toast + crumb, not a silent no-op', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const toasts = []
+    sb.toast = (m, ty) => toasts.push({ m, ty })
+    sb.document.getElementById = id => (id === 'msg-in' ? { value: 'hello there' } : null)
+    vm.runInContext('busy = true; chatId = "c1"; pendingRetry = null', ctx)
+    await get('send')()
+    const crumbOk = crumbs.some(c => c.k === 'send_blocked_busy')
+    const toastOk = toasts.some(x => /Still replying/.test(x.m))
+    check('C14 busy send -> toast + crumb, not a silent no-op', crumbOk && toastOk, 'crumb=' + crumbOk + ' toast=' + JSON.stringify(toasts))
+  } },
+
+  { id: 'C15 mid-reply stream death -> partial discarded + retry path', fn: async () => {
+    // [[streamdie]] shape: tokens, then the proxy error frame, no finish/[DONE].
+    const die = sseResp([
+      JSON.stringify({ choices: [{ delta: { content: 'Here is a' }, finish_reason: null }] }),
+      JSON.stringify({ error: 'upstream stream error: socket hang up' })
+    ])
+    const { ctx, get, sb, crumbs } = mkCtx([die])
+    const fakeBubble = () => ({ dataset: {}, children: [], querySelector: () => ({ innerHTML: '' }), insertBefore() {}, remove() {} })
+    sb.appendTyping = () => ({ remove() {} })
+    sb.appendMsg = () => fakeBubble()
+    sb.renderMessages = () => {}; sb.updateSendBtn = () => {}; sb.setHealth = () => {}
+    sb.connectedLabel = () => 'ok'; sb.toast = () => {}; sb.persist = async () => {}; sb.renderDocPanel = () => {}; sb.renderChatList = () => {}; sb.renderTopbar = () => {}; sb.updateDocsBtn = () => {}; sb.scrollBottom = () => {}
+    vm.runInContext('busy = false; retry5xxCount = 0; pendingRetry = null; inflightCtl = null; RETRY_STEPS_MS = [10000, 20000, 60000]', ctx)
+    const chat = { messages: [], docs: [] }
+    await get('runStream')(chat, { messages: [] }, null)
+    const partialKept = chat.messages.some(m => m.role === 'assistant' && /Here is a/.test(m.content || '') && !m.errored)
+    const crumbOk = crumbs.some(c => c.k === 'stream_died_midreply')
+    check('C15 mid-reply stream death -> partial discarded + retry path', !partialKept && crumbOk, 'partialKept=' + partialKept + ' crumb=' + crumbOk)
+  } },
+
+  { id: 'C16 toast is positioned above the composer', fn: async () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
+    const m = css.match(/#toast\{position:fixed;bottom:(\d+)px/)
+    const px = m ? Number(m[1]) : 0
+    check('C16 toast is positioned above the composer', px >= 100, 'bottom=' + px + 'px (composer is ~100px tall)')
+  } },
+
+  { id: 'C17 streamChatOnce reports finish_reason', fn: async () => {
+    const { get } = mkCtx([okStream('partial answer', null, 'length'), okStream('full answer')])
+    const sco = get('streamChatOnce')
+    const a = await sco({ messages: [] }, null, null)
+    const b = await sco({ messages: [] }, null, null)
+    check('C17 streamChatOnce reports finish_reason', a.finish === 'length' && b.finish === 'stop', a.finish + '/' + b.finish)
+  } },
+
+  { id: 'C18 truncation note: Continue button + continuation count', fn: async () => {
+    const { get } = mkCtx([])
+    const mkBubble = () => ({ children: [], querySelector: () => null, insertBefore(el) { this.children.push(el) } })
+    const flags = get('attachMsgFlags')
+    const b1 = mkBubble()
+    flags(b1, { truncated: true })
+    const first = b1.children[0] && b1.children[0].innerHTML || ''
+    const b2 = mkBubble()
+    flags(b2, { truncated: true, continues: 2 })
+    const second = b2.children[0] && b2.children[0].innerHTML || ''
+    const ok = /Reply hit the token limit/.test(first) && /continueTruncated/.test(first)
+      && /Still over the limit after 2 continuations/.test(second) && /continueTruncated/.test(second)
+    check('C18 truncation note: Continue button + continuation count', ok, 'first=' + /token limit/.test(first) + ' second=' + /2 continuations/.test(second))
+  } },
+
+  { id: 'C19 proxyUrl shim: file:// and foreign origins hit the proxy', fn: async () => {
+    const { ctx, sb, get } = mkCtx([])
+    const pu = get('proxyUrl')
+    sb.location = { protocol: 'file:', origin: 'null' }
+    const fromFile = pu('/api/chat')
+    sb.location = { protocol: 'http:', origin: 'http://localhost:5500' }
+    const fromDev = pu('/api/embed-batch')
+    sb.location = { protocol: 'http:', origin: 'http://127.0.0.1:3000' }
+    const served = pu('/api/chat')
+    const nonApi = pu('/index.html')
+    sb.window = { LCL_API_BASE: 'http://127.0.0.1:4000' }
+    sb.location = { protocol: 'file:', origin: 'null' }
+    const overridden = pu('/api/chat')
+    const ok = fromFile === 'http://127.0.0.1:3000/api/chat'
+      && fromDev === 'http://127.0.0.1:3000/api/embed-batch'
+      && served === '/api/chat' && nonApi === '/index.html'
+      && overridden === 'http://127.0.0.1:4000/api/chat'
+    check('C19 proxyUrl shim: file:// and foreign origins hit the proxy', ok,
+      'file=' + fromFile + ' dev=' + fromDev + ' served=' + served + ' override=' + overridden)
+  } },
+
+  { id: 'C20 buildContent: <file> blocks the renderer can expand', fn: async () => {
+    const { ctx, get } = mkCtx([])
+    vm.runInContext('attachments = [{ name: \'report "final".txt\', textContent: \'AAA\' }, { name: \'notes.txt\', textContent: \'BBB\' }]', ctx)
+    const out = get('buildContent')('compare these')
+    const blockRe = /<file name="([^"]*)">([\s\S]*?)<\/file>/g
+    const map = {}
+    let m; while ((m = blockRe.exec(out)) !== null) map[m[1]] = m[2].trim()
+    const names = Object.keys(map)
+    const ok = typeof out === 'string' && names.length === 2 && map["report 'final'.txt"] === 'AAA' && map['notes.txt'] === 'BBB' && out.startsWith('compare these')
+    check('C20 buildContent: <file> blocks the renderer can expand', ok, 'names=' + JSON.stringify(names))
+  } },
+
+  { id: 'C21 attachOversizeInfo: budget math both sides', fn: async () => {
+    const { get } = mkCtx([])
+    const info = get('attachOversizeInfo')
+    const noChat = { messages: [] }
+    const small = info([{ extractedText: 'x'.repeat(40000) }], noChat)            // ~10k tok
+    const big   = info([{ extractedText: 'x'.repeat(500000) }, { extractedText: 'x'.repeat(460000) }], noChat)  // ~240k tok
+    // History-aware: a small new batch must still warn when EARLIER batches bloat the chat.
+    const heavyChat = { messages: [{ role: 'user', content: 'y'.repeat(700000) }] }   // ~175k tok history
+    const stacked = info([{ extractedText: 'x'.repeat(80000) }], heavyChat)            // +20k new
+    const ok = small.over === false && big.over === true && big.ceil === 200000 && big.newEst === 240000 && stacked.over === true && stacked.histEst > 170000
+    check('C21 attachOversizeInfo: budget math both sides', ok, 'small=' + small.est + '/' + small.over + ' big=' + big.est + '/' + big.over)
+  } },
+
+  { id: 'C22 trayContextBlock: current working set only', fn: async () => {
+    const { get } = mkCtx([])
+    const tcb = get('trayContextBlock')
+    const chat = { attachedFiles: [{ name: 'a "1".txt', textContent: 'AAA' }, { name: 'b.txt', textContent: 'BBB' }] }
+    const out = tcb(chat)
+    const empty = tcb({ attachedFiles: [] }) === '' && tcb(null) === ''
+    const blocks = (out.match(/<file name="/g) || []).length
+    check('C22 trayContextBlock: current working set only', blocks === 2 && out.includes("a '1'.txt") && empty, 'blocks=' + blocks)
+  } },
+
+  { id: 'C23 unwinnable 429 (near-full window) -> embed offer, no retry loop', fn: async () => {
+    // The 6 Jul loop fixture: est 198k passed the guard, gateway said Remaining: 200000.
+    const { ctx, get, sb, crumbs } = mkCtx([rl429(200000, Date.now() + 60000)])
+    const bodyStub = { innerHTML: '', style: {}, appendChild() {} }
+    const fakeBubble = () => ({ dataset: {}, querySelector: () => bodyStub, insertBefore() {}, remove() {} })
+    sb.appendTyping = () => ({ remove() {} })
+    sb.appendMsg = () => fakeBubble()
+    sb.mkEl = () => ({ appendChild() {} })
+    sb.renderMessages = () => {}; sb.updateSendBtn = () => {}; sb.setHealth = () => {}
+    sb.connectedLabel = () => 'ok'; sb.toast = () => {}; sb.persist = async () => {}
+    sb.renderChatList = () => {}; sb.renderTopbar = () => {}; sb.updateDocsBtn = () => {}; sb.renderDocPanel = () => {}
+    vm.runInContext('busy = false; retry5xxCount = 0; pendingRetry = null; inflightCtl = null; RETRY_STEPS_MS = [10000, 20000, 60000]', ctx)
+    const chat = { messages: [{ role: 'user', content: 'q' }], docs: [], attachedFiles: [{ name: 'big.pdf', textContent: 'x'.repeat(9000) }] }
+    sb.curChat = () => chat
+    await get('runStream')(chat, { messages: [] }, null)
+    const offered = crumbs.some(c => c.k === 'attach_oversize_offered' && c.where === 'send')
+    const waited = crumbs.some(c => c.k === 'rl_wait')
+    check('C23 unwinnable 429 (near-full window) -> embed offer, no retry loop', offered && !waited, 'offered=' + offered + ' waited=' + waited)
+  } },
+
+  { id: 'C24 tray remove + embed-all mutate the chat working set', fn: async () => {
+    const { ctx, get, sb } = mkCtx([])
+    const chat = { attachedFiles: [{ name: 'a.txt', textContent: 'AAA' }, { name: 'b.txt', textContent: 'BBB' }], messages: [], docs: [] }
+    sb.curChat = () => chat
+    sb.persist = async () => {}
+    let committed = null
+    sb.commitDocs = async files => { committed = files }
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    vm.runInContext('commitDocs = async files => { __committed = files }', ctx)
+    get('removeTrayFile')(0, null)
+    const afterRemove = chat.attachedFiles.length === 1 && chat.attachedFiles[0].name === 'b.txt'
+    get('embedTrayFiles')()
+    await new Promise(r => setTimeout(r, 20))
+    const committedCtx = vm.runInContext('typeof __committed !== "undefined" ? __committed : null', ctx)
+    const afterEmbed = chat.attachedFiles.length === 0 && committedCtx && committedCtx.length === 1 && committedCtx[0].extractedText === 'BBB'
+    check('C24 tray remove + embed-all mutate the chat working set', afterRemove && afterEmbed, 'remove=' + afterRemove + ' embed=' + afterEmbed)
+  } },
+
+  { id: 'C25 clearTrayFiles empties the working set (after confirm)', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const chat = { attachedFiles: [{ name: 'a.txt', textContent: 'A' }, { name: 'b.txt', textContent: 'B' }], messages: [], docs: [] }
+    sb.curChat = () => chat
+    sb.persist = async () => {}
+    sb.confirmDialog = async () => true
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    await get('clearTrayFiles')()
+    const cleared = chat.attachedFiles.length === 0
+    const crumbOk = crumbs.some(c => c.k === 'attach_tray_clear' && c.files === 2)
+    sb.confirmDialog = async () => false
+    chat.attachedFiles = [{ name: 'c.txt', textContent: 'C' }]
+    await get('clearTrayFiles')()
+    const kept = chat.attachedFiles.length === 1
+    check('C25 clearTrayFiles empties the working set (after confirm)', cleared && crumbOk && kept, 'cleared=' + cleared + ' declined-kept=' + kept)
+  } },
+
+  { id: 'C26 removeAllDocs clears the chat, cancels embeds, keeps on decline', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const d1 = { id: 'x1', name: 'a.pdf', status: 'ready' }
+    const d2 = { id: 'x2', name: 'b.pdf', status: 'embedding' }
+    const chat = { docs: [d1, d2], messages: [], attachedFiles: [] }
+    sb.curChat = () => chat
+    sb.persist = async () => {}
+    sb.confirmDialog = async () => true
+    sb.toast = () => {}
+    sb.updateDocsBtn = () => {}
+    let gc = false
+    sb.gcEmbedCache = async () => { gc = true }
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    vm.runInContext('renderDocPanel = () => {}; ragKeywordIndexCache = {}', ctx)
+    await get('removeAllDocs')()
+    await new Promise(r => setTimeout(r, 20))
+    const cleared = chat.docs.length === 0 && d2._cancelled === true
+    const crumbOk = crumbs.some(c => c.k === 'docs_remove_all' && c.files === 2)
+    sb.confirmDialog = async () => false
+    chat.docs = [{ id: 'x3', name: 'c.pdf' }]
+    await get('removeAllDocs')()
+    const kept = chat.docs.length === 1
+    check('C26 removeAllDocs clears the chat, cancels embeds, keeps on decline', cleared && crumbOk && gc && kept, 'cleared=' + cleared + ' gc=' + gc + ' kept=' + kept)
+  } },
+
+  { id: 'C27 tray collapse: summary line, persist, over-state actions kept', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([])
+    const store = {}
+    sb.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v) } }
+    const el = { className: '', innerHTML: '' }
+    sb.document = { getElementById: id => (id === 'attach-tray' ? el : null) }
+    sb.esc = s => String(s)
+    sb.persist = async () => {}
+    const chat = { attachedFiles: [
+      { name: 'a.txt', textContent: 'x'.repeat(400) },
+      { name: 'b.txt', textContent: 'y'.repeat(400) },
+      { name: 'c.txt', textContent: 'z'.repeat(400) }
+    ], messages: [], docs: [] }
+    sb.curChat = () => chat
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8'), ctx, { filename: '40-files.js' })
+    get('renderAttachTray')()
+    const expanded = el.innerHTML.includes('at-chip') && el.innerHTML.includes('remove all') &&
+      el.innerHTML.includes('▾') && !el.className.includes('min') &&
+      el.innerHTML.includes('class="at-lbl"') && el.innerHTML.includes('onclick="toggleTrayMin(event)"')
+    get('toggleTrayMin')(null)
+    const collapsed = el.className.includes('min') && el.innerHTML.includes('3 files attached') &&
+      !el.innerHTML.includes('at-chip') && !el.innerHTML.includes('remove all') &&
+      el.innerHTML.includes('at-meter') && el.innerHTML.includes('▸') && store.lcl_tray_min === '1'
+    const crumbOk = crumbs.some(c => c.k === 'attach_tray_min' && c.min === true)
+    // Over-budget while collapsed: the warning label + Embed action must stay visible.
+    chat.attachedFiles = [{ name: 'huge.txt', textContent: 'x'.repeat(900000) }]
+    get('renderAttachTray')()
+    const overMin = el.className.includes('over') && el.className.includes('min') &&
+      el.innerHTML.includes('Embed all for RAG') && el.innerHTML.includes('too large to send')
+    get('toggleTrayMin')(null)
+    const back = !el.className.includes('min') && el.innerHTML.includes('at-chip') && store.lcl_tray_min === '0'
+    check('C27 tray collapse: summary line, persist, over-state actions kept',
+      expanded && collapsed && crumbOk && overMin && back,
+      'expanded=' + expanded + ' collapsed=' + collapsed + ' overMin=' + overMin + ' back=' + back)
+  } },
+
+  { id: 'C28 settings spNav: single section on, persisted, legacy spTab alias', fn: async () => {
+    const S = src('80-ui.js')
+    const mNav = S.match(/function spNav\(sec\)\{[\s\S]*?\n\}/)
+    const mTab = S.match(/function spTab\(name\)\{.*\}/)
+    if (!mNav || !mTab) return check('C28 settings spNav', false, 'spNav/spTab not found in 80-ui.js')
+    const SECS = ['connection', 'embedding', 'rag', 'defaults', 'updates', 'account']
+    const node = sec => { const n = { dataset: { sec }, on: null }; n.classList = { toggle: (c, v) => { if (c === 'on') n.on = v } }; return n }
+    const secs = SECS.map(node), navs = SECS.map(node)
+    const store = {}
+    const ctx = vm.createContext({
+      document: { querySelectorAll: sel => (sel.indexOf('.sp-sec') >= 0 ? secs : navs) },
+      localStorage: { setItem: (k, v) => { store[k] = String(v) }, getItem: k => (k in store ? store[k] : null) }
+    })
+    vm.runInContext(mNav[0] + '\n' + mTab[0], ctx)
+    vm.runInContext('spNav("rag")', ctx)
+    const onSecs = secs.filter(s => s.on), onNavs = navs.filter(n => n.on)
+    const routed = onSecs.length === 1 && onSecs[0].dataset.sec === 'rag' &&
+      onNavs.length === 1 && onNavs[0].dataset.sec === 'rag'
+    const persisted = store.lcl_sp_sec === 'rag'
+    vm.runInContext('spTab("settings")', ctx)
+    const alias1 = store.lcl_sp_sec === 'defaults' && secs.filter(s => s.on)[0].dataset.sec === 'defaults'
+    vm.runInContext('spTab("models")', ctx)
+    const alias2 = store.lcl_sp_sec === 'connection'
+    check('C28 settings spNav: single section on, persisted, legacy spTab alias',
+      routed && persisted && alias1 && alias2,
+      'routed=' + routed + ' persisted=' + persisted + ' alias=' + (alias1 && alias2))
+  } },
+
+  { id: 'C29 split run carries the user instruction through map-reduce', fn: async () => {
+    const q = [okStream('EXTRACT-1'), okStream('EXTRACT-2'), okStream('ANSWER')]
+    const { get, sb } = mkCtx(q)
+    const bodies = []
+    sb.fetch = async (url, opts) => { bodies.push(String((opts && opts.body) || '')); if (!q.length) throw new Error('fetch queue empty'); const r = q.shift(); return typeof r === 'function' ? r() : r }
+    const ask = "Search the presenter's name in the document."
+    const out = await get('summariseText')(null, 'slides.html', 'w'.repeat(450000), ask, null, null, 0)
+    const partOk = bodies.length === 3 &&
+      bodies[0].includes('extract everything relevant') && bodies[0].includes("presenter's name") &&
+      bodies[1].includes('extract everything relevant') && bodies[1].includes("presenter's name")
+    const combineOk = bodies[2].includes('answer the original request') && bodies[2].includes("presenter's name") && bodies[2].includes('EXTRACT-1')
+    const sysOk = !bodies[0].includes('You are summarising') && bodies[0].includes('processing a document')
+    // A summarise-style ask keeps the original generic prompts:
+    const q2 = [okStream('S1'), okStream('S2'), okStream('SUM')]
+    const m2 = mkCtx(q2)
+    const bodies2 = []
+    m2.sb.fetch = async (url, opts) => { bodies2.push(String((opts && opts.body) || '')); return q2.shift() }
+    await m2.get('summariseText')(null, 'big.html', 'w'.repeat(450000), 'Summarise this document.', null, null, 0)
+    const genericOk = bodies2.length === 3 && bodies2[0].includes('Summarise this part of a document.') && bodies2[2].includes('one cohesive summary')
+    check('C29 split run carries the user instruction through map-reduce', out === 'ANSWER' && partOk && combineOk && sysOk && genericOk, 'part=' + partOk + ' combine=' + combineOk + ' sys=' + sysOk + ' generic=' + genericOk)
+  } },
+
+  { id: 'C31 gateway vault + endpoint POST happen on APPLY, never on click', fn: async () => {
+    const S = src('80-ui.js')
+    const mE = S.match(/\/\/ === endpoint-dev ===([\s\S]*?)\/\/ === end endpoint-dev ===/)
+    const mG = S.match(/\/\/ === gateway ===([\s\S]*?)\/\/ === end gateway ===/)
+    if (!mE || !mG) return check('C31 gateway vault', false, 'markers not found')
+    const posts = []
+    const PA3 = 'https://api.ai.tech.gov.sg/platform/models/chat/completions'
+    const KP3 = 'https://nc3.gov.sg/kepler/v1/chat/completion'
+    const gwbTitle = { textContent: '' }, gwbUrl = { textContent: '' }
+    const banner = { className: 'hidden', querySelector: sel => (sel === '.gwb-title' ? gwbTitle : (sel === '.gwb-url' ? gwbUrl : null)) }
+    const keyEl = { value: '' }, embEl = { value: '' }
+    const ctx = vm.createContext({
+      document: { getElementById: id => (id === 'gw-emb-banner' ? banner : (id === 's-key' ? keyEl : (id === 's-embk' ? embEl : null))), querySelectorAll: () => [], querySelector: () => null },
+      setTimeout: () => 0, console, URL,
+      httpPost: async (u, b) => { posts.push({ u, b })
+        if (u === '/api/testkey') return { ok: true, json: async () => ({ ok: true, status: 200 }) }
+        return { ok: true, json: async () => ({ ok: true, active: { name: b.name, modelUrl: b.modelUrl, embedUrl: b.embedUrl } }) } },
+      toast: () => {}, lclCrumb: () => {},
+      creds: { apiKey: 'PLAT-KEY', embedApiKey: 'PLAT-EMB', embedModelId: 'emb-1', model: 'm1' },
+      D: { settings: {} },
+      credsToSettings: c2 => ({ apiKey: c2.apiKey }), saveSettings: () => {}, persist: () => {}
+    })
+    vm.runInContext(mE[0] + String.fromCharCode(10) + mG[0], ctx)
+    vm.runInContext('lclEndpoint = { active: { name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ' }, isDefault: true, presets: [{ name: "PlatformAI", modelUrl: ' + JSON.stringify(PA3) + ', embedUrl: "pe" }, { name: "Kepler", modelUrl: ' + JSON.stringify(KP3) + ', embedUrl: "ke" }] }', ctx)
+    const gw0 = vm.runInContext('currentGateway()', ctx)
+    // Clicking selects only: no network, no vault write, active gateway unchanged.
+    vm.runInContext('setGateway("Kepler", "sp")', ctx)
+    const clickSilent = posts.length === 0 && vm.runInContext('currentGateway()', ctx) === 'PlatformAI'
+    const pending = vm.runInContext('pendingGateway()', ctx) === 'Kepler'
+    // Apply: key verified first, THEN the endpoint switch, and the outgoing
+    // gateway's keys are vaulted at that point (not on click).
+    const res = await vm.runInContext('applyGatewayChange("Kepler", "KEP-KEY")', ctx)
+    const order = posts.length === 2 && posts[0].u === '/api/testkey' && posts[1].u === '/api/endpoint'
+    const post1 = posts[1].b.name === 'Kepler' && posts[1].b.modelUrl === KP3 && posts[1].b.embedUrl === 'ke'
+    const vault1 = vm.runInContext('D.settings.gwVault.PlatformAI.apiKey', ctx) === 'PLAT-KEY'
+    const gw1 = vm.runInContext('currentGateway()', ctx)
+    const noteOk = (vm.runInContext('renderGatewaySeg()', ctx), gwbTitle.textContent === 'Embedding via Kepler' && gwbUrl.textContent === 'ke')
+    check('C31 gateway vault + endpoint POST on apply, not on click',
+      gw0 === 'PlatformAI' && clickSilent && pending && res.ok && order && post1 && vault1 && gw1 === 'Kepler' && noteOk,
+      'gw=' + gw0 + '>' + gw1 + ' silent=' + clickSilent + ' pending=' + pending + ' order=' + order + ' post=' + post1 + ' vault=' + vault1 + ' note=' + noteOk)
+  } },
+  { id: 'C13 toast duration: type floor + length scaling', fn: async () => {
+    const m = src('80-ui.js').match(/function toast\(msg,type\) \{[\s\S]*?\n\}/)
+    if (!m) return check('C13 toast duration', false, 'toast() not found in 80-ui.js')
+    const delays = []
+    const ctx = vm.createContext({
+      document: { getElementById: () => ({ textContent: '', className: '' }) },
+      setTimeout: (fn, ms) => { delays.push(ms); return 0 }, clearTimeout: () => {},
+      Math, String, toastT: 0
+    })
+    vm.runInContext('let _t;\n' + m[0].replace('clearTimeout(toastT); toastT=', 'clearTimeout(_t); _t='), ctx)
+    const toast = vm.runInContext('toast', ctx)
+    toast('boom', 'err'); toast('Saved', 'ok'); toast('hi', 'info'); toast('x'.repeat(160), 'err')
+    const ok = delays[0] === 6000 && delays[1] === 4000 && delays[2] === 2800 && delays[3] > 6000 && delays[3] <= 8000
+    check('C13 toast duration: type floor + length scaling', ok, 'delays=' + JSON.stringify(delays))
+  } },
+  { id: 'C33 connect ping routed through proxyUrl (file:// fix)', fn: async () => {
+    const S = src('20-auth.js')
+    const routed = S.includes("fetchWithRetry(proxyUrl('/api/chat')")
+    const noRaw = !S.includes("fetchWithRetry('/api/chat'")
+    check('C33 connect ping routed through proxyUrl (file:// fix)', routed && noRaw, 'routed=' + routed + ' noRaw=' + noRaw)
+  } },
+  { id: 'C34 gatewayErrorMessage: 503/HTML proxy page -> friendly (server.txt)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const m = S.match(/function gatewayErrorMessage\(upstream, label\) \{[\s\S]*?\n\}/)
+    if (!m) return check('C34 gatewayErrorMessage', false, 'function not found in server.txt')
+    const ctx = vm.createContext({})
+    vm.runInContext(m[0], ctx)
+    const fn = vm.runInContext('gatewayErrorMessage', ctx)
+    const html503 = { statusCode: 503, body: '<!DOCTYPE HTML PUBLIC "-//W3C//DTD"><HTML><HEAD><TITLE>ERROR: The requested URL could not be retrieved</TITLE></HEAD></HTML>' }
+    const msg = fn(html503, 'embeddings')
+    const friendly = !!msg && /temporarily unavailable/.test(msg) && /HTTP 503/.test(msg) && /network proxy/.test(msg) && !/DOCTYPE/i.test(msg)
+    const jsonNull = fn({ statusCode: 400, body: '{"error":"bad model"}' }, 'embeddings') === null
+    check('C34 gatewayErrorMessage: 503/HTML proxy page -> friendly (server.txt)', friendly && jsonNull, 'msg=' + JSON.stringify(msg) + ' jsonNull=' + jsonNull)
+  } },
+  { id: 'C49 sanitizeSecrets scrubs api_key from any log line (server.txt)', fn: async () => {
+    // Centralised log sink scrubber: a 429 throttling body echoes the FULL api_key and
+    // was persisted to debug_logs.txt in clear (16 Jul log). sanitizeSecrets must strip
+    // it while keeping the useful diagnostics (limit type / remaining / reset).
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const m = S.match(/function sanitizeSecrets\(s\) \{[\s\S]*?\n\}/)
+    if (!m) return check('C49 sanitizeSecrets', false, 'function not found in server.txt')
+    const ctx = vm.createContext({}); vm.runInContext(m[0], ctx)
+    const fn = vm.runInContext('sanitizeSecrets', ctx)
+    const KEY = 'deadbeefcafef00ddeadbeefcafef00ddeadbeefcafef00ddeadbeefcafef00d'   // fake 64-hex fixture (never a real key)
+    const body = '[stream] non-200 body (429, 276 bytes) = {"error":{"message":"Rate limit exceeded for api_key: ' + KEY + '. Limit type: tokens. Current limit: 200000, Remaining: 18861. Limit resets at: 2026-07-16 01:33:13 UTC"}}'
+    const out = fn(body)
+    const keyGone = out.indexOf(KEY) === -1 && /\[redacted\]/.test(out)
+    const kept = /Limit type: tokens/.test(out) && /Remaining: 18861/.test(out) && /resets at/.test(out)
+    const benign = fn('[stream] upstream end | 19 events | 3998 bytes | finish stop') === '[stream] upstream end | 19 events | 3998 bytes | finish stop'
+    const bearerGone = fn('Authorization: Bearer sk-abcdef0123456789xyz').indexOf('sk-abcdef0123456789xyz') === -1
+    check('C49 sanitizeSecrets scrubs api_key, keeps diagnostics (server.txt)', keyGone && kept && benign && bearerGone,
+      'keyGone=' + keyGone + ' kept=' + kept + ' benign=' + benign + ' bearerGone=' + bearerGone)
+  } },
+  { id: 'C51 two-phase upstream timeout: generous first byte, tighter inter-token (server.txt)', fn: async () => {
+    // 16 Jul log: ~100k-token turns took >10s to first token and were killed by the old
+    // single 10s inactivity window (502). Now the FIRST byte gets a generous budget and
+    // the tight per-token window is armed only once streaming starts.
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const hasBudget = /const firstByteMsBudget = Math\.min\(180000, Math\.max\(inactivityMs, 90000\)\)/.test(S)
+    const armsFirst = S.includes("onStreamTimeout('first-byte'")
+    const tightens = S.includes("onStreamTimeout('inactivity'")
+    check('C51 two-phase upstream timeout (server.txt)', hasBudget && armsFirst && tightens,
+      'budget=' + hasBudget + ' armsFirst=' + armsFirst + ' tightens=' + tightens)
+  } },
+
+  { id: 'C52 compaction folds old turns, keeps recent, preserves full history + shrinks the send', fn: async () => {
+    const { ctx, get, sb, crumbs } = mkCtx([ okStream('COMPACTED SUMMARY', { total_tokens: 50 }, 'stop') ])
+    sb.persist = async () => {}
+    sb.creds = { model: 'demo', apiKey: 'K', maxTokens: 8192, compactTokens: 100 }   // tiny threshold to trigger
+    const msgs = []
+    for (let i = 0; i < 6; i++) { msgs.push({ role:'user', content:'question ' + i + ' ' + 'x'.repeat(60), ts:i*2 }); msgs.push({ role:'assistant', content:'answer ' + i + ' ' + 'y'.repeat(60), ts:i*2+1 }) }
+    const chat = { id:'c1', messages: msgs }
+    sb.D = { chats: { c1: chat } }
+    vm.runInContext('chatId = "c1"', ctx)
+    const before = chat.messages.length
+    const sentBefore = get('estSentHistoryTokens')(chat)
+    const res = await get('compactChatIfNeeded')(chat)
+    const sentAfter = get('estSentHistoryTokens')(chat)
+    const ok = !res.aborted && chat.compaction && chat.compaction.summary === 'COMPACTED SUMMARY'
+      && chat.compaction.uptoIndex === before - 8 && chat.messages.length === before && sentAfter < sentBefore
+      && crumbs.some(c => c.k === 'compacted')
+    check('C52 compaction folds old turns, keeps recent, preserves full history + shrinks the send', ok,
+      'upto=' + (chat.compaction && chat.compaction.uptoIndex) + ' kept=' + chat.messages.length + ' sent ' + sentBefore + '->' + sentAfter)
+  } },
+
+  { id: 'C53 no compaction under threshold, and none when only recent turns remain', fn: async () => {
+    const { ctx, get, sb } = mkCtx([])   // empty fetch queue: any summary call would throw
+    sb.persist = async () => {}
+    sb.creds = { model:'demo', apiKey:'K', maxTokens:8192 }   // default ~50k threshold
+    const small = { id:'c2', messages: [ {role:'user',content:'hi',ts:1}, {role:'assistant',content:'hello',ts:2} ] }
+    sb.D = { chats: { c2: small } }
+    vm.runInContext('chatId = "c2"', ctx)
+    const r1 = await get('compactChatIfNeeded')(small)
+    const under = !r1.aborted && !small.compaction
+    sb.creds.compactTokens = 1   // force over-threshold, but too few messages to fold (< keep-recent)
+    const tiny = { id:'c2', messages: [ {role:'user',content:'x'.repeat(60),ts:1}, {role:'assistant',content:'y'.repeat(60),ts:2} ] }
+    sb.D.chats.c2 = tiny
+    const r2 = await get('compactChatIfNeeded')(tiny)
+    const noFold = !r2.aborted && !tiny.compaction
+    check('C53 no compaction under threshold, and none when only recent turns remain', under && noFold, 'under=' + under + ' noFold=' + noFold)
+  } },
+
+  { id: 'C54 retry countdown survives: runStream finally gates uiSync on !pendingRetry', fn: async () => {
+    // Regression: the finish-in-background uiSync() rebuilt the message list from
+    // chat.messages in runStream\u2019s finally, wiping the transient 429/5xx countdown
+    // bubble (which is NOT a stored message) the instant it was shown.
+    const S = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const guarded = /if \(!pendingRetry\) uiSync\(\)/.test(S)
+    check('C54 retry countdown survives: uiSync gated by !pendingRetry', guarded, 'guarded=' + guarded)
+  } },
+
+  { id: 'C55 compaction pill + spinner: structure + expand/collapse toggle (real builders)', fn: async () => {
+    // Runs the REAL compactionPillEl / compactingIndicatorEl (+ mkEl) against a tiny
+    // DOM stub, so the collapsed pill, its count, the caret glyphs, the click toggle,
+    // and the spinner are exercised for real - covers the compaction UI browser check.
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const U = fs.readFileSync(path.join(__dirname, '..', 'src', '80-ui.js'), 'utf8')
+    const mkElSrc = (U.match(/function mkEl\(tag, attrs, children\) \{[\s\S]*?\n\}/) || [])[0]
+    const pillSrc = (R.match(/function compactionPillEl\(chat, open\) \{[\s\S]*?\n\}/) || [])[0]
+    const spinSrc = (R.match(/function compactingIndicatorEl\(\) \{[\s\S]*?\n\}/) || [])[0]
+    if (!mkElSrc || !pillSrc || !spinSrc) return check('C55 compaction pill + spinner structure', false, 'source not found')
+    const mkNode = tag => { const n = { tagName: tag, className: '', innerHTML: '', _a: {}, _l: {}, childNodes: [], nodeType: 1 }
+      n.setAttribute = (k, v) => { n._a[k] = v }; n.addEventListener = (e, f) => { (n._l[e] = n._l[e] || []).push(f) }
+      n.append = c => { n.childNodes.push(c) }; n.appendChild = c => { n.childNodes.push(c); return c }; return n }
+    let renders = 0
+    const ctx = vm.createContext({
+      document: { createElement: mkNode, createTextNode: s => ({ nodeType: 3, textContent: String(s) }) },
+      compactOpen: {}, renderMessages: () => { renders++ }, lclCrumb: () => {}
+    })
+    vm.runInContext(mkElSrc + '\n' + pillSrc + '\n' + spinSrc, ctx)
+    const pillEl = vm.runInContext('compactionPillEl', ctx)
+    const spinEl = vm.runInContext('compactingIndicatorEl', ctx)
+    const txtOf = n => (n.childNodes || []).map(c => c.nodeType === 3 ? c.textContent : txtOf(c)).join('')
+    const chat = { id: 'x', compaction: { uptoIndex: 7 } }
+    const collapsed = pillEl(chat, false); const cTxt = txtOf(collapsed)
+    const okCollapsed = collapsed.className.indexOf('compact-pill') === 0 && collapsed.className.indexOf('open') === -1
+      && /Earlier messages compacted/.test(cTxt) && /7 messages/.test(cTxt) && /\u25b8/.test(cTxt)
+    collapsed._l.click[0]()   // simulate a click on the pill
+    const toggled = vm.runInContext('compactOpen.x', ctx) === true && renders === 1
+    const openEl = pillEl(chat, true); const oTxt = txtOf(openEl)
+    const okOpen = /open/.test(openEl.className) && /\u25be/.test(oTxt) && /showing all/.test(oTxt)
+    const spin = spinEl()
+    const okSpin = /compacting/.test(spin.className) && spin.childNodes.some(c => c.className === 'compact-spin')
+    check('C55 compaction pill + spinner: structure + expand/collapse toggle', okCollapsed && toggled && okOpen && okSpin,
+      'collapsed=' + okCollapsed + ' toggle=' + toggled + ' open=' + okOpen + ' spin=' + okSpin)
+  } },
+
+  { id: 'C56 compaction + finish-in-background wiring (source guards)', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const loopIdx = R.indexOf('chat.messages.slice(_startRender).forEach')
+    const spinIdx = R.indexOf("_isCompacting && typeof compactingIndicatorEl === 'function') inner.appendChild")
+    const slicesCollapsed = /if \(!_open\) _startRender = _cp\.uptoIndex/.test(R)
+    const spinnerAtBottom = loopIdx > 0 && spinIdx > loopIdx   // spinner appended AFTER the message loop = bottom of thread
+    const spinnerScoped = /compacting === chat\.id/.test(R)   // spinner only shows in the chat being compacted
+    const noAbortOnNav = !/\n\s*stopStreaming\(true\)/.test(T30)   // switchChat/newChat no longer abort the in-flight run
+    const scopedUI = /const uiMsg = /.test(T50) && /const uiHealth = /.test(T50) && /if \(!pendingRetry\) uiSync\(\)/.test(T50)
+    const toastWording = T50.includes('Still retrying the previous message after a server hiccup.')
+    const ok = slicesCollapsed && spinnerAtBottom && spinnerScoped && noAbortOnNav && scopedUI && toastWording
+    check('C56 compaction + finish-in-background wiring (source guards)', ok,
+      'sliceCollapsed=' + slicesCollapsed + ' spinnerBottom=' + spinnerAtBottom + ' spinnerScoped=' + spinnerScoped + ' noAbortNav=' + noAbortOnNav + ' scopedUI=' + scopedUI + ' toast=' + toastWording)
+  } },
+
+  { id: 'C57 embed progress toast + pill suppressed for a single-chunk embed (15-rag.js)', fn: async () => {
+    // The per-query embed (one chunk, no progress bar) was spamming a pointless
+    // "Embedding\u2026 batch 1/1 (1/1 chunks)" toast + pill flash on every RAG search.
+    const G = fs.readFileSync(path.join(__dirname, '..', 'src', '15-rag.js'), 'utf8')
+    const toastGated = /\} else if \(evt\.total > 1 \|\| evt\.batchTotal > 1\) \{/.test(G)
+    const healthGated = /if \(\(onProgress \|\| evt\.total > 1 \|\| evt\.batchTotal > 1\) && typeof setHealth === 'function'\) setHealth\('warn', 'Embedding /.test(G)
+    check('C57 embed progress toast + pill suppressed for a single-chunk embed', toastGated && healthGated, 'toastGated=' + toastGated + ' healthGated=' + healthGated)
+  } },
+
+  { id: 'C58 collapsed sidebar footer shows only the comet logo (styles.css)', fn: async () => {
+    // When the sidebar is minimised, hide the whole version cluster (badge + ALPHA pill
+    // + "new") so only the comet logo remains - same on stable and alpha.
+    const CSS = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
+    const hidesVerWrap = CSS.includes('body.sb-collapsed .ver-wrap{display:none !important}')   // !important overrides the wrapper's inline display
+    const stillHidesUpd = /body\.sb-collapsed \.footer-upd\{display:none/.test(CSS)
+    check('C58 collapsed footer = comet logo only (ver-wrap hidden)', hidesVerWrap && stillHidesUpd, 'verWrap=' + hidesVerWrap + ' upd=' + stillHidesUpd)
+  } },
+
+  { id: 'C59 bundled-skill sync: refresh manifest skills, remove dropped bundled, keep user skills (server.txt)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const parts = [
+      (S.match(/const BUNDLED_RECORD = path\.join\(SKILLS_DIR, '\.bundled\.json'\)/) || [])[0],
+      (S.match(/function readBundledRecord\(\) \{[\s\S]*?\n\}/) || [])[0],
+      (S.match(/function writeBundledRecord\(ids\) \{[\s\S]*?\n\}/) || [])[0],
+      (S.match(/async function syncBundledSkills\(ref\) \{[\s\S]*?\n\}/) || [])[0],
+    ]
+    if (parts.some(p => !p)) return check('C59 bundled-skill sync', false, 'source not found: ' + parts.map(p => !!p).join(','))
+    const files = {
+      '/skills/user-skill.md': '# My Skill\nmine',
+      '/skills/old-bundled.md': '# Old Bundled\nx',
+      '/skills/self-explanatory-slides.md': '# Self-Explanatory Slides\nOLD content',
+      '/skills/.bundled.json': JSON.stringify(['old-bundled', 'self-explanatory-slides']),
+    }
+    const fakeFs = {
+      existsSync: p => Object.prototype.hasOwnProperty.call(files, p),
+      readFileSync: p => { if (!(p in files)) throw new Error('ENOENT ' + p); return files[p] },
+      writeFileSync: (p, d) => { files[p] = d },
+      renameSync: (a, b) => { files[b] = files[a]; delete files[a] },
+      unlinkSync: p => { delete files[p] },
+      mkdirSync: () => {},
+    }
+    const repo = {
+      'skills/manifest.json': Buffer.from(JSON.stringify({ bundled: ['self-explanatory-slides', 'new-bundled'] })),
+      'skills/self-explanatory-slides.md': Buffer.from('# Self-Explanatory Slides\nNEW content'),
+      'skills/new-bundled.md': Buffer.from('# New Bundled\nfresh'),
+    }
+    const ctx = vm.createContext({
+      path: { join: (...a) => a.join('/') },
+      SKILLS_DIR: '/skills', fs: fakeFs,
+      ghFetchFile: async (ref, name) => repo[name] ? { statusCode: 200, buf: repo[name] } : { statusCode: 404, buf: Buffer.alloc(0) },
+      isValidSlug: s => /^[a-z0-9][a-z0-9-]*$/.test(s),
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      Buffer: Buffer, JSON: JSON, String: String, Array: Array,
+    })
+    vm.runInContext(parts.join('\n'), ctx)
+    const res = await vm.runInContext('syncBundledSkills', ctx)('alpha')
+    const userKept = files['/skills/user-skill.md'] === '# My Skill\nmine'
+    const oldRemoved = !('/skills/old-bundled.md' in files)
+    const refreshed = String(files['/skills/self-explanatory-slides.md']).includes('NEW content')
+    const added = ('/skills/new-bundled.md' in files) && String(files['/skills/new-bundled.md']).includes('New Bundled')
+    let rec = []; try { rec = JSON.parse(files['/skills/.bundled.json']) } catch {}
+    const recordOk = rec.length === 2 && rec.includes('self-explanatory-slides') && rec.includes('new-bundled')
+    const returnOk = res && res.installed && res.installed.length === 2 && res.removed && res.removed.length === 1 && res.removed[0] === 'old-bundled'
+    check('C59 bundled-skill sync: refresh manifest, remove dropped bundled, keep user skills',
+      userKept && oldRemoved && refreshed && added && recordOk && returnOk,
+      'user=' + userKept + ' oldRemoved=' + oldRemoved + ' refreshed=' + refreshed + ' added=' + added + ' record=' + recordOk + ' return=' + returnOk)
+  } },
+
+  { id: 'C60 updater calls syncBundledSkills in all three apply paths (server.txt)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const inApplyRef = /const applied = swapInFiles\(verified\)\r?\n\s*const skills = await syncBundledSkills\(ref\)/.test(S)
+    const inRestore = /const applied = swapInFiles\(bufs\)\r?\n\s*const skills = await syncBundledSkills\(tag\)/.test(S)
+    const count = (S.match(/await syncBundledSkills\(/g) || []).length
+    check('C60 updater calls syncBundledSkills in all three apply paths', inApplyRef && inRestore && count >= 3,
+      'applyRef=' + inApplyRef + ' restore=' + inRestore + ' calls=' + count)
+  } },
+
+  { id: 'C61 code-block helpers: ext/mime map, filename from title/heading, lang detect, CSV parse', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const block = R.slice(R.indexOf('const CODE_EXT'))
+    const ctx = vm.createContext({ document: {}, navigator: {}, Blob: function(){}, URL: {}, fmt: s => s, toast: () => {}, setTimeout: setTimeout, encodeURIComponent: encodeURIComponent, mkEl: () => ({}) })
+    vm.runInContext(block, ctx)
+    const extFor = vm.runInContext('codeExtFor', ctx), mimeFor = vm.runInContext('codeMimeFor', ctx)
+    const fname = vm.runInContext('codeFilename', ctx), langOf = vm.runInContext('codeBlockLang', ctx), csv = vm.runInContext('codeCsvRows', ctx)
+    const extOk = extFor('html') === 'html' && extFor('python') === 'py' && extFor('csv') === 'csv' && extFor('weird') === 'txt'
+    const mimeOk = mimeFor('csv') === 'text/csv' && mimeFor('html') === 'text/html'
+    const nameOk = fname('html', '<title>Q3 Report!</title>') === 'q3-report.html' && fname('md', '# My Doc\nx') === 'my-doc.md' && fname('py', 'print(1)') === 'lcl-snippet.py'
+    const langOk = langOf({ className: 'language-python', textContent: 'x' }) === 'python' && langOf({ className: '', textContent: '<!DOCTYPE html><html>' }) === 'html' && langOf({ className: '', textContent: '<svg viewBox="0 0 1 1">' }) === 'svg'
+    const rows = csv('a,b\n1,"2,3"')
+    const csvOk = rows.length === 2 && rows[0].join('|') === 'a|b' && rows[1].join('|') === '1|2,3'
+    check('C61 code-block helpers: ext/mime, filename, lang, CSV', extOk && mimeOk && nameOk && langOk && csvOk,
+      'ext=' + extOk + ' mime=' + mimeOk + ' name=' + nameOk + ' lang=' + langOk + ' csv=' + csvOk)
+  } },
+
+  { id: 'C62 HTML preview is a locked-down sandbox (allow-scripts + CSP blocks connect/form) + SVG data-URL', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const block = R.slice(R.indexOf('const CODE_EXT'))
+    const mkNode = tag => { const n = { tagName: tag, className: '', _a: {}, srcdoc: '', src: '' }; n.setAttribute = (k, v) => { n._a[k] = v }; n.getAttribute = k => n._a[k]; return n }
+    const ctx = vm.createContext({ document: { createElement: mkNode }, encodeURIComponent: encodeURIComponent, fmt: s => s, toast: () => {}, setTimeout: setTimeout, mkEl: () => ({}), navigator: {}, Blob: function(){}, URL: {} })
+    vm.runInContext(block, ctx)
+    const frame = vm.runInContext('codeHtmlFrame', ctx)('<html><head></head><body>hi</body></html>')
+    const sandboxOk = frame._a.sandbox === 'allow-scripts' && !/allow-same-origin/.test(frame._a.sandbox || '')
+    const cspOk = /connect-src 'none'/.test(frame.srcdoc) && /form-action 'none'/.test(frame.srcdoc)
+    const assetsOk = /img-src \*/.test(frame.srcdoc) && /script-src \*/.test(frame.srcdoc)
+    const svg = vm.runInContext('codeSvgPreview', ctx)('<svg viewBox="0 0 1 1"></svg>')
+    const svgOk = svg.src.indexOf('data:image/svg+xml') === 0
+    check('C62 HTML sandbox (allow-scripts, no same-origin, CSP blocks connect/form) + SVG data-URL', sandboxOk && cspOk && assetsOk && svgOk,
+      'sandbox=' + sandboxOk + ' csp=' + cspOk + ' assets=' + assetsOk + ' svg=' + svgOk)
+  } },
+
+  { id: 'C63 code-block toolbar wired into render + stream completion (source guards)', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const P = T50
+    const hasEnhance = /function enhanceCodeBlocks\(scope\)/.test(R)
+    const buildsBarBtns = R.includes("class: 'code-wrap'") && R.includes("class: 'code-bar'") && /Download ' \+ fname/.test(R) && R.includes('Copy HTML')
+    const previewable = R.includes("const CODE_PREVIEWABLE = { html:1, csv:1, svg:1, md:1, markdown:1 }")
+    const inRender = /enhanceCodeBlocks\(div\)/.test(R)
+    const inStream = /if \(bubble && typeof enhanceCodeBlocks === 'function'\) enhanceCodeBlocks\(bubble\)/.test(P)
+    check('C63 code-block toolbar wired into render + stream completion', hasEnhance && buildsBarBtns && previewable && inRender && inStream,
+      'enhance=' + hasEnhance + ' barBtns=' + buildsBarBtns + ' previewable=' + previewable + ' render=' + inRender + ' stream=' + inStream)
+  } },
+  { id: 'C64 preview: source collapsed by default + Show/Hide source (tall) + open-in-browser stays sandboxed', fn: async () => {
+    const R = fs.readFileSync(path.join(__dirname, '..', 'src', '70-render.js'), 'utf8')
+    const C = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8')
+    const collapseDefault = R.includes("pre.style.display = 'none'")           // raw source hidden once a preview exists
+    const srcToggle = /'Show ' \+ srcLabel/.test(R) && /Hide ' : 'Show '/.test(R)
+    const openTab = R.includes('codeOpenInTab(src)') && R.includes("class: 'code-btn code-open-tab'")
+    // The new browser tab hosts the SAME sandboxed iframe: allow-scripts only
+    // (no same-origin) and it reuses codeHtmlDoc (the CSP-injected document).
+    const tabBlock = R.slice(R.indexOf('function codeOpenInTab'), R.indexOf('function codeOpenInTab') + 700)
+    const tabSandboxed = /sandbox="allow-scripts"/.test(tabBlock) && !/allow-same-origin/.test(tabBlock) && tabBlock.includes('codeHtmlDoc(src)')
+    const sharedDoc = /function codeHtmlDoc\(src\)/.test(R) && /f\.srcdoc = codeHtmlDoc\(src\)/.test(R)
+    const inlineSandbox = /f\.setAttribute\('sandbox', 'allow-scripts'\)/.test(R)
+    const cssBig = /\.code-preview-frame \{[^}]*height:85vh/.test(C)          // screen's-worth inline, no cramped box
+    const cssTall = /\.code-wrap pre\.code-src-tall \{[^}]*max-height:85vh/.test(C) && R.includes("pre.classList.add('code-src-tall')")
+    check('C64 collapse default + source toggle (tall) + open-in-browser sandboxed + shared CSP doc',
+      collapseDefault && srcToggle && openTab && tabSandboxed && sharedDoc && inlineSandbox && cssBig && cssTall,
+      'collapse=' + collapseDefault + ' srcTog=' + srcToggle + ' openTab=' + openTab + ' tabSandboxed=' + tabSandboxed + ' sharedDoc=' + sharedDoc + ' inlineSb=' + inlineSandbox + ' css85=' + cssBig + ' cssTall=' + cssTall)
+  } },
+  { id: 'C65 encrypted PDF: prompt + retry with password; cancel aborts; password not persisted', fn: async () => {
+    const F = fs.readFileSync(path.join(__dirname, '..', 'src', '40-files.js'), 'utf8')
+    const U = fs.readFileSync(path.join(__dirname, '..', 'src', '80-ui.js'), 'utf8')
+    // Source guards: prompt exists, reassurance copy present, and the password is
+    // only a local in the loader - never written to state / crumb / disk / proxy.
+    const promptExists = /function promptPdfPassword\(fileName, opts\)/.test(U) && /Never saved, never sent to the server/.test(U)
+    const noPersist = !/lclCrumb\([^)]*password/i.test(F) && !/save\w*\([^)]*password/i.test(F) && !/console\.(log|warn|error)\([^)]*\bpassword\b/i.test(F)
+    // Functional: drive the real loader with a fake pdf.js that rejects until a
+    // password is supplied, and a fake prompt. It must retry and return the doc.
+    const block = F.slice(F.indexOf('async function loadPdfDocumentFromBytes'), F.indexOf('function pdfItemsToLines'))
+    let promptCalls = 0, firstIncorrect = null, passwordSeen = null
+    const mkCtx = (promptReturns) => {
+      const pdfjsLib = { GlobalWorkerOptions: { workerSrc: 'x' }, getDocument: (params) => {
+        return { promise: (params.password ? (passwordSeen = params.password, Promise.resolve({ numPages: 1 }))
+          : Promise.reject({ name: 'PasswordException', code: 1 })) }
+      } }
+      const promptPdfPassword = (label, opts) => { promptCalls++; if (firstIncorrect === null) firstIncorrect = !!(opts && opts.incorrect); return Promise.resolve(promptReturns) }
+      const ctx = { pdfjsLib, promptPdfPassword, console: { warn(){} }, Uint8Array, setTimeout, Promise, PDFJS_WORKER_SRC: 'x' }
+      ctx.ensurePdfJsReady = async () => {}
+      vm.createContext(ctx)
+      vm.runInContext('async function ensurePdfJsReady(){}\n' + block, ctx)
+      return ctx
+    }
+    const okCtx = mkCtx('letmein')
+    const doc = await vm.runInContext('loadPdfDocumentFromBytes', okCtx)(new Uint8Array([1, 2, 3]), 'secret.pdf')
+    const retried = doc && doc.numPages === 1 && passwordSeen === 'letmein' && promptCalls === 1 && firstIncorrect === false
+    // Cancel path: prompt returns null -> loader throws a flagged, non-scary error.
+    promptCalls = 0; firstIncorrect = null; passwordSeen = null
+    const cancelCtx = mkCtx(null)
+    let cancelled = false
+    try { await vm.runInContext('loadPdfDocumentFromBytes', cancelCtx)(new Uint8Array([1]), 'secret.pdf') }
+    catch (e) { cancelled = !!(e && e.pdfPasswordCancelled) }
+    check('C65 encrypted PDF prompt + retry + cancel + no-persist', promptExists && noPersist && retried && cancelled,
+      'prompt=' + promptExists + ' noPersist=' + noPersist + ' retried=' + retried + ' cancelled=' + cancelled)
+  } },
+  { id: 'C66 split progress: one counter drives pill + body; partCb fires per top-level part; compaction untouched', fn: async () => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const hasFormatter = /function splitPartLabel\(p, n\) \{ return 'part ' \+ p \+ '\/' \+ n \}/.test(P)
+    const labelUsesFmt = P.includes("label + ' (' + pl + ')'")                              // body label from the shared formatter
+    const pillUsesFmt = P.includes('const setProc =') && P.includes('splitPartLabel(pp, pn)') // pill from the same formatter
+    const optIn = /async function summariseText\(sysPrompt, label, text, instruction, bodyEl, signal, depth, partCb\)/.test(P)
+    const depthGuard = P.includes("if (depth === 0 && typeof partCb === 'function') partCb(p + 1, parts.length)")
+    const compactionUnaffected = P.includes("summariseText(sysPrompt, 'conversation', seed, instruction, null, signal, 0)") // no partCb -> pill untouched by compaction
+    const passedToDoc = P.includes('summariseDoc(sys, doc, instruction, bodyEl, signal, setProc)')
+    // Functional: drive the real summariseText with stubs so a doc splits into 3
+    // parts; the top-level partCb must fire 1/3,2/3,3/3 and the run must complete.
+    const block = P.slice(P.indexOf('function splitPartLabel'), P.indexOf('function embedsActive'))
+    const calls = []
+    const ctx = { perRequestTokenCap: () => 20000, estTokens: t => t.length, isSummariseAsk: () => true,
+      summariseInto: async () => ({ text: 'X' }), fmt: s => s, Math: Math, JSON: JSON, Date: Date, Promise: Promise, setTimeout: setTimeout }
+    vm.createContext(ctx)
+    vm.runInContext(block, ctx)
+    const out = await vm.runInContext('summariseText', ctx)('sys', 'doc.html', 'y'.repeat(50000), 'do it', null, null, 0, (p, n) => calls.push(p + '/' + n))
+    const fired = JSON.stringify(calls) === JSON.stringify(['1/3', '2/3', '3/3']) && out === 'X'
+    const plFn = vm.runInContext('splitPartLabel', ctx)(3, 5) === 'part 3/5'
+    check('C66 split-progress counter centralised + partCb top-level only',
+      hasFormatter && labelUsesFmt && pillUsesFmt && optIn && depthGuard && compactionUnaffected && passedToDoc && fired && plFn,
+      'fmt=' + hasFormatter + ' lbl=' + labelUsesFmt + ' pill=' + pillUsesFmt + ' optIn=' + optIn + ' depth=' + depthGuard + ' compact=' + compactionUnaffected + ' doc=' + passedToDoc + ' fired=' + fired + '(' + calls.join(',') + ') plFn=' + plFn)
+  } },
+  { id: 'C67 chat title: reject echoed markup as a title; rename input built without innerHTML', fn: async () => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const L = fs.readFileSync(path.join(__dirname, '..', 'src', '30-chatlist.js'), 'utf8')
+    // 1. The titler must strip code/markup from the seed and validate the reply.
+    const seedStripped = P.includes('const deCode =') && /replace\(\/```\[\\s\\S\]\*\?```\/g/.test(P) && P.includes('deCode(extract(chat.messages[1]))')
+    const guarded = P.includes('if (title && isTitleLike(title) && chat)')
+    // Functional: isTitleLike must reject what the model echoes back for an HTML reply.
+    const fn = P.slice(P.indexOf('function isTitleLike'), P.indexOf('async function autoTitleChat'))
+    const ctx = {}; vm.createContext(ctx); vm.runInContext(fn, ctx)
+    const isTitleLike = vm.runInContext('isTitleLike', ctx)
+    const rejects = !isTitleLike('<!DOCTYPE html><html lang="en"><head><meta') &&
+                    !isTitleLike('<div class="wrap">') &&
+                    !isTitleLike('```html') &&
+                    !isTitleLike('Budget checker\nsecond line') &&
+                    !isTitleLike('x'.repeat(40)) &&
+                    !isTitleLike('a'.repeat(80))
+    const accepts = isTitleLike('Budget sheet error check') && isTitleLike('OCR tool for screenshots')
+    // 2. The rename input must be built with DOM APIs - a title containing a
+    // double quote used to break out of value="..." and mangle the input.
+    const block = L.slice(L.indexOf('function startRename'), L.indexOf('function finishRename'))
+    const noInnerHtml = !/innerHTML\s*=/.test(block)   // assignment, not the explanatory comment
+    const domBuilt = block.includes("createElement('input')") && block.includes('inp.value = cur') &&
+                     block.includes("addEventListener('blur'") && block.includes("addEventListener('keydown'")
+    // Simulate: set .value as a property with a quote-laden title, read it back intact.
+    const el = { className: '', type: '', value: '', _l: {}, addEventListener(k, f) { this._l[k] = f }, focus(){}, select(){} }
+    const nasty = '<!DOCTYPE html><html lang="en"> " onfocus="alert(1)'
+    el.value = nasty
+    const survives = el.value === nasty
+    check('C67 title validation + injection-safe rename input',
+      seedStripped && guarded && rejects && accepts && noInnerHtml && domBuilt && survives,
+      'seed=' + seedStripped + ' guard=' + guarded + ' rejects=' + rejects + ' accepts=' + accepts + ' noInnerHTML=' + noInnerHtml + ' dom=' + domBuilt + ' survives=' + survives)
+  } },
+  { id: 'C68 autoTitleChat end-to-end: markup stripped from seed, echoed markup rejected, real title kept', fn: async () => {
+    const P = fs.readFileSync(path.join(__dirname, '..', 'src', '50-chatprocessing.js'), 'utf8')
+    const block = P.slice(P.indexOf('function isTitleLike'), P.indexOf('function stopStreaming'))
+    const mkChat = () => ({
+      id: 't1', titledByAI: false, title: 'Make me an HTML tool that checks a budget…',
+      messages: [
+        { role: 'user', content: 'Make me an HTML tool that checks a budget sheet' },
+        { role: 'assistant', content: 'Here you go:\n\n```html\n<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Budget</title></head><body><h1>Hi</h1></body></html>\n```' }
+      ]
+    })
+    let seed = null
+    const run = async (modelReply) => {
+      const ctx = {
+        creds: { apiKey: 'x', model: 'y' }, persist() {}, renderChatList() {}, renderTopbar() {},
+        httpPost: async (url, body) => { seed = body.payload.messages[1].content
+          return { ok: true, json: async () => ({ choices: [{ message: { content: modelReply } }] }) } },
+        Promise, String, JSON
+      }
+      vm.createContext(ctx); vm.runInContext(block, ctx)
+      const chat = mkChat(); const before = chat.title
+      await vm.runInContext('autoTitleChat', ctx)(chat)
+      return { changed: chat.title !== before, title: chat.title, titledByAI: !!chat.titledByAI }
+    }
+    // 1. Model echoes the generated HTML back - must be rejected, title untouched.
+    const echoed = await run('<!DOCTYPE html><html lang="en"><head><meta charset')
+    const seedClean = !!seed && !/<html|<!DOCTYPE|```|<head/i.test(seed)
+    const seedKeptIntent = !!seed && /budget sheet/i.test(seed)
+    // 2. A well-behaved reply is still accepted.
+    const good = await run('Budget sheet checker tool')
+    check('C68 autoTitleChat: clean seed, rejects echoed markup, accepts real title',
+      seedClean && seedKeptIntent && !echoed.changed && !echoed.titledByAI && good.changed && good.title === 'Budget sheet checker tool' && good.titledByAI,
+      'seedClean=' + seedClean + ' seedIntent=' + seedKeptIntent + ' echoedRejected=' + !echoed.changed + ' echoedFlag=' + echoed.titledByAI + ' goodAccepted=' + good.changed + ' goodTitle=' + JSON.stringify(good.title))
+  } },
+  { id: 'C69 release gate: cmpVer offers strictly-newer only (letter suffixes), APP_VERSION is ahead of the shipped release', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const lines = S.split(/\r?\n/)
+    const st = lines.findIndex(l => l.startsWith('function cmpVer'))
+    let en = st; for (let i = st + 1; i < lines.length; i++) { if (lines[i] === '}') { en = i; break } }
+    const ctx = { String, Math, parseInt }; vm.createContext(ctx)
+    vm.runInContext(lines.slice(st, en + 1).join('\n'), ctx)
+    const cmpVer = vm.runInContext('cmpVer', ctx)
+    // The updater offers a build when cmpVer(latest, current) > 0. Equal must NOT
+    // offer - that is the trap where a re-release reaches nobody.
+    const ordering = cmpVer('0.67e', '0.67d') > 0 && cmpVer('0.67d', '0.67d') === 0 &&
+                     cmpVer('0.67d', '0.67e') < 0 && cmpVer('0.68', '0.67e') > 0 &&
+                     cmpVer('v0.67e', '0.67d') > 0 && cmpVer('0.67e', '0.67') > 0
+    // The running build must be strictly newer than the release already published,
+    // or a fresh release cannot reach existing installs.
+    const m = S.match(/const APP_VERSION = '([^']+)'/)
+    const appVer = m && m[1]
+    const aheadOfShipped = !!appVer && cmpVer(appVer, '0.67d') > 0
+    check('C69 version gate: strict-newer ordering + APP_VERSION ahead of shipped release',
+      ordering && aheadOfShipped,
+      'ordering=' + ordering + ' APP_VERSION=' + appVer + ' aheadOfShipped=' + aheadOfShipped)
+  } },
+
+  { id: 'C70 update integrity: bad checksum rejected, nothing applied unless every file verifies', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const crypto = require('crypto')
+    // downloadVerified must throw on a hash mismatch so the caller applies nothing.
+    const dvStart = S.indexOf('async function downloadVerified')
+    const dv = S.slice(dvStart, S.indexOf('function swapInFiles'))
+    const sha = b => crypto.createHash('sha256').update(b).digest('hex')
+    const good = Buffer.from('GOOD PAYLOAD'), bad = Buffer.from('TAMPERED')
+    const mk = (buf) => {
+      const c = { Buffer, Error, sha256Buf: sha, ghFetchFile: async () => ({ statusCode: 200, buf }) }
+      vm.createContext(c); vm.runInContext('async function ghFetchFileX(){}\n' + dv, c)
+      return vm.runInContext('downloadVerified', c)
+    }
+    let okPassed = false, tamperRejected = false, httpRejected = false
+    try { const b = await mk(good)('ref', 'index.html', sha(good)); okPassed = b.toString() === 'GOOD PAYLOAD' } catch (e) {}
+    try { await mk(bad)('ref', 'index.html', sha(good)) } catch (e) { tamperRejected = /checksum mismatch/.test(e.message) }
+    {
+      const c = { Buffer, Error, sha256Buf: sha, ghFetchFile: async () => ({ statusCode: 404, buf: Buffer.alloc(0) }) }
+      vm.createContext(c); vm.runInContext(dv, c)
+      try { await vm.runInContext('downloadVerified', c)('ref', 'index.html', 'x') } catch (e) { httpRejected = /HTTP 404/.test(e.message) }
+    }
+    // handleUpdateApply must verify every file BEFORE swapping any of them.
+    const ha = S.slice(S.indexOf('async function handleUpdateApply'), S.indexOf('// ---', S.indexOf('async function handleUpdateApply')))
+    const verifyBeforeSwap = ha.indexOf('Checksum mismatch') < ha.indexOf('swapInFiles(verified)') &&
+                             ha.includes('throw new Error(\'No checksum published for \' + fname)')
+    // The swap itself must be atomic (.tmp then rename), never a direct write.
+    const sw = S.slice(S.indexOf('function swapInFiles'), S.indexOf('function swapInFiles') + 400)
+    const atomic = /writeFileSync\(tmp/.test(sw) && /renameSync\(tmp, dest\)/.test(sw)
+    check('C70 checksum gate: mismatch + HTTP failure rejected, verify-then-swap, atomic write',
+      okPassed && tamperRejected && httpRejected && verifyBeforeSwap && atomic,
+      'ok=' + okPassed + ' tamper=' + tamperRejected + ' http=' + httpRejected + ' verifyFirst=' + verifyBeforeSwap + ' atomic=' + atomic)
+  } },
+
+  { id: 'C71 update plumbing: stable applies from the release tag, alpha from the branch; gov-safe fetch host', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    // Stable resolves the ref from the published release tag, not from main.
+    const refFromTag = S.includes("const ref = ch === 'alpha' ? ALPHA_REF : (await fetchLatestRelease()).tag")
+    const noTagGuard = S.includes("if (!ref) return json(res, { error: 'No release tag found' }, 400)")
+    // raw.githubusercontent is 403-blocked on the gov network - must use the API.
+    const usesContentsApi = S.includes("'https://api.github.com/repos/' + UPDATE_REPO + '/contents/'")
+    const noRawHost = !/raw\.githubusercontent\.com['"]/.test(S)
+    // Revert path exists both online (release tag) and offline (.stable backups).
+    const revertOnline = /async function restoreStable/.test(S) && S.includes('downloadVerified(tag, f, want)')
+    const revertOffline = S.includes('function restoreFromBackup') && S.includes('function backupStable')
+    // Only the two runtime files are ever swapped.
+    const filesScoped = S.includes("const UPDATE_FILES = ['index.html', 'server.txt']")
+    check('C71 stable=tag / alpha=branch, Contents API only, revert online+offline',
+      refFromTag && noTagGuard && usesContentsApi && noRawHost && revertOnline && revertOffline && filesScoped,
+      'tagRef=' + refFromTag + ' guard=' + noTagGuard + ' api=' + usesContentsApi + ' noRaw=' + noRawHost + ' revertOnline=' + revertOnline + ' revertOffline=' + revertOffline + ' scoped=' + filesScoped)
+  } },
+  { id: 'C72 gateway pick is deferred: click never switches; Save verifies the key before committing', fn: async () => {
+    const U = src('80-ui.js')
+    const block = U.slice(U.indexOf('// Pending (unsaved) gateway pick.'), U.indexOf('function renderGatewaySeg'))
+    const calls = []
+    const mk = (testOk, reason) => {
+      const ctx = {
+        _pendingGwSeed: null, toast: () => {}, renderGatewaySeg: () => {}, lclCrumb: () => {},
+        currentGateway: () => 'PlatformAI',
+        keyStoreFor: () => ({ 'NC3 (Dev)': { apiKey: 'nc3key' }, PlatformAI: { apiKey: 'pakey' } }),
+        creds: { apiKey: 'pakey', model: 'm' },
+        lclEndpoint: { active: { name: 'PlatformAI', modelUrl: 'https://a.gov.sg/x' }, presets: [
+          { name: 'PlatformAI', modelUrl: 'https://a.gov.sg/x' }, { name: 'NC3 (Dev)', modelUrl: 'https://b.gov.sg/y' } ] },
+        document: { getElementById: () => ({ value: '' }) },
+        httpPost: async (url, body) => { calls.push(url)
+          if (url === '/api/testkey') return { ok: true, json: async () => (testOk ? { ok: true, status: 200 } : { ok: false, reason: reason, error: 'bad' }) }
+          return { ok: true, json: async () => ({ active: { name: 'NC3 (Dev)', modelUrl: 'https://b.gov.sg/y' } }) } }
+      }
+      vm.createContext(ctx); vm.runInContext(block, ctx); return ctx
+    }
+    // 1. Clicking a gateway must NOT hit the network or persist anything.
+    const c1 = mk(true); calls.length = 0
+    vm.runInContext('setGateway', c1)('NC3 (Dev)', 'sp')
+    const clickSilent = calls.length === 0 && vm.runInContext('pendingGateway', c1)() === 'NC3 (Dev)'
+    // 2. Save path: testkey is called FIRST, and only then the endpoint switch.
+    calls.length = 0
+    const okRes = await vm.runInContext('applyGatewayChange', c1)('NC3 (Dev)', 'nc3key')
+    const verifiedThenSwitched = okRes.ok && calls[0] === '/api/testkey' && calls[1] === '/api/endpoint' && calls.length === 2
+    // 3. A rejected key must switch NOTHING.
+    const c2 = mk(false, 'auth'); calls.length = 0
+    const badRes = await vm.runInContext('applyGatewayChange', c2)('NC3 (Dev)', 'wrong')
+    const noSwitchOnBadKey = !badRes.ok && calls.length === 1 && calls[0] === '/api/testkey' && /rejected by NC3 \(Dev\)/.test(badRes.error)
+    // 4. A blank key is refused before any network call.
+    calls.length = 0
+    const blankRes = await vm.runInContext('applyGatewayChange', c2)('NC3 (Dev)', '')
+    const blankRefused = !blankRes.ok && calls.length === 0
+    // 5. Wiring: Save gates on it, close resets the pick, click no longer persists.
+    const savesViaApply = U.includes('const r = await applyGatewayChange(_gwTarget, _keyTyped)') &&
+                          U.includes('if (!(_gwErr && _gwChanged)) creds.apiKey')
+    const closeResets = U.includes("if (typeof clearPendingGateway === 'function') clearPendingGateway()")
+    const clickNoPersist = !/function setGateway[\s\S]{0,1200}?saveSettings\(/.test(U)
+    check('C72 deferred gateway: silent click, verify-then-switch, nothing on failure',
+      clickSilent && verifiedThenSwitched && noSwitchOnBadKey && blankRefused && savesViaApply && closeResets && clickNoPersist,
+      'click=' + clickSilent + ' order=' + verifiedThenSwitched + ' badKey=' + noSwitchOnBadKey + ' blank=' + blankRefused + ' save=' + savesViaApply + ' close=' + closeResets + ' noPersist=' + clickNoPersist)
+  } },
+
+  { id: 'C73 /api/testkey: gov.sg allowlist, leaves active endpoint alone, key masked; console wrapper cannot stack', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const h = S.slice(S.indexOf('function handleTestKey'), S.indexOf('function handleTestKey') + 3000)
+    // Same allowlist as a real endpoint change - this route must not probe arbitrary hosts.
+    const allowlisted = h.includes("validEndpointUrl(modelUrl, false)")
+    // It must never write the endpoint / persist.
+    const noPersist = !/saveData\(/.test(h) && !/appData\.settings\s*=/.test(h)
+    const masked = h.includes('maskSecret(apiKey)') && !/log\.debug\([^)]*apiKey\s*\)/.test(h)
+    const scrubbed = h.includes('sanitizeSecrets(String(msg')
+    const bounded = h.includes('setTimeout(20000') && h.includes("reason: 'timeout'")
+    const authReason = h.includes("(sc === 401 || sc === 403) ? 'auth'")
+    const routed = S.includes("'POST /api/testkey':        handleTestKey")
+    // Console wrapper: originals stashed per-process so an in-process reload
+    // reuses them instead of wrapping the previous wrapper (stacked prefixes).
+    const noStack = S.includes('globalThis.__lclConsoleOrig') && S.includes('const _origConsoleLog   = _consoleOrig.log')
+    // Functional: an in-process reload re-evaluates the module in a NEW scope but
+    // the SAME global. Evaluating the wrapper block twice must still yield ONE
+    // '<ts> [log]' prefix - two would mean the wrapper wrapped itself.
+    const cStart = S.indexOf('// Tee console -> file.')
+    const cEnd = S.indexOf('\n', S.indexOf('console.error =', cStart))
+    const blk = S.slice(cStart, cEnd)
+    const out = []
+    const ctx = { _logStamp: () => 'TS', _sanitizeParts: a => a, dbgWrite: () => {},
+                  console: { log: (...a) => out.push(a.join(' ')), warn: () => {}, error: () => {} } }
+    vm.createContext(ctx)
+    const load = () => vm.runInContext('(function(){' + blk + '})()', ctx)   // one module load
+    const depth = () => (String(out[0] || '').match(/TS \[log\]/g) || []).length
+    load(); vm.runInContext('console.log("x")', ctx); const d1 = depth()
+    out.length = 0
+    load(); vm.runInContext('console.log("x")', ctx); const d2 = depth()   // simulated reload
+    out.length = 0
+    load(); vm.runInContext('console.log("x")', ctx); const d3 = depth()   // and again
+    const stable = d1 === 1 && d2 === 1 && d3 === 1
+    // Control: the old pattern (re-binding console.log each load) DOES stack, so
+    // this test would have caught the bug.
+    const oldBlk = 'const _o = console.log.bind(console); console.log = (...a) => { _o(_logStamp() + " [log]", ...a) }'
+    const cout = []
+    const octx = { _logStamp: () => 'TS', console: { log: (...a) => cout.push(a.join(' ')) } }
+    vm.createContext(octx)
+    vm.runInContext('(function(){' + oldBlk + '})()', octx)
+    vm.runInContext('(function(){' + oldBlk + '})()', octx)
+    vm.runInContext('console.log("x")', octx)
+    const controlStacks = (String(cout[0] || '').match(/TS \[log\]/g) || []).length === 2
+    check('C73 testkey allowlisted + non-mutating + masked; console wrapper stack-proof',
+      allowlisted && noPersist && masked && scrubbed && bounded && authReason && routed && noStack && stable && controlStacks,
+      'allow=' + allowlisted + ' noPersist=' + noPersist + ' masked=' + masked + ' scrub=' + scrubbed + ' bounded=' + bounded + ' auth=' + authReason + ' route=' + routed + ' src=' + noStack + ' depths=' + d1 + '/' + d2 + '/' + d3 + ' controlStacks=' + controlStacks)
+  } },
+  { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
+    const S = src('40-files.js')
+    const noNaptha = !S.includes('tessdata.projectnaptha.com')
+    const jsdelivrLang = S.includes("TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'")
+    const wiredLang = S.includes('langPath: TESSERACT_LANG')
+    const persistent = S.includes('let _ocrWorker = null') && S.includes('async function ensureOcrWorker')
+    const noStore = S.includes("cacheMethod: 'none'")
+    const inits = S.includes("loadLanguage('eng')") && S.includes("initialize('eng', 1)")
+    const optsFirstArg = S.includes('createWorker({ langPath: TESSERACT_LANG')  // langPath MUST be the 1st-arg options or it falls back to the CORS-blocked default host
+    check('C35 OCR engine: reachable CDN + persistent worker + no IndexedDB + explicit init', noNaptha && jsdelivrLang && wiredLang && persistent && noStore && inits && optsFirstArg, 'noNaptha=' + noNaptha + ' lang=' + jsdelivrLang + ' wired=' + wiredLang + ' persistent=' + persistent + ' noStore=' + noStore + ' inits=' + inits + ' optsFirstArg=' + optsFirstArg)
+  } },
+  { id: 'C36 image files route through OCR (imageExtractor + filter + recognize)', fn: async () => {
+    const S = src('40-files.js')
+    const regd = S.includes('png:  (file) => imageExtractor(file)') && S.includes('jpeg: (file) => imageExtractor(file)')
+    const fn = S.includes('function imageExtractor(file)') && S.includes('ocrFile: file') && S.includes("scanWarning: 'Image file")
+    const filter = S.includes('f.scanWarning && (f.pdfDoc || f.ocrFile)')
+    const imgOcr = S.includes('else if (item.ocrFile)') && S.includes('worker.recognize(item.ocrFile)')
+    const carried = (S.match(/pdfDoc, ocrFile,/g) || []).length >= 3   // destructure + progressive assign + docs push
+    check('C36 image files route through OCR (imageExtractor + filter + recognize + ocrFile carried)', regd && fn && filter && imgOcr && carried, 'regd=' + regd + ' fn=' + fn + ' filter=' + filter + ' imgOcr=' + imgOcr + ' carried=' + carried)
+  } },
+  { id: 'C37 OCR chip + popover wired (80-ui + body.html)', fn: async () => {
+    const U = src('80-ui.js'); const B = src('body.html')
+    const fns = U.includes('function renderOcrChip(') && U.includes('function toggleOcrInfo(')
+    const chip = B.includes('id="ocr-chip"') && B.includes('onclick="toggleOcrInfo(event)"')
+    const acts = B.includes('onclick="toggleOcrEngine()"') && src('40-files.js').includes('function toggleOcrEngine(')
+    check('C37 OCR chip + popover wired (80-ui + body.html)', fns && chip && acts, 'fns=' + fns + ' chip=' + chip + ' acts=' + acts)
+  } },
+  { id: 'C38 OCR 3-way dialog + progress + attach wiring', fn: async () => {
+    const S = src('40-files.js'); const U = src('80-ui.js')
+    const dialog = U.includes('function confirmDialog3(')
+    const prompt = S.includes('async function promptOcr(') && S.includes("value: 'ocr'") && S.includes("value: 'plain'") && S.includes("value: 'cancel'")
+    const embedWired = S.includes("promptOcr(scannedItems, 'embed')")
+    const attachWired = S.includes("promptOcr(scannedItems, 'attach')")
+    const progress = S.includes('function setOcrProgress(') && S.includes('setOcrProgress(i + 1, item.emptyPageNums.length)')
+    // Same modal for embed AND upload: OCR offered up-front on extraction; no confirm-time prompt, no banner.
+    const noBanner = !S.includes('runPreviewOcr') && !src('body.html').includes('fp-scan-banner')
+    check('C38 OCR 3-way dialog (same modal for embed + attach) + progress', dialog && prompt && embedWired && attachWired && progress && noBanner, 'dialog=' + dialog + ' prompt=' + prompt + ' embed=' + embedWired + ' attach=' + attachWired + ' prog=' + progress + ' noBanner=' + noBanner)
+  } },
+  { id: 'C39 health pill shows + OCR (label only, no progress) + no redundant Ready line', fn: async () => {
+    const R = src('70-render.js'); const U = src('80-ui.js'); const F = src('40-files.js')
+    // Pill shows '+ OCR' when the engine is on; the pill refreshes when it toggles.
+    const ocrLabel = R.includes("base += ' + OCR'") && R.includes("ocrState() === 'ready'")
+    const pillRefresh = F.includes("pill.classList.contains('ok')") && F.includes("setHealth('ok', connectedLabel())")
+    // ...but the live 'n/N' progress stays on the chip only, never the pill.
+    const noPillProgress = !F.includes("setHealth('warn', 'OCR") && F.includes('setOcrProgress(i + 1, item.emptyPageNums.length)')
+    // 'ready' maps to an empty status line (green 'On' toggle is enough), and it's hidden.
+    const noReadyWord = U.includes('ready:') && U.includes("statusEl.style.display = label ? '' : 'none'")
+    check('C39 health pill shows + OCR (label only, no progress) + no redundant Ready line', ocrLabel && pillRefresh && noPillProgress && noReadyWord, 'ocrLabel=' + ocrLabel + ' pillRefresh=' + pillRefresh + ' noPillProgress=' + noPillProgress + ' noReadyWord=' + noReadyWord)
+  } },
+  { id: 'C40 OCR dialog redesign (stacked + chips + variants) + persist/auto-enable', fn: async () => {
+    const U = src('80-ui.js'); const F = src('40-files.js'); const T = src('tail.html')
+    // confirmDialog3 grows a stacked layout with variant buttons, sub-labels and a file chip.
+    const dialog = U.includes('cd3-btn cd3-') && U.includes('cd3-btn-sub') && U.includes('cd3-chip')
+    // promptOcr uses the new structure (stacked, chips, primary/secondary/ghost).
+    const prompt = F.includes('stacked: true') && F.includes('chips: scannedItems.map') && F.includes("variant: 'primary'") && F.includes("variant: 'ghost'")
+    // Preference persists + auto-enables on boot.
+    const persist = F.includes("localStorage.setItem('lcl_ocr_on', '1')") && F.includes("localStorage.setItem('lcl_ocr_on', '0')")
+    const autoEnable = F.includes('function autoEnableOcr(') && F.includes("localStorage.getItem('lcl_ocr_on') === '1'") && T.includes('autoEnableOcr()')
+    check('C40 OCR dialog redesign (stacked + chips + variants) + persist/auto-enable', dialog && prompt && persist && autoEnable, 'dialog=' + dialog + ' prompt=' + prompt + ' persist=' + persist + ' autoEnable=' + autoEnable)
+  } },
+  { id: 'C41 popup buttons share sizing (cd-ok primary, no full-width btn-p)', fn: async () => {
+    const U = src('80-ui.js'); const C = src('styles.css')
+    // Dialog primaries use the cd-ok chip (matches cd-cancel height), never the full-width btn-p.
+    const noBtnPInDialogs = !U.includes("'btn-p cd-ok'") && !U.includes("b.primary ? 'btn-p'") && U.includes("class: 'cd-ok'")
+    const cdOkStyled = C.includes('.cd-ok{') && C.includes('border:1px solid var(--ac)') && C.includes('.cd-acts{display:flex;justify-content:flex-end;align-items:center')
+    check('C41 popup buttons share sizing (cd-ok primary, no full-width btn-p)', noBtnPInDialogs && cdOkStyled, 'noBtnP=' + noBtnPInDialogs + ' cdOk=' + cdOkStyled)
+  } },
+  { id: 'C42 centered popups share one spec (16px corners, .5/6px backdrop)', fn: async () => {
+    const C = src('styles.css')
+    // Every centered box uses the shared --r-modal (16px) corner token + modal shadow.
+    const corners = C.includes('--r-modal: 16px')
+      && C.includes('.modal{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);padding:40px') // .modal
+      && C.includes('.cd-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);padding:22px') // .cd-box
+      && C.includes('.search-box{background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r-modal);') // .search-box
+    // No more 55%/65% backdrops; the confirm overlay is now blurred like the rest.
+    const backdrops = !C.includes('background:rgba(0,0,0,.65)') && !C.includes('background:rgba(0,0,0,.55)')
+      && C.includes('z-index:10000;padding:20px;backdrop-filter:blur(6px)')
+    check('C42 centered popups share one spec (16px corners, .5/6px backdrop)', corners && backdrops, 'corners=' + corners + ' backdrops=' + backdrops)
+  } },
+  { id: 'C43 cancelling an embed resets the health pill (no stuck Preparing to embed)', fn: async () => {
+    const F = src('40-files.js')
+    // A helper returns the pill to connected, guarded by embedsActive.
+    const helper = F.includes('function healthIdle(') && F.includes('embedsActive()') && F.includes("setHealth('ok'")
+    // Called on the OCR-cancel path, the embed-batch cancel path, the commitDocs end, and preview cancel.
+    const ocrCancel = /choice === 'cancel'[^}]*healthIdle\(\)/.test(F)
+    const batchCancel = /Embedding cancelled[\s\S]{0,40}healthIdle\(\)/.test(F)
+    const commitEnd = F.includes('updateDocsBtn(); healthIdle()')
+    check('C43 cancelling an embed resets the health pill (no stuck Preparing to embed)', helper && ocrCancel && batchCancel && commitEnd, 'helper=' + helper + ' ocrCancel=' + ocrCancel + ' batchCancel=' + batchCancel + ' commitEnd=' + commitEnd)
+  } },
+  { id: 'C44 text polish: ellipsis + em-dash + middot separators', fn: async () => {
+    const F = src('40-files.js'); const Ra = src('15-rag.js'); const Rn = src('70-render.js'); const B = src('body.html')
+    // No three-dot ellipsis left in the touched user-facing strings.
+    const noDots = !F.includes("'Reading files...'") && !F.includes("'Testing...'") && !F.includes("Enabling OCR engine...'") && !Ra.includes("'Embedding... batch")
+    // Em-dash (not hyphen) in OCR + rate-limit messages.
+    const emdash = F.includes('OCR done — read') && Ra.includes('Rate limit — resuming in')
+    // Middot separators, not literal asterisks.
+    const middot = Rn.includes(" + ' · ' + fmtDate") && B.includes('Enter to send  ·  Shift+Enter')
+    check('C44 text polish: ellipsis + em-dash + middot separators', noDots && emdash && middot, 'noDots=' + noDots + ' emdash=' + emdash + ' middot=' + middot)
+  } },
+  { id: 'C45 colour tokens + danger class + modal radius token + no dead off state', fn: async () => {
+    const C = src('styles.css'); const A = src('20-auth.js'); const F = src('40-files.js')
+    // Ad-hoc greens/olive/pin/red literals consolidated onto tokens.
+    const noLiterals = !C.includes('#2ea44f') && !C.includes('#3B6D11') && !C.includes('.ocr-dot.ocr-loading{background:#f0a500}') && !C.includes('#e05050') && !F.includes("'#4caf50'")
+    // Shared danger button + modal radius token.
+    const struct = C.includes('.btn-danger{') && C.includes('--r-modal: 16px')
+    // Dead 'off' health state removed (it added a CSS class with no rule).
+    const noOff = !A.includes("setHealth('off'")
+    check('C45 colour tokens + danger class + modal radius token + no dead off state', noLiterals && struct && noOff, 'noLiterals=' + noLiterals + ' struct=' + struct + ' noOff=' + noOff)
+  } },
+  { id: 'C46 paste image into composer routes to the attach flow', fn: async () => {
+    const X = src('90-extras.js'); const T = src('tail.html')
+    // A paste listener pulls image files off the clipboard and hands them to handleAttach.
+    const fn = X.includes('function initPasteImages(') && X.includes("addEventListener('paste'") && X.includes("indexOf('image/') === 0") && X.includes('handleAttach(files)')
+    const wired = T.includes('initPasteImages()')
+    check('C46 paste image into composer routes to the attach flow', fn && wired, 'fn=' + fn + ' wired=' + wired)
+  } },
+  { id: 'C47 flush chats to disk before an update restart', fn: async () => {
+    const U = src('97-update-ui.js')
+    const helper = U.includes('async function flushBeforeRestart(') && U.includes('await persist()')
+    // Every server-restart request is preceded by a flush, so a Node restart can't drop the most recent chat.
+    const restartCalls = (U.match(/httpPost\('\/api\/update\/restart'\)/g) || []).length
+    const flushes = (U.match(/await flushBeforeRestart\(\)/g) || []).length
+    check('C47 flush chats to disk before an update restart', helper && restartCalls >= 3 && flushes >= restartCalls, 'helper=' + helper + ' restartCalls=' + restartCalls + ' flushes=' + flushes)
+  } },
+]
+
+;(async () => {
+  for (const c of CASES) {
+    say('.. ' + c.id)
+    // Per-case watchdog: a hung case fails loudly instead of freezing the suite.
+    const watchdog = new Promise((_, rej) => setTimeout(() => rej(new Error('case timeout (20s)')), 20000))
+    try { await Promise.race([c.fn(), watchdog]) } catch (e) { check(c.id, false, 'threw: ' + e.message) }
+  }
+  say('')
+  say(pass + '/' + (pass + fail) + ' passed  (client-logic)')
+  process.exit(fail ? 1 : 0)
+})()
