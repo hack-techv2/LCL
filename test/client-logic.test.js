@@ -979,6 +979,79 @@ const CASES = [
       seedClean && seedKeptIntent && !echoed.changed && !echoed.titledByAI && good.changed && good.title === 'Budget sheet checker tool' && good.titledByAI,
       'seedClean=' + seedClean + ' seedIntent=' + seedKeptIntent + ' echoedRejected=' + !echoed.changed + ' echoedFlag=' + echoed.titledByAI + ' goodAccepted=' + good.changed + ' goodTitle=' + JSON.stringify(good.title))
   } },
+  { id: 'C69 release gate: cmpVer offers strictly-newer only (letter suffixes), APP_VERSION is ahead of the shipped release', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const lines = S.split(/\r?\n/)
+    const st = lines.findIndex(l => l.startsWith('function cmpVer'))
+    let en = st; for (let i = st + 1; i < lines.length; i++) { if (lines[i] === '}') { en = i; break } }
+    const ctx = { String, Math, parseInt }; vm.createContext(ctx)
+    vm.runInContext(lines.slice(st, en + 1).join('\n'), ctx)
+    const cmpVer = vm.runInContext('cmpVer', ctx)
+    // The updater offers a build when cmpVer(latest, current) > 0. Equal must NOT
+    // offer - that is the trap where a re-release reaches nobody.
+    const ordering = cmpVer('0.67e', '0.67d') > 0 && cmpVer('0.67d', '0.67d') === 0 &&
+                     cmpVer('0.67d', '0.67e') < 0 && cmpVer('0.68', '0.67e') > 0 &&
+                     cmpVer('v0.67e', '0.67d') > 0 && cmpVer('0.67e', '0.67') > 0
+    // The running build must be strictly newer than the release already published,
+    // or a fresh release cannot reach existing installs.
+    const m = S.match(/const APP_VERSION = '([^']+)'/)
+    const appVer = m && m[1]
+    const aheadOfShipped = !!appVer && cmpVer(appVer, '0.67d') > 0
+    check('C69 version gate: strict-newer ordering + APP_VERSION ahead of shipped release',
+      ordering && aheadOfShipped,
+      'ordering=' + ordering + ' APP_VERSION=' + appVer + ' aheadOfShipped=' + aheadOfShipped)
+  } },
+
+  { id: 'C70 update integrity: bad checksum rejected, nothing applied unless every file verifies', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const crypto = require('crypto')
+    // downloadVerified must throw on a hash mismatch so the caller applies nothing.
+    const dvStart = S.indexOf('async function downloadVerified')
+    const dv = S.slice(dvStart, S.indexOf('function swapInFiles'))
+    const sha = b => crypto.createHash('sha256').update(b).digest('hex')
+    const good = Buffer.from('GOOD PAYLOAD'), bad = Buffer.from('TAMPERED')
+    const mk = (buf) => {
+      const c = { Buffer, Error, sha256Buf: sha, ghFetchFile: async () => ({ statusCode: 200, buf }) }
+      vm.createContext(c); vm.runInContext('async function ghFetchFileX(){}\n' + dv, c)
+      return vm.runInContext('downloadVerified', c)
+    }
+    let okPassed = false, tamperRejected = false, httpRejected = false
+    try { const b = await mk(good)('ref', 'index.html', sha(good)); okPassed = b.toString() === 'GOOD PAYLOAD' } catch (e) {}
+    try { await mk(bad)('ref', 'index.html', sha(good)) } catch (e) { tamperRejected = /checksum mismatch/.test(e.message) }
+    {
+      const c = { Buffer, Error, sha256Buf: sha, ghFetchFile: async () => ({ statusCode: 404, buf: Buffer.alloc(0) }) }
+      vm.createContext(c); vm.runInContext(dv, c)
+      try { await vm.runInContext('downloadVerified', c)('ref', 'index.html', 'x') } catch (e) { httpRejected = /HTTP 404/.test(e.message) }
+    }
+    // handleUpdateApply must verify every file BEFORE swapping any of them.
+    const ha = S.slice(S.indexOf('async function handleUpdateApply'), S.indexOf('// ---', S.indexOf('async function handleUpdateApply')))
+    const verifyBeforeSwap = ha.indexOf('Checksum mismatch') < ha.indexOf('swapInFiles(verified)') &&
+                             ha.includes('throw new Error(\'No checksum published for \' + fname)')
+    // The swap itself must be atomic (.tmp then rename), never a direct write.
+    const sw = S.slice(S.indexOf('function swapInFiles'), S.indexOf('function swapInFiles') + 400)
+    const atomic = /writeFileSync\(tmp/.test(sw) && /renameSync\(tmp, dest\)/.test(sw)
+    check('C70 checksum gate: mismatch + HTTP failure rejected, verify-then-swap, atomic write',
+      okPassed && tamperRejected && httpRejected && verifyBeforeSwap && atomic,
+      'ok=' + okPassed + ' tamper=' + tamperRejected + ' http=' + httpRejected + ' verifyFirst=' + verifyBeforeSwap + ' atomic=' + atomic)
+  } },
+
+  { id: 'C71 update plumbing: stable applies from the release tag, alpha from the branch; gov-safe fetch host', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    // Stable resolves the ref from the published release tag, not from main.
+    const refFromTag = S.includes("const ref = ch === 'alpha' ? ALPHA_REF : (await fetchLatestRelease()).tag")
+    const noTagGuard = S.includes("if (!ref) return json(res, { error: 'No release tag found' }, 400)")
+    // raw.githubusercontent is 403-blocked on the gov network - must use the API.
+    const usesContentsApi = S.includes("'https://api.github.com/repos/' + UPDATE_REPO + '/contents/'")
+    const noRawHost = !/raw\.githubusercontent\.com['"]/.test(S)
+    // Revert path exists both online (release tag) and offline (.stable backups).
+    const revertOnline = /async function restoreStable/.test(S) && S.includes('downloadVerified(tag, f, want)')
+    const revertOffline = S.includes('function restoreFromBackup') && S.includes('function backupStable')
+    // Only the two runtime files are ever swapped.
+    const filesScoped = S.includes("const UPDATE_FILES = ['index.html', 'server.txt']")
+    check('C71 stable=tag / alpha=branch, Contents API only, revert online+offline',
+      refFromTag && noTagGuard && usesContentsApi && noRawHost && revertOnline && revertOffline && filesScoped,
+      'tagRef=' + refFromTag + ' guard=' + noTagGuard + ' api=' + usesContentsApi + ' noRaw=' + noRawHost + ' revertOnline=' + revertOnline + ' revertOffline=' + revertOffline + ' scoped=' + filesScoped)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
