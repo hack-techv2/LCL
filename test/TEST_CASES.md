@@ -14,7 +14,7 @@ is changed) and drives it over HTTP. Every demo request carries the gate header
 | Group | Covers | Run when you touched… |
 |-------|--------|------------------------|
 | `chat` | streaming SSE, buffered/auto-title, code render, every-5 | `demoChatStream` / `demoChatJson` / `demoServeChat`, chat payload, transport |
-| `embed` | single + batch embeddings, determinism | `demoEmbed` / `demoVector`, `handleEmbed*` demo branches |
+| `embed` | single + batch embeddings, determinism, streamed batch progress + `[[embedfail]]` | `demoEmbed` / `demoVector` / `demoServeEmbedBatch`, `handleEmbed*` demo branches |
 | `rag` | lookup, evict, gc (cache guards) | `handleEmbedLookup/Evict/Gc` demo branches |
 | `errors` | `[[401]]` / `[[429]]` / `[[filter]]` markers | `demoErrorFor`, marker handling |
 | `retry` | every-5 auto-429 + `[[429]]` resend | rate-limit / reset-stamp logic |
@@ -46,6 +46,10 @@ is changed) and drives it over HTTP. Every demo request carries the gate header
 | T18 | rag | batch embed, then evict + gc | both `removed: 0` (guard holds under load) |
 | T19 | embed | `/api/embed` empty input | `200`, still a 1024-d vector |
 | T20 | slow | `[[slow]]` vs normal stream timing | `200` and slow run > 2× the normal run |
+| T21 | embed | `/api/embed-batch` (20 inputs, demo) | SSE streams `progress` + one `pacing` event, then `done` with 20 embeddings (dim 1024) |
+| T22 | embed, retry | `/api/embed-batch` w/ `[[embedfail]]` twice | 1st streams a `type:error` event; 2nd (retry) `200` with the embedding (fail-once-then-succeed) |
+| T23 | embed, rag | `GET /api/ratelimit`, then a demo embed | tokLimit 200000; tokRemaining decreases after the embed (cumulative burn-down) |
+| T24 | embed | `/api/embed-batch` with ~120k-token inputs | `413` + "exceeds the token cap" (Phase 2 server hard-cap backstop) |
 
 > T0 must run before any other plain streamed chat (the every-5 counter is
 > server-global and resets on boot). It is first in the list, so any group that
@@ -62,3 +66,106 @@ countdown UI, Stop mid-stream, the DEMOKEY key-field hint, disconnect→reconnec
 - RAG ranking depth / cosine behaviour (we assert non-null + consistent dims, not
   retrieval quality — demo vectors are non-semantic by design).
 - Normal-mode (non-demo) real-key path is intentionally not exercised here.
+
+## 2 Jul 2026 additions — rate-limit pacing / truncation contracts
+
+Server suite (`demo-api.test.js`, now 32 cases):
+
+| ID | groups | What it does | Expects |
+|----|--------|--------------|---------|
+| T27 | embed, retry | `[[embed429]]` embed-batch | ONE request: pacing ticks then done, no error frame (server-internal 429 window-wait) |
+| T28 | errors, retry | `[[429]]` body | full gateway format: `Limit type: tokens`, `Current limit: 200000`, `Remaining: 0`, parseable reset stamp |
+| T29 | errors, retry | `[[429partial]]` | `Remaining: 58944` (21:45:46 log fixture), then 200 on retry |
+| T30 | chat, errors | `[[streamdie]]` | deltas, then `{"error":…}` frame, NO finish/[DONE] |
+| T31 | chat | `[[usage]]` stream | terminal usage chunk with numeric prompt/total tokens |
+| T32 | errors | `[[toobig]]` | Remaining ≥ 95% of limit (aligns with the client too-big rule) |
+
+Client-logic suite (`client-logic.test.js`, 13 cases, run: `node test/client-logic.test.js`):
+loads the REAL `src/12-transport.js` / `50-chatprocessing.js` / `30-chatlist.js` /
+`toast()` in a vm sandbox (stubbed fetch/DOM; `_RL_WINDOW_MS` 62000→1500 and the
+transient-retry sleep 4000→200 are the only patches, timing-only). Fixtures are
+verbatim 2 Jul 2026 log bodies. C1–C2 postClassified parsing/kinds; C3 truncation
+guard (mid-stream error → transient); C4 usage capture; C5 near-full 429 → tooBig;
+C6 partial 429 (58944) → wait not split; C7 transient retry; C8 infl EMA learning;
+C9 proactive pace gate; C10 map-reduce doneEl/liveEl + single-level split;
+C11 embedsActive; C12 deleteChat abort + unshared-doc cancel; C13 toast durations.
+
+### C14–C16 (busy-send / stream-death / toast position)
+
+C14 busy `send()` → toast "Still replying…" + `send_blocked_busy` crumb (was a silent
+no-op — the 2 Jul "excel attach failed" report); C15 mid-reply stream death →
+partial discarded, `stream_died_midreply` crumb, standard transient auto-retry
+(was silently accepted as a complete answer); C16 `#toast` sits ≥100px up,
+above the composer. Harness has a per-case 20s watchdog + synchronous output.
+
+### T33 / C17 / C18 (3 Jul — Continue for token-capped replies)
+
+T33: `[[truncate]]` demo marker → stream ends `finish_reason:"length"` + usage.
+C17: `streamChatOnce` surfaces `finish` ('length' vs 'stop'). C18: `attachMsgFlags`
+renders the Continue box from persisted flags, with the continuation-count variant.
+
+### T34/T35 + C19 (6 Jul — file:// proxy-origin shim)
+
+T34: OPTIONS with `Origin: null` + PNA preflight → 204, ACAO null, x-lcl-demo allowed.
+T35: internet origin gets NO ACAO. C19: `proxyUrl` maps /api paths to the proxy from
+file:// and foreign local origins, leaves served-by-proxy and non-API paths alone,
+honours the LCL_API_BASE override.
+
+### C20/C21 (6 Jul — attach fixes)
+
+C20: `buildContent` emits a single string with `<file name="...">` blocks (renderer's
+expandable-chip format; quotes in names sanitised). C21: `attachOversizeInfo` flags
+attachment sets that cannot fit the inline request budget (ceil - max_tokens - overhead).
+Preview rows/removal + the embed-instead offers are visual: see UI_CHECKS.
+
+### C22–C24 (6 Jul — attachment tray)
+
+C22 `trayContextBlock` builds the per-request working-set block (quote-safe, empty-safe).
+C23 near-full-window 429 in `runStream` → embed offer, NO retry loop. C24 tray remove +
+embed-all mutate `chat.attachedFiles` and route through `commitDocs`.
+
+### C25 (6 Jul) — `clearTrayFiles` empties the working set after confirm; declined confirm keeps files.
+
+### C26 (6 Jul) — `removeAllDocs`: clears chat docs, sets `_cancelled` on in-flight embeds, runs GC; declined confirm keeps files.
+
+
+
+### C27 (7 Jul) — tray collapse: expanded shows chips + remove-all + ▾; collapsed (`lcl_tray_min`) is one "N files attached" line with the meter kept, chips/remove-all hidden, ▸ to expand; over-budget label + "Embed all for RAG" stay visible while collapsed; toggling persists to localStorage both ways (`attach_tray_min` crumb).
+
+
+
+### C28 (7 Jul) — settings `spNav`: exactly one `.sp-sec`/`.sp-nav-it` pair gets `.on` for the routed section; choice persists to `lcl_sp_sec`; legacy `spTab('settings'/'models')` aliases to `defaults`/`connection`. Runs the REAL function source extracted from 80-ui.js.
+
+### C30 REMOVED (7 Jul) — the client Developer endpoint UI (`renderEndpointSection` / `endpointSelChanged` / `saveEndpointFromSP` / `devVault`) was removed on 7 Jul; only the gateway picker remains. The `/api/endpoint` server tests stay and now back the gateway picker: **T36** default + URL presets (2 presets: PlatformAI + NC3 (Dev)), **T37** set NC3 URL → persists → reset clears, **T38** allowlist refuses non-gov.sg/malformed URLs (suffix spoofs, ftp, http, credentials, schemeless, bad embed URL) with 400, **T39** an endpoint without an embeddings URL refuses `/api/embed` + `/api/embed-batch` with a clear 400.
+
+### T40 (7 Jul) — persist survival: set the Kepler endpoint, then POST `/api/data` with a client-style body whose settings LACK `endpoint` (the client never carries it) — the override must survive (server re-attaches its own `endpoint`). Replays the 7 Jul field bug where a debounced persist() silently reverted the gateway to PlatformAI.
+
+### C31 (7 Jul) — gateway switch: `setGateway('Kepler')` stashes the current gateway's keys in `D.settings.gwVault`, POSTs the Kepler preset to `/api/endpoint`, and clears creds keys (none saved yet); after the user pastes a Kepler key, switching back stashes it and restores the PlatformAI keys. `currentGateway()` resolves PlatformAI/NC3 (Dev)/Custom from the active endpoint. Runs the real `// === gateway ===` block. T36 asserts the 2-preset list (PlatformAI + NC3 (Dev)).
+
+### C29 (7 Jul) — split run carries the user instruction through map-reduce: with a non-summary ask ("Search the presenter's name"), part requests get the extract prompt + the ask verbatim, the combine request answers the ORIGINAL ask from the part-extracts, and the system line switches to "processing a document"; a summarise-style ask keeps the original generic part/combine prompts (captured from the real fetch bodies).
+
+### 15–16 Jul 2026 additions — budget-exceeded, log scrub, rate-limit UX, timeout, compaction
+
+Server suite (`demo-api.test.js`, now 42 cases):
+
+| ID | groups | What it does | Expects |
+|----|--------|--------------|---------|
+| T42 | errors | `[[budgetexceeded]]` `/api/chat` | flat `429` whose body is the bare string `1 budget(s) exceeded` — NO reset/limit/remaining fields (overall API-key budget exhaustion) |
+
+Client-logic suite (`client-logic.test.js`, now 51 cases):
+
+- **C48** — `postClassified` on a flat `{"error":"1 budget(s) exceeded"}` 429 classifies `kind:'terminal'` (not `ratelimit`), with `resetMs`/`limit429`/`remaining429` all null, so the chat path shows a plain terminal error and never enters the 60s retry-forever loop (15 Jul debug log).
+- **C49** — `sanitizeSecrets` (extracted from `server.txt`) scrubs `api_key: <…>`, `Bearer <…>`, `sk-…` tokens and 32+ hex runs from any log line, while keeping the useful 429 diagnostics (limit type / remaining / reset). Guards the centralised log-sink redaction so a key can never reach `debug_logs.txt`.
+- **C50** — re-sending while a 429 countdown is pending is BLOCKED with an informative toast (crumb `send_blocked_ratelimit`) and does NOT cancel + re-fire the pending retry into the still-drained window (Stop cancels instead).
+- **C51** — `server.txt` two-phase upstream timeout: a generous first-byte budget (`firstByteMsBudget = min(180000, max(inactivityMs, 90000))`) then a tighten to the per-token inactivity window once streaming starts (`onStreamTimeout('first-byte'|'inactivity')`). Stops large/slow prompts tripping the old 10s cutoff.
+- **C52** — conversation compaction: with a tiny threshold, `compactChatIfNeeded` folds all but the last 8 messages into `chat.compaction` (summary via the mocked stream), `chat.messages` is preserved intact, and the estimated sent-history tokens drop (`estSentHistoryTokens` before > after); `compacted` crumb fired.
+- **C53** — compaction is a no-op under the threshold, and also when only recent turns remain (fewer than keep-recent messages) — no summary call is made (empty fetch queue would throw if it were).
+
+### 16 Jul 2026 — browser/visual checks promoted to automated cases
+
+The UI_CHECKS "16 Jul additions" items now have automated coverage (no longer manual-only):
+
+- **C55** — runs the REAL `compactionPillEl` / `compactingIndicatorEl` (+ `mkEl`, extracted from source) against a tiny DOM stub: the collapsed pill has class `compact-pill` (not `open`), shows the folded count and the ▸ caret; clicking it toggles `compactOpen[chatId]` and re-renders; the expanded pill shows ▾ + "showing all"; the spinner element carries `.compact-spin`.
+- **C56** — source-wiring guards: `renderMessages` slices at `_startRender = uptoIndex` when collapsed and appends the compacting spinner AFTER the message loop (bottom of thread, not above the fold); `switchChat`/`newChat` no longer call `stopStreaming(true)` (finish-in-background); `runStream` routes UI through `uiMsg`/`uiHealth` and gates `uiSync()` on `!pendingRetry`; the block-on-resend toast distinguishes a 5xx retry ("server hiccup") from a real rate limit.
+
+Map of UI check → automated case: switch-chat background → C56 (+live); budget-exceeded → C48; rate-limit re-send/countdown → C50, C54; log scrub → C49; compaction pill/spinner/history → C52, C53, C55, C56.
