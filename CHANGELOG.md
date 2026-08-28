@@ -8,6 +8,20 @@ release.
 > compare equal, so every existing stable install would report "up to date" and
 > never receive this work. The bump is what makes the update reachable.
 
+## 28 Aug 2026 - Gateway switching is deferred to Save and gated on a working key (alpha)
+
+Picking a gateway used to switch the server endpoint the instant you clicked it — writing settings to disk and swapping your key before you had agreed to anything. Now **clicking only selects**: the segment highlights, the key box shows the key stored for that gateway, and nothing else happens. **Save** applies it, and only after the key is verified against that gateway.
+
+Verification runs through a new `POST /api/testkey` route, which makes one minimal completion against the target gateway **without touching the active endpoint**. The URL passes the same `*.gov.sg` allowlist as a real endpoint change, so the route can't be used to probe arbitrary hosts; the key is masked in logs and never persisted. If the check fails, nothing switches — endpoint, key vault and creds are all left as they were — and the failure is specific ("that key was rejected by NC3 (Dev)", "did not respond", "could not reach…"). Every *other* setting on the panel still saves, so a gateway being briefly down can't block the whole form. The first-run modal follows the same rule, and closing Settings without saving drops the pending pick.
+
+This also removes a nasty failure mode. When the server stalled, the UI never updated, so repeated clicks each passed the old "already on this gateway?" guard and queued up — one log showed **20 endpoint switches and 20 settings writes** firing in 200ms once the server unblocked. With nothing applied on click there is nothing to pile up.
+
+## 28 Aug 2026 - Console logging no longer stacks prefixes on in-process restart (alpha)
+
+An in-process restart re-evaluates `server.txt` in the *same* process, where `console.log` is already our wrapper — so `console.log.bind(console)` captured the previous wrapper and wrapped it again. Every restart added another `<iso> [log]` prefix, re-ran the secret scrubber per layer, wrote the line to `debug_logs.txt` once per layer, and multiplied the bytes pushed to the Windows console. Three restarts produced lines like `[log] <ts> [log] <ts> [log] Embedding -> …`.
+
+That directly aggravated the console stall: Windows QuickEdit/selection pauses stdout, and a synchronous `console.log` then blocks the server until you click the terminal — the "frozen until I press the Node window" symptom. The true originals are now stashed on `globalThis` once per process and reused by every reload, so the depth stays at one no matter how many restarts happen. Test **C73** proves it by evaluating the wrapper block three times in one context (depth stays 1) with a control showing the old pattern reaching depth 2. Note a *cold* restart is needed to clear depth already accumulated in a running process.
+
 ## 27 Aug 2026 - Chat titles: no more HTML as a title, and rename actually works (alpha)
 
 Asking LCL for an HTML file could leave the chat titled `<!DOCTYPE html><html lang="en"...` — and that chat then couldn't be renamed. Two separate faults that compounded.
