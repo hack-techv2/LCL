@@ -37,6 +37,13 @@ before a release-worthy push (esp. before promoting to `main`).
 | U12 | Upload a code/config or no-ext file (`.ts`, `.sql`, `Dockerfile`) and a binary (`.png`) | Text-like files extract + embed (no allowlist); the binary is skipped with "Could not read … unsupported file type (not readable as text)" |
 | U14 | Hover a message → click Copy / Copy for Word / Edit / Regenerate | All fire correctly via one delegated `#messages` listener (`data-act`); buttons carry no inline `onclick` (P2 refactor, behaviour unchanged) |
 | U13 | Settings → set a new embed key → Save | A new/changed embed key is verified with one `/api/embed` call: valid → "Embedding key connected"; bad/truncated → "Embedding key failed: …" (caught at save, not on first RAG embed) |
+| U15 | In `#demo`, open the Embeddings panel and inspect the seeded docs | `policy-handbook.docx` (status `embedding`, no progress data) shows the **indeterminate** orange progress bar + label `Embedding…`; `quarterly-report.pdf` shows `ready`; `scanned-invoice.pdf` shows the error pill **and a Retry button** |
+| U16 | In `#demo`, embed a multi-chunk doc (upload, or `embedDoc()` a synthetic doc with >8 chunks) | The demo server (`demoServeEmbedBatch`) streams simulated `progress` (+ one `pacing`) so the **progress bar** advances with `Embedding — batch x/y` and `done/total` chunks (no per-batch toast), flashes the amber `Rate limit — resuming in Ns` state, then flips to `ready`. Top-bar health shows `Embedding n/total` |
+| U17 | Click **Retry** on the seeded `scanned-invoice.pdf` (now `error` with content) | `retryEmbed(id)` re-embeds just that doc and it goes → `ready` (1 chunk); already-embedded chunks keep their `embHash` and are skipped (resume, not restart). To force a *fresh* failure, put `[[embedfail]]` in a doc's text — the demo embed errors once, then a Retry succeeds |
+| U18 | (Node console) Embed several files at once during a real session | No `MaxListenersExceededWarning` on the TLS socket — `secureConnect`/`error` listeners are wired once per pooled keep-alive socket (`socket._lclWired`). A normal Zscaler-intercepted handshake logs `TLS connected (Zscaler-intercepted, trusted)` instead of bare `authorized = false` |
+| U21 | **Embed budget gate** (`#demo`) | Embedding a doc estimated over the soft cap (default ~10% of the per-minute limit, or the Settings "Warn above" override) shows a confirm dialog with the chunk/token estimate + remaining-this-minute; **Cancel** aborts with nothing sent, **Embed anyway** proceeds. The cap is cumulative (recent embeds in the last 60s count). Server backstop: an embed over the hard cap (Settings "Block above", or ~50% of the limit, else 100k) is refused with HTTP 413. Verified live: dialog text + estimate correct, Cancel/Confirm both behave |
+| U20 | Sidebar **footer** (`#demo`) | Two rows under a thin divider. **Skills** = books icon (left, opens manager) + single-select dropdown (right; "None" + skills, orange-tinted when active, per-chat — switching chats reflects each chat's skill). **LCL settings · token usage /min** = outline gear (left) + token meter (right). Selecting a skill sets `chat.skillId` and updates the composer chip; "None" clears it. Verified live: options populate, select drives skillId + chip, collapsed sidebar hides labels/select/meter and stacks the icon buttons |
+| U19 | Sidebar **token budget meter** (`#demo`, server restarted) | Sits below Skills / above Settings; "Token budget /min" shows live `tokRemaining` / `tokLimit` (142k / 200k in demo), bar **orange** >50% / amber >20% / red <20% (matches the accent + embed bar — no green); decrements after a chat or embed (demo burn-down). Tooltip (`data-tip-bottom`, left-anchored) stays on-screen. With an old server (no `/api/ratelimit`) it degrades to "— / no data yet". Verified live: placement correct (between `#sb-skills` and `.sb-bot`), de-carded soft surface, all three colour states, tooltip on-screen, empty-state graceful |
 
 ## Status log
 Record date + build (index.html / server.txt sha) + which items passed when run,
@@ -51,6 +58,182 @@ so we have a trail.
   notes resolved via slide rels) then `embedDoc()` → "ready" + chunk embedded;
   `JSZip` loads from cdnjs on the gov network. (Real-file upload not yet driven —
   the native file dialog isn't automatable; do it manually when convenient.)
+- 25 Jun 2026 (embed progress + socket-listener fix): added **U15–U18** — per-doc
+  embed progress bar (batch/chunks + amber rate-limit state), Retry button on a
+  failed embed (`retryEmbed`, resumes), and Node-console checks for the
+  once-per-socket listener guard (no `MaxListenersExceededWarning`) + the clearer
+  Zscaler TLS log line. **U15–U17 verified live** (Claude-in-Chrome, `#demo`):
+  ready pill / indeterminate + determinate bar (`batch 2/3`, `28/48`, 58%) /
+  amber pacing (`Rate limit — resuming in 12s`) / error pill + Retry → embedDoc
+  → `ready` (1 chunk). **U18** (Node-console: no listener warning + clearer TLS
+  line) to be eyeballed locally during a real upstream session.
+- 25 Jun 2026 (demo-mode update): seed now ships real content + an error message
+  on the embedding/error docs — **U17 retry-resume re-verified live** on the new
+  client (`scanned-invoice.pdf` error → Retry → `ready`, 1 chunk). Demo
+  `/api/embed-batch` streaming (`progress`/`pacing`) + the `[[embedfail]]` marker
+  are covered by **T21/T22 (22/22 green)**; live `#demo` confirmation of the
+  advancing bar needs a Node restart (server.txt changed) — pending.
 - 22 Jun 2026 (alpha build): **U1–U10 all verified live** — incl. U7 (Stop mid
   `[[slow]]` → "(stopped)") and U10 (Reset demo re-seeds; "+ Many chats" adds 18,
   date-grouped). U6 countdown captured via the `[[429]]` marker.
+
+---
+
+## Real-file RAG extraction (v0.67e batch, added 1 Jul 2026)
+
+Fixtures live in `test/fixtures/` (regenerate with `python make_fixtures.py`):
+`test-report.pdf` (numbered sections + a Data Retention section), `test-policy.docx`
+(Heading 1 sections), `test-slides.pptx` (3 slides + speaker notes), `test-data.xlsx`
+(2 sheets). All content synthetic.
+
+**IMPORTANT — must be run in a REAL session, not `#demo`.** `#demo`'s `uploadDocs`
+does not add real uploaded files (confirmed 1 Jul 2026), and the native file dialog
+isn't automatable, so these are a manual checklist. Use a real embedding key.
+
+- **U19 PDF (pdf.js v5)** — upload `test-report.pdf`: extracts, chunks > 0, embeds to
+  `ready`. Query "data retention" → answer cites `test-report.pdf`. Confirms the
+  pdf.js **5.7.284 ESM** loader (`window.pdfjsLib`, `.mjs` worker) works end-to-end.
+- **U20 DOCX** — upload `test-policy.docx`: `extractDocxStructured` yields section
+  headings; query "remote work policy" cites it.
+- **U21 PPTX** — upload `test-slides.pptx`: `extractPptxStructured` yields slide text
+  + speaker notes; query "project timeline" cites it. (Contributor hadn't tested PPTX.)
+- **U22 XLSX** — upload `test-data.xlsx`: `extractXlsxStructured` yields both sheets
+  as tables; query "Q4 revenue by region" cites it. (Contributor hadn't tested XLSX.)
+- **U23 shared memory** — with docs embedded in chat A, start chat B, keep "Search past
+  embeddings" ON → chat B retrieves from A's docs; toggle OFF → only B's own docs.
+- **U24 delete prune** — delete a chat that had docs → confirm dialog → "Deleted chat
+  and pruned embeddings" toast; embed cache GC'd.
+- **U25 settings revamp** — open Settings: two-pane modal with grouped nav (MODEL /
+  SYSTEM are non-clickable headings — 11.5px uppercase with a divider underline;
+  items 13.5px, active = orange tint). Click through all six sections: each shows a
+  caption line under its header; the chosen section persists across close/reopen
+  (`lcl_sp_sec`). Defaults → MAX TOKENS value pill is 14px in a 30px pill, slider
+  ticks (64/32768) 12px; Account → Disconnect reads at 13.5px; footer shows
+  "Contributors · LCL · Melvin Yung · Ko Zheng Teng". Check both themes.
+
+- **U26 tray collapse** — open the seeded "GovTech maia - working files" chat (`#demo`):
+
+  tray shows 7 blue chips (chips area caps at 30vh and scrolls); ▾ chevron OR clicking
+
+  the header label collapses
+
+  to one "7 files attached" line with the token meter still visible; reload → stays
+
+  collapsed (`lcl_tray_min`); ▸ expands. With an over-budget set, the collapsed bar
+
+  stays amber with "too large to send" + "Embed all for RAG".
+- **U27 developer endpoint — REMOVED (7 Jul)** — the Settings → System → Developer
+  section (custom endpoint URLs / per-endpoint key store) was removed; only the
+  gateway picker (U28) remains. There is no longer a Developer nav item, and
+  `#sp` opens without it. Custom endpoint URLs can no longer be set from the UI
+  (the server `/api/endpoint` allowlist still guards the gateway presets).
+- **U28 gateway picker** — (server restarted) Settings → Connection and the Connect
+  modal both show the GATEWAY segment (PlatformAI · api.ai.tech.gov.sg | NC3 (Dev) ·
+  dev-nc3.csa.gov.sg). Click NC3 (Dev): key fields swap to its saved keys (blank +
+  toast "enter your NC3 (Dev) API key" on first use), labels flip to "NC3 (Dev) API
+  Key", health pill reads "… · NC3 (Dev)"; click PlatformAI: previous keys restored
+  from the vault. Settings → Embedding shows the read-only SOURCE BANNER: dot +
+  "Embedding via <gateway>" + embeddings URL (orange = NC3 (Dev), neutral =
+  PlatformAI). Keys are stored per gateway in `gwVault` — switching restores the
+  key you last used for that gateway. In #demo the switch is blocked with a toast.
+
+### Verified in `#demo` (client path, canned vectors) 1 Jul 2026
+- Hybrid retrieval query returns a correct source chip; **keyword-retrieval path** clean
+  after fixing `ragKeywordIndexCache` (see below).
+- Embed panel: progress bar + Retry + "Search past embeddings" toggle render; Top-K min=3.
+- Delete-chat confirm dialog + prune toast verified live.
+- pdf.js v5 module loads (`window.pdfjsLib` defined, worker = jsDelivr `.mjs`), no errors.
+
+### Bug found + fixed during this testing (1 Jul 2026)
+- **`ragKeywordIndexCache is not defined`** — the merged 15-rag/40-files reference this
+  state var but its declaration was only in v0.67e's `10-state.js`, which wasn't ported.
+  Symptom: keyword-recall threw and was swallowed by `buildPayload`'s catch, silently
+  degrading hybrid retrieval to vector-only. Fix: declared
+  `let ragKeywordIndexCache = { signature:'', index:null, records:[] }` in `10-state.js`.
+  Not caught by build.js (its scan checks undefined *functions*, not *variables*), nor by
+  the seeded-doc query (which took the full-text path) — only the keyword path hit it.
+
+## 2 Jul 2026 — pacing batch (mostly automated)
+
+Most of this batch is covered by `node test/client-logic.test.js` (C1–C13) and
+`demo-api.test.js` T27–T32; only visual polish needs an eyeball pass in `#demo`:
+
+- [ ] "Waiting for the rate-limit window" box: title/copy readable, countdown ticks,
+      switches to "resuming…" at 0:00 (429 via `[[429]]` / `[[429partial]]`).
+- [ ] During a multi-part summary the finished part-summaries remain readable above
+      the live area while the next part streams (logic automated in C10; this checks
+      the actual rendering).
+- [ ] `[[streamdie]]` mid-summary shows "upstream hiccup, retrying…" then recovers.
+- [ ] Toasts: an `err` toast visibly lingers (~6s) vs a short `ok` (~4s).
+- [ ] Docx with Mammoth warnings: NO toast; warnings in browser console +
+      `docx_warnings` crumb in the server log.
+
+- [ ] Send while a reply is streaming → "Still replying…" toast, message stays in composer.
+- [ ] Toast appears ABOVE the composer (not covering it); health pill reads
+      "Replying — Stop to interrupt" once tokens flow.
+- [ ] `[[streamdie]]` in plain chat → partial reply is discarded and the auto-retry
+      box appears (no truncated text left looking complete).
+- [ ] `[[truncate]]` reply → amber "Reply hit the token limit" box with Continue;
+      click Continue → text appends in the SAME bubble, box clears (or shows
+      "Still over the limit after N continuations" if capped again). Box survives
+      a reload. Regenerate remains available next to it.
+- [ ] Double-click `index.html` (Node running): app loads from `file://`, Connect
+      and chat work, `#demo` works. Stop Node → calls fail cleanly (no silent hang).
+- [ ] Attach 4+ long-named files: preview shows ONE ROW PER FILE (full names), ✕
+      removes a single file, click row switches the editor. Oversize set shows the
+      amber note + per-row ~token meta + "Embed for RAG instead" (Confirm becomes
+      "Attach anyway"). Send-time backstop: oversized attachments restore the
+      composer and offer "Embed attached files instead". Sent chips now expand
+      on click to show each file's text.
+- [ ] Attachment tray: attach files → blue tray above composer (aligned with it),
+      per-file ~tok + ✕, "+ add files", live meter; survives sends and reloads; user
+      messages carry name-tags only. Oversize → amber + "Embed all for RAG", send
+      blocked with toast; preview hides "Attach anyway" when hopeless (reactive).
+- [ ] Multi-file attach (PDFs): preview panel opens INSTANTLY with "extracting…"
+      rows that fill in one by one; Confirm blocked until done; cancel mid-extraction
+      is clean. Tray "remove all" link → confirm dialog → tray cleared.
+- [ ] Embed panel: one-line header (count pill, remove all, + upload), search-mode
+      caption switches with selection, blue zebra file rows with status badges,
+      footer hint + "about RAG" popover. Remove all → confirm → panel empties.
+- [ ] Embed panel (both themes): SEARCH MODE / FILES section labels, inline
+      "+ other chats" (caption gains suffix when on), file cards match sidebar
+      chat cards. Send during embed → "still embedding" toast; pending badge
+      reads "waiting to embed…"; no green health flash after extraction.
+
+## 16 Jul 2026 additions
+- [ ] Switch chats mid-reply (finish-in-background): send a `[[slow]]` message, switch
+      to another chat before it finishes. The other chat shows NO stray `(stopped)`/error
+      bubble and no red pill; the reply keeps generating into its origin chat and is there
+      (complete) when you switch back. Stop (button/Esc) still cancels. Health pill isn't
+      left stuck on "Replying" once the background run ends.
+- [ ] Budget-exceeded 429 (`[[budgetexceeded]]`): send it → a plain terminal error
+      "API key budget exhausted …" with NO countdown and NO auto-retry (not the 60s
+      rate-limit box).
+- [ ] Rate-limit UX: after a real 429 countdown is showing, re-sending is blocked with a
+      toast ("retry automatically in ~Ns / press Stop") instead of firing another 429; the
+      live `rl_wait` countdown still ticks. A 5xx pending-retry toast says "server hiccup",
+      not "Rate-limited".
+- [ ] Log scrub: trigger a 429, open `debug_logs.txt` (alpha) → the non-200 body reads
+      `api_key: [redacted]` (never the real key); limit/remaining/reset still shown.
+- [ ] Conversation compaction: in a long chat past the threshold, sending shows the
+      "Compacting earlier messages" spinner at the BOTTOM of the thread + "Compacting…" on
+      the health pill; then a collapsed "Earlier messages compacted · N messages" pill
+      sits above the recent turns — click expands the folded messages in place, click
+      collapses. Full transcript is preserved (expand shows every original message).
+      Stop during compaction cancels the send cleanly. (#demo is not compacted — inject a
+      fake `chat.compaction` to exercise the pill, as in the session smoke test.)
+
+## 20 Jul 2026 additions
+- [ ] Collapse the sidebar: the footer shows ONLY the comet logo — no version badge, no
+      ALPHA pill, no "↑ new" (on both stable and alpha). Expand it again → the full
+      footer returns (name, contributors, version, and the ALPHA pill on alpha). Guard C58.
+
+## 21 Jul 2026 additions
+- [ ] Ask LCL for an HTML file. When the reply finishes, the ```html block gets a bottom
+      toolbar: Copy HTML / Download <title>.html / Hide preview, and a sandboxed preview
+      auto-opens below it (rendered page). Toggle hides/shows it; Download saves the file;
+      Copy HTML copies just the source. A ```python (or json/sql) block gets Copy + Download
+      only, no preview. CSV → table preview; SVG → image preview; Markdown → rendered.
+      Preview must NOT appear mid-stream (only once the reply completes) and must survive
+      switching away + back. Confirm the HTML preview can't reach LCL (sandbox=allow-scripts,
+      no same-origin; CSP blocks connect/form). Guards C61–C63.
