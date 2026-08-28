@@ -36,34 +36,43 @@ async function loadSkillsList() {
   }
 }
 
+// Mirror the active-skill highlight onto the rail's Skills (wand) button:
+// orange only when a skill is selected, neutral when None.
+function syncSkillRail(on) {
+  const b = document.getElementById('skill-rail-btn')
+  if (b) b.classList.toggle('active', !!on)
+}
+
 function renderSkillPicker() {
-  const root = document.getElementById('sb-skills')
-  if (!root) return
+  const sel = document.getElementById('skill-select')
+  if (!sel) return
   const chat = curChat()
-  const current = chat?.skillId || null
-
-  let html = '<div class="sb-skills-hd"><span class="sb-skills-hd-lbl">Skills</span></div>'
-
-  if (!skillsCache.length) {
-    html += '<div class="sb-skill-empty">No skills yet</div>'
-  } else {
-    for (const s of skillsCache) {
-      const active = (s.id === current) ? ' active' : ''
-      html += `<div class="sb-skill-item${active}" data-id="${esc(s.id)}" onclick="onSkillPicked('${esc(s.id)}')" title="${esc(s.id)}">
-        <span class="sb-skill-dot"></span>
-        <span class="sb-skill-name">${esc(s.title)}</span>
-      </div>`
-    }
-    if (current && !skillsCache.some(s => s.id === current)) {
-      html += `<div class="sb-skill-item active" data-id="${esc(current)}" title="missing skill">
-        <span class="sb-skill-dot"></span>
-        <span class="sb-skill-name">(missing) ${esc(current)}</span>
-      </div>`
-    }
+  const current = chat?.skillId || ''
+  let html = '<option value="">None</option>'
+  for (const s of skillsCache) {
+    html += '<option value="' + esc(s.id) + '"' + (s.id === current ? ' selected' : '') + '>' + esc(s.title) + '</option>'
   }
+  if (current && !skillsCache.some(s => s.id === current)) {
+    html += '<option value="' + esc(current) + '" selected>(missing) ' + esc(current) + '</option>'
+  }
+  sel.innerHTML = html
+  sel.value = current
+  sel.classList.toggle('active', !!current)
+  syncSkillRail(current)
+}
 
-  // "Manage skills" now lives in the 2-column sb-bot row next to Settings.
-  root.innerHTML = html
+// Set the active skill for the current chat from the selector (single-select;
+// '' = No skill). Skills are per-chat (stored on chat.skillId).
+function onSkillSelect(id) {
+  const chat = curChat()
+  if (!chat) return
+  chat.skillId = id || null
+  chat.updatedAt = Date.now()
+  persist()
+  renderSkillChip()
+  const sel = document.getElementById('skill-select')
+  if (sel) sel.classList.toggle('active', !!chat.skillId)
+  syncSkillRail(chat.skillId)
 }
 
 function onSkillPicked(id) {
@@ -93,12 +102,73 @@ function renderSkillChip() {
 // text string. With attachments, return an array of text blocks: the typed
 // message first, then each attached file's extracted text labelled by name.
 function buildContent(text) {
+  // Single string with <file name="...">...</file> blocks - the SAME format the
+  // renderer's expandable-chip parser and the demo seeds use (previously this
+  // emitted "--- name ---" content-block arrays that nothing else understood,
+  // so sent-message chips were never expandable).
   if (!attachments.length) return text
-  const blocks = [{ type: 'text', text }]
+  let out = text
   for (const a of attachments) {
-    blocks.push({ type: 'text', text: '\n\n--- ' + a.name + ' ---\n' + (a.textContent || '') })
+    const safeName = String(a.name || 'file').replace(/"/g, "'")
+    out += '\n\n<file name="' + safeName + '">\n' + (a.textContent || '') + '\n</file>'
   }
-  return blocks
+  return out
+}
+
+// Shared attach-budget check (preview panel + send guard): can the extracted
+// attachment text fit an inline request, leaving room for the reply + overhead?
+function attachOversizeInfo(queue, chat) {
+  const items = queue || []
+  const est = items.reduce(function (n, f) { return n + estTokens((f && (f.extractedText != null ? f.extractedText : f.textContent)) || '') }, 0)
+  // Attachments RIDE IN THE HISTORY: every prior message (incl. its inline file
+  // text) is re-sent each turn (6 Jul log: batched attaches climbed 39k -> 386k).
+  // Count the chat history so batch N is warned about batches 1..N-1 too.
+  const c = chat || ((typeof curChat === 'function') ? curChat() : null)
+  const hist = c && Array.isArray(c.messages)
+    ? estTokens(c.messages.map(function (m) { return typeof m.content === 'string' ? m.content : '' }).join('\n'))
+    : 0
+  const ctx = (typeof getModelContext === 'function' && creds && getModelContext(creds.model)) || 0
+  const ceil = Math.min(ctx || Infinity, 200000)
+  const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
+  const budget = Math.max(20000, ceil - reserve - 4000)
+  return { est: est + hist, newEst: est, histEst: hist, ceil: ceil, budget: budget, over: (est + hist) > budget }
+}
+
+// Working-set tray -> payload: the chat's CURRENT attached files are injected
+// ONCE per request into the system context, never baked into message history.
+// Removing a file from the tray immediately shrinks every future send.
+function trayContextBlock(chat) {
+  const files = ((chat && chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
+  if (!files.length) return ''
+  return files.map(function (a) {
+    return '<file name="' + String(a.name || 'file').replace(/"/g, "'") + '">\n' + a.textContent + '\n</file>'
+  }).join('\n\n')
+}
+
+// Send-time backstop for oversized ATTACHMENTS (docs get offerDocSplit; before
+// this, attachments got useless "switch Search mode" advice - 6 Jul log).
+function offerAttachEmbed(atts, est, ceil) {
+  const k = function (n) { return Math.round(n / 1000) + 'k' }
+  const bubble = appendMsg('ai', '', null, null)
+  const bodyEl = bubble.querySelector('.msg-body')
+  const acts = bubble.querySelector('.msg-acts'); if (acts) acts.style.display = 'none'
+  if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_offered', { files: atts.length, est: est, where: 'send' })
+  bodyEl.innerHTML = statusBox('warn', 'Attached files are too large to send inline',
+    'Your ' + atts.length + ' attached file' + (atts.length > 1 ? 's total' : ' is') + ' ~' + k(est) +
+    ' tokens — over the ~' + k(ceil) + ' per-request limit. Embed them instead: files are stored once and only the relevant parts are retrieved for each question.', {})
+  bodyEl.appendChild(mkEl('div', { style: 'margin-top:10px;display:flex;gap:8px' }, [
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () {
+      try { bubble.remove() } catch (e) {}
+      if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_converted', { files: atts.length, where: 'send' })
+      const _c = (typeof curChat === 'function') ? curChat() : null
+      if (_c && Array.isArray(_c.attachedFiles) && _c.attachedFiles.length && typeof embedTrayFiles === 'function') { embedTrayFiles(); return }
+      const files = atts.map(function (a) { return { name: a.name, size: (a.textContent || '').length, extractedText: a.textContent } })
+      attachments = []
+      renderChips()
+      commitDocs(files).catch(function (e) { try { console.warn('[commitDocs] ' + (e && e.message)) } catch (x) {} })
+    } }, 'Embed attached files instead'),
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Dismiss')
+  ]))
 }
 
 // Shared by send() and regenerateLast(): builds the chat API payload for
@@ -107,21 +177,63 @@ function buildContent(text) {
 // { payload, ragSources }, or { skillErr } when the chat's skill won't load.
 async function buildPayload(chat, queryText) {
   let ragChunks=[], ragSources=[], fullDocText=''
-  const readyDocs   = (chat.docs||[]).filter(d=>d.status==='ready')
-  const docsForFull = readyDocs.filter(d=>d.content)
-  const totalChars  = docsForFull.reduce((n,d)=>n+d.content.length,0)
-  const fullLimit   = creds.docFullTextLimit || CFG.DOC_FULLTEXT_LIMIT
-  const useFullText = docsForFull.length>0 && totalChars<=fullLimit
-  if (useFullText) {
-    fullDocText = docsForFull.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
-    ragSources  = docsForFull.map(d=>d.name)
-  } else if (readyDocs.some(d=>d.chunks?.length)) {
-    try {
-      ragChunks = await retrieveChunks(queryText, chat.docs, creds.topK||10, ragStickyChunks)
-      ragSources = [...new Set(ragChunks.map(c=>c.docName))]
-      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor((creds.topK||10) * CFG.STICKY_CHUNK_RATIO)))
+  const memoryDocs  = getRagMemoryDocs(chat)
+  const readyDocs   = memoryDocs.filter(d=>d.status==='ready')
+  const queryPlan   = analyzeRagQuery(queryText, readyDocs)
+  const scopedDocs  = narrowDocsForQuery(queryPlan, readyDocs)
+  const docsForUse  = scopedDocs.length ? scopedDocs : readyDocs
+  const searchMode  = (typeof chatSearchMode === 'function') ? chatSearchMode(chat) : 'auto'
+
+  if (queryPlan.sectionRefs.length && docsForUse.some(d => d.content || d.sections?.length || d.chunks?.length)) {
+    ragChunks = exactSectionLookup(queryPlan.sectionRefs, docsForUse)
+    if (ragChunks.length) {
+      ragSources = uniqueSourceNames(ragChunks)
     }
-    catch(e) { console.warn('RAG:',e.message) }
+  }
+
+  // Chunk retrieval used by 'specific' mode and the 'auto'/'whole' fallback.
+  async function retrieveChunksInto() {
+    if (!docsForUse.some(d=>d.chunks?.length)) return
+    try {
+      ragChunks = await retrieveRagChunks(queryText, docsForUse, clampTopK(creds.topK), ragStickyChunks)
+      // Item 4: evidence-scored source display; fall back to all retrieved docs
+      // if the evidence filter would hide every source.
+      ragSources = displayedSourceNames(queryText, ragChunks)
+      if (!ragSources.length) ragSources = uniqueSourceNames(ragChunks)
+      ragStickyChunks = ragChunks.slice(0, Math.max(1, Math.floor(clampTopK(creds.topK) * CFG.STICKY_CHUNK_RATIO)))
+    } catch(e) { console.warn('RAG:',e.message) }
+  }
+
+  if (!ragChunks.length) {
+    if (searchMode === 'specific') {
+      // Always search for the most relevant passages — never inject full text.
+      await retrieveChunksInto()
+    } else {
+      const docsForFull = docsForUse.filter(d=>d.content)
+      // Full-text budget scaled to the model's context window. 'whole' mode uses the
+      // full window; 'auto' caps at the sane DOC_FULLTEXT_CEILING. Unknown model -> floor.
+      const _win = (typeof getModelContext === 'function') ? getModelContext(creds.model) : null
+      let availChars = CFG.DOC_FULLTEXT_LIMIT
+      if (_win) {
+        const _reserveTok = (creds.maxTokens || CFG.DEFAULT_MAX_TOKENS || 8192)
+        const _histTok = estTokens(chat.messages.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
+        availChars = Math.max(CFG.DOC_FULLTEXT_FLOOR || 40000, Math.floor((_win - _reserveTok - _histTok - 2000) * 4))
+      }
+      const fullLimit = (searchMode === 'whole') ? availChars : Math.min(availChars, CFG.DOC_FULLTEXT_CEILING || 250000)
+      let fullCandidates = selectRelevantFullDocs(queryText, docsForFull, clampTopK(creds.topK))
+      // Fallback: if the query matches no doc lexically, still consider all ready docs
+      // so a general/paraphrased question isn't left ungrounded (budget clamp guards size).
+      if (!fullCandidates.length) fullCandidates = docsForFull
+      const totalChars  = fullCandidates.reduce((n,d)=>n+d.content.length,0)
+      const useFullText = fullCandidates.length>0 && totalChars<=fullLimit
+      if (useFullText) {
+        fullDocText = fullCandidates.map(d=>'--- '+d.name+' ---\n'+d.content).join('\n\n')
+        ragSources  = uniqueSourceNames(fullCandidates)
+      } else {
+        // Too large to send whole (even in 'whole' mode, past the model window) -> chunks.
+        await retrieveChunksInto()
+      }
+    }
   }
   const { sys: sysBase, error: skillErr } = await resolveSystemPrompt(chat)
   if (skillErr) return { skillErr }
@@ -129,25 +241,158 @@ async function buildPayload(chat, queryText) {
   if (fullDocText) {
     sys = 'The following document(s) are provided IN FULL. Use them to answer the user.\n\n'+fullDocText+(sys?'\n\n'+sys:'')
   } else if (ragChunks.length) {
-    const ctx = ragChunks.map((c,i)=>`[${i+1}] (${c.docName})\n${c.text}`).join('\n\n')
-    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so.\n\n'+ctx+(sys?'\n\n'+sys:'')
+    const ctx = ragChunks.map((c,i)=>{
+      const loc = [c.docName, c.pageStart ? ('p.' + c.pageStart) : '', c.sectionNo ? ('section ' + c.sectionNo) : (c.sectionTitle || '')].filter(Boolean).join(' — ')
+      return `[${i+1}] (${loc})\n${c.text}`
+    }).join('\n\n')
+    sys = 'Use the following document excerpts to answer. If the answer is not in them, say so. Prefer cited excerpts over general knowledge, and mention when the provided excerpts are insufficient.\n\n'+ctx+(sys?'\n\n'+sys:'')
   }
-  const baseMessages = chat.messages.map(m=>({role:m.role,content:m.content}))
+  const _att = trayContextBlock(chat)
+  if (_att) {
+    sys = 'The user has ATTACHED these working files (their current set - it can change between turns). Use them to answer:\n\n' + _att + (sys ? '\n\n' + sys : '')
+  }
+  // Compaction: when this chat has been compacted, send the summary of the older
+  // turns (folded into the system context) + only the messages AFTER the compaction
+  // point, instead of the whole transcript. chat.messages is untouched - the full
+  // history is preserved and still shown in the UI; this only changes what the model
+  // receives, which is what keeps each turn small.
+  const _cp = chat.compaction
+  let _history = chat.messages
+  if (_cp && _cp.summary && _cp.uptoIndex > 0 && _cp.uptoIndex <= chat.messages.length) {
+    _history = chat.messages.slice(_cp.uptoIndex)
+    const _sumBlock = 'Summary of the earlier part of this conversation (older messages were compacted to save space):\n\n' + _cp.summary
+    sys = sys ? (sys + '\n\n' + _sumBlock) : _sumBlock
+  }
+  const baseMessages = _history.map(m=>({role:m.role,content:m.content}))
   const msgs = sys ? [{ role:'system', content:sys }, ...baseMessages] : baseMessages
   return { payload: { messages:msgs, max_tokens:creds.maxTokens||CFG.DEFAULT_MAX_TOKENS }, ragSources }
 }
+
+// ===========================================================================
+// Conversation compaction. Long chats re-send the whole transcript every turn,
+// which drains the shared per-minute token budget (repeated 429s) and can
+// approach the model context window. When the history that WOULD be sent grows
+// past the threshold, summarise the OLDER turns into chat.compaction and send
+// that summary + the most recent turns instead. chat.messages is never mutated
+// - the full history stays on disk and in the UI; only what the model receives
+// shrinks. Like the "compacting conversation" behaviour of the main apps.
+// ===========================================================================
+function setCompacting(chatIdOrNull) {
+  compacting = chatIdOrNull || null   // scope the spinner to the chat being compacted
+  // Health pill is global; only claim 'Compacting…' while that chat is the one on screen.
+  if (compacting && typeof setHealth === 'function' && (typeof chatId === 'undefined' || chatId === compacting)) setHealth('warn', 'Compacting\u2026')
+  if (typeof renderMessages === 'function') renderMessages()
+}
+
+// Estimate the tokens the NEXT send would carry (summary, if any, + messages
+// after the compaction point). Cheap char/4 estimate, same basis as elsewhere.
+function estSentHistoryTokens(chat) {
+  const cp = chat && chat.compaction
+  const startIdx = (cp && cp.uptoIndex) || 0
+  const sendable = (chat.messages || []).slice(startIdx)
+  const summaryTok = (cp && cp.summary) ? estTokens(cp.summary) : 0
+  return summaryTok + estTokens(sendable.map(m => typeof m.content === 'string' ? m.content : '').join('\n'))
+}
+
+// Summarise a run of older messages (optionally folding a prior summary in) into
+// one compact "conversation so far" block. Reuses summariseText so a very large
+// first compaction is split/paced rather than 429ing. Returns text or null.
+async function summariseConversation(prevSummary, msgs, signal) {
+  const transcript = msgs.map(function (m) {
+    const who = m.role === 'user' ? 'User' : 'Assistant'
+    const t = typeof m.content === 'string' ? m.content
+      : (m.content && m.content.find && (m.content.find(function (b) { return b.type === 'text' }) || {}).text) || ''
+    return who + ':\n' + t
+  }).join('\n\n')
+  const seed = (prevSummary ? 'Summary of the conversation so far:\n' + prevSummary + '\n\n--- Newer messages to fold into the summary ---\n\n' : '') + transcript
+  const sysPrompt = 'You are compacting a long chat conversation to save space. Write a faithful, concise summary that preserves the user\u2019s goals, key decisions and conclusions, important facts, names/identifiers/code, and any open questions \u2014 enough that the assistant can continue seamlessly. Prefer tight prose or short bullet points. Output only the summary.'
+  const instruction = 'Summarise this conversation so it can continue seamlessly, preserving goals, decisions, facts, identifiers and open questions.'
+  try {
+    const text = await summariseText(sysPrompt, 'conversation', seed, instruction, null, signal, 0)
+    return (text && String(text).trim()) || null
+  } catch (e) { return null }
+}
+
+// Compact the chat in place if the next send would exceed the threshold (or the
+// context-window safety cap). Runs BEFORE buildPayload in send(). Returns
+// { aborted } so send() can bail if the user pressed Stop mid-compaction.
+async function compactChatIfNeeded(chat) {
+  if (!chat || !Array.isArray(chat.messages) || !creds) return { aborted: false }
+  if (typeof demoOn === 'function' && demoOn()) return { aborted: false }   // leave #demo seeds intact
+  const KEEP = CFG.COMPACT_KEEP_RECENT || 8
+  const threshold = (creds && Number(creds.compactTokens) > 0 ? Number(creds.compactTokens) : (CFG.COMPACT_TOKENS || 50000))
+  const cp = chat.compaction
+  const startIdx = (cp && cp.uptoIndex) || 0
+  const sentTok = estSentHistoryTokens(chat)
+  const win = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
+  const safetyCap = win ? Math.floor(win * (CFG.COMPACT_WINDOW_SHARE || 0.8)) : Infinity
+  if (sentTok <= threshold && sentTok <= safetyCap) return { aborted: false }
+  const foldEnd = chat.messages.length - KEEP
+  if (foldEnd <= startIdx) return { aborted: false }   // only recent turns remain; can't shrink without dropping recent context
+  const toFold = chat.messages.slice(startIdx, foldEnd)
+  if (!toFold.length) return { aborted: false }
+  if (typeof lclCrumb === 'function') lclCrumb('compact_start', { upto: foldEnd, sentTok: sentTok, threshold: threshold })
+  const ctl = new AbortController(); inflightCtl = ctl
+  setCompacting(chat.id)
+  let summary = null
+  try { summary = await summariseConversation(cp && cp.summary, toFold, ctl.signal) } catch (e) { summary = null }
+  setCompacting(null)
+  const aborted = ctl.signal.aborted
+  inflightCtl = null
+  if (aborted) { if (typeof lclCrumb === 'function') lclCrumb('compact_aborted', {}); return { aborted: true } }
+  if (summary) {
+    chat.compaction = { summary: summary, uptoIndex: foldEnd, createdAt: Date.now(), model: creds.model }
+    if (typeof lclCrumb === 'function') lclCrumb('compacted', { upto: foldEnd, kept: chat.messages.length - foldEnd })
+    try { await persist() } catch (e) {}
+  } else if (typeof lclCrumb === 'function') { lclCrumb('compact_failed', {}) }
+  return { aborted: false }
+}
+
 
 async function send() {
   if (!creds) { openConnect(); return }
   const input = document.getElementById('msg-in')
   const text  = input.value.trim()
-  if (!text||busy||!chatId) return
+  if (!text || !chatId) return
+  if (busy) {
+    // Was a SILENT no-op: during a long reply (23:00 log: 110s stream) a send did
+    // nothing - no toast, no crumb - and looked like the attach/send had failed.
+    if (typeof lclCrumb === 'function') lclCrumb('send_blocked_busy', { chars: text.length })
+    toast('Still replying — wait for it to finish or press Stop, then send again', 'info')
+    return
+  }
 
-  // If a 429 retry was pending from a previous send, cancel it. The user
-  // is starting fresh; the old payload shouldn't auto-fire later.
-  if (pendingRetry) { pendingRetry.cancel(); pendingRetry = null }
+  // Anti-churn (rate-limit): a pending 429 countdown will auto-retry the SAME turn
+  // when the window resets. Re-sending now would cancel it and fire straight into the
+  // still-drained window (another 429), so block with a clear toast instead. Press
+  // Stop to cancel the wait and send a fresh message.
+  if (pendingRetry) {
+    const _secs = Math.max(0, Math.round(((rlWindowUntil || 0) - Date.now()) / 1000))
+    const _rl = (rlWindowUntil || 0) > Date.now()   // true 429 window vs a 5xx transient retry
+    if (typeof lclCrumb === 'function') lclCrumb('send_blocked_ratelimit', { secs: _secs, kind: _rl ? 'ratelimit' : 'transient' })
+    const _lead = _rl
+      ? (_secs > 0 ? 'Rate-limited \u2014 it\u2019ll retry automatically in ~' + _secs + 's.' : 'Rate-limited \u2014 retrying automatically.')
+      : 'Still retrying the previous message after a server hiccup.'
+    toast(_lead + ' Press Stop to cancel and send this instead.', 'info')
+    return
+  }
+
+  // Pre-send guard: if we recently hit a 429 and the shared token window has NOT reset
+  // yet, this send will almost certainly 429 too. Warn once so the user can wait
+  // (recommended) instead of hammering a drained window. rlWindowUntil self-expires,
+  // so once the reset time passes this never fires.
+  if ((rlWindowUntil || 0) > Date.now() && typeof confirmDialog === 'function') {
+    const _secs = Math.max(1, Math.round((rlWindowUntil - Date.now()) / 1000))
+    const _go = await confirmDialog({
+      title: 'Rate limit still cooling down',
+      message: 'The shared per-minute token limit was just hit and resets in about ' + _secs + 's. Sending now will likely be rejected until then. Wait for it to reset, or send anyway?',
+      okText: 'Send anyway', cancelText: 'Wait'
+    })
+    if (!_go) { if (typeof lclCrumb === 'function') lclCrumb('send_held_ratelimit', { secs: _secs }); return }
+  }
 
   const chat = curChat(); if (!chat) return
+  if (typeof lclCrumb === 'function') lclCrumb('send', { model: creds && creds.model, chars: text.length, docs: (chat.docs && chat.docs.length) || 0 })
 
   // Claim the busy lock NOW — before any await — so a second send can't slip in
   // during retrieveChunks()/resolveSystemPrompt() and orphan the inflight stream.
@@ -159,10 +404,31 @@ async function send() {
 
   // auto-title after first message
   if (!chat.messages.length) {
-    chat.title = text.slice(0,42)+(text.length>42?'...':'')
+    chat.title = text.slice(0,42)+(text.length>42?'…':'')
   }
 
-  const sentFileNames = attachments.map(a=>a.name)
+  const trayFiles = ((chat.attachedFiles) || []).filter(function (a) { return a && a.textContent })
+  const sentFileNames = trayFiles.length ? trayFiles.map(function (a) { return a.name }) : attachments.map(a=>a.name)
+  const sentAttachments = attachments.slice()   // legacy pre-tray composer chips
+  // Honesty: docs still embedding are NOT in this answer (buildPayload only uses
+  // status === 'ready'). Say so instead of silently answering without them.
+  const _stillEmbedding = ((chat.docs || []).filter(function (d) { return d && (d.status === 'embedding' || d.status === 'pending') })).length
+  if (_stillEmbedding) {
+    if (typeof lclCrumb === 'function') lclCrumb('send_during_embed', { pending: _stillEmbedding })
+    toast(_stillEmbedding + ' file' + (_stillEmbedding > 1 ? 's are' : ' is') + ' still embedding — this answer won’t use ' + (_stillEmbedding > 1 ? 'them' : 'it') + ' yet', 'info')
+  }
+  // Tray gate: an over-budget working set never leaves the client - the tray
+  // meter is already amber with an "Embed all for RAG" button at this point.
+  if (trayFiles.length) {
+    const _ti = attachOversizeInfo(trayFiles, chat)
+    if (_ti.over) {
+      if (typeof lclCrumb === 'function') lclCrumb('attach_oversize_blocked', { files: trayFiles.length, est: _ti.est, where: 'tray' })
+      toast('Attached files are ~' + Math.round(_ti.est / 1000) + 'k tokens — over the send limit. Remove some from the tray or use Embed all for RAG.', 'err')
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
+  }
   const content = buildContent(text)
   chat.messages.push({role:'user',content,ts:Date.now(),fileNames:sentFileNames})
   chat.updatedAt = Date.now()
@@ -172,6 +438,17 @@ async function send() {
   const emptyEl = document.getElementById('empty'); if (emptyEl) emptyEl.classList.add('hidden')
   const disp = typeof content==='string'?content:content.find(b=>b.type==='text')?.text||'[attachment]'
   appendMsg('user', disp, null, null, sentFileNames)
+
+  // Auto-compact older turns first, so a long chat sends a summary + the recent
+  // turns instead of the whole transcript. Runs at most a short summary call; the
+  // 'Compacting\u2026' spinner shows while it does. Bail cleanly if Stop is pressed.
+  const _cmp = await compactChatIfNeeded(chat)
+  if (_cmp && _cmp.aborted) {
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
+    if (typeof setHealth === 'function' && typeof connectedLabel === 'function') setHealth('ok', connectedLabel())
+    return
+  }
 
   const built = await buildPayload(chat, text)
   if (built.skillErr) {
@@ -184,6 +461,44 @@ async function send() {
     return
   }
   const { payload, ragSources } = built
+
+  // Pre-flight token guard: a whole-doc turn can exceed the per-minute token cap
+  // (and/or the model context window). Such a request 429s even with a full budget
+  // and would otherwise auto-retry forever, so block it here with an actionable note.
+  const _estTok = Math.ceil(JSON.stringify(payload).length / 4)
+  const _ctx = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
+  const _rateCap = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
+  const _ceil = Math.min(_ctx || Infinity, _rateCap)
+  if (_estTok > _ceil) {
+    if (trayFiles.length || sentAttachments.length) {
+      // Attachments (not docs) blew the budget: undo the send, restore the
+      // composer so nothing is lost, and offer to embed instead.
+      chat.messages.pop()
+      chat.updatedAt = Date.now()
+      renderMessages()
+      if (sentAttachments.length) { attachments = sentAttachments; renderChips() }
+      input.value = text; autoResize(input)
+      offerAttachEmbed((trayFiles.length ? trayFiles : sentAttachments).slice(), _estTok, _ceil)
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
+    const _ready = ((typeof getRagMemoryDocs === 'function' ? getRagMemoryDocs(chat) : (chat.docs || [])) || []).filter(function (dd) { return dd && dd.status === 'ready' && dd.content })
+    if (_ready.length && typeof offerDocSplit === 'function') {
+      if (typeof lclCrumb === 'function') lclCrumb('split_offered', { docs: _ready.length, est: _estTok })
+      offerDocSplit(chat, _ready, text)
+      busy = false
+      if (typeof updateSendBtn === 'function') updateSendBtn()
+      return
+    }
+    const note = 'This request is ~' + Math.round(_estTok / 1000) + 'k tokens, over the ~' + Math.round(_ceil / 1000) + 'k limit — it can\u2019t be sent. Switch Search mode to Auto or Specific, or ask about fewer documents at once.'
+    chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
+    appendMsg('ai', note, null, null, null, true)
+    if (typeof lclCrumb === 'function') lclCrumb('chat_blocked_oversize', { est: _estTok, ceil: _ceil, docs: (chat.docs && chat.docs.length) || 0 })
+    busy = false
+    if (typeof updateSendBtn === 'function') updateSendBtn()
+    return
+  }
 
   await runStream(chat, payload, ragSources)
 
@@ -208,10 +523,33 @@ async function send() {
 async function runStream(chat, payload, ragSources) {
   payload.stream = true   // enable server-side streaming proxy
 
-  const typingEl = appendTyping()
+  // "Finish in background" (switch-chat fix): a run belongs to the chat it started
+  // in. While the user is viewing a DIFFERENT chat, this run must NOT write to the
+  // live message view or the health pill (both target whichever chat is on screen) -
+  // it keeps accumulating into chat.messages and the view rebuilds from there when
+  // its chat is active again. Without this, a (stopped)/error bubble and a red pill
+  // leaked into the chat you switched TO mid-generation, which looked like a crash.
+  const runChatId = chat.id
+  const isActive = () => typeof chatId === 'undefined' || chatId === runChatId
+  const uiMsg = (...a) => isActive() ? appendMsg(...a) : null
+  const uiHealth = (...a) => { if (isActive()) setHealth(...a) }
+  // When this run's chat is on screen at the end, rebuild it from chat.messages so
+  // the final state shows even if the live bubble was never created (started/ended
+  // while the chat was in the background).
+  const uiSync = () => { if (isActive() && typeof renderMessages === 'function') renderMessages() }
+  // Background auto-retry (finish-in-background): re-run this same turn after a
+  // delay when the 429/5xx happened while its chat was NOT on screen, so no
+  // countdown bubble lands in the chat the user is looking at. Skips if the chat
+  // was deleted or another run is already active (never clobbers a live request).
+  const bgRetry = (ms) => setTimeout(() => {
+    if (!D.chats[runChatId] || busy || inflightCtl) return
+    runStream(chat, payload, ragSources)
+  }, Math.max(1000, ms))
+
+  const typingEl = isActive() ? appendTyping() : null
   busy = true
   updateSendBtn()
-  setHealth('warn', 'Thinking')
+  uiHealth('warn', 'Thinking')
 
   inflightCtl = new AbortController()
   let stopped = false
@@ -226,10 +564,11 @@ async function runStream(chat, payload, ragSources) {
   const swapBubble = () => {
     if (firstToken) return
     firstToken = true
-    try { typingEl.remove() } catch {}
+    uiHealth('warn', 'Replying — Stop to interrupt')   // consistent with 'Summarising i/N'
+    if (typingEl) try { typingEl.remove() } catch {}
     msgObj = { role:'assistant', content:'', sources: ragSources, ts: Date.now() }
     chat.messages.push(msgObj)
-    bubble = appendMsg('ai', '', null, ragSources)
+    bubble = uiMsg('ai', '', null, ragSources)
   }
 
   try {
@@ -241,18 +580,58 @@ async function runStream(chat, payload, ragSources) {
     // parsed the error body + classified it; we own the response UX here.
     if (!r.ok) {
       const errData = r.errData
-      try { typingEl.remove() } catch {}
+      if (typeof lclCrumb === 'function') lclCrumb('chat_error', { status: r.status, kind: r.kind, reset: r.resetMs ? 'parsed' : 'none' })
+      if (typingEl) try { typingEl.remove() } catch {}
 
-      // 429 with a usable reset time → countdown + auto-retry when it expires.
-      if (r.kind === 'ratelimit' && r.resetMs) {
-        handleRateLimitWait(chat, payload, ragSources, r.resetMs, errData?.error?.message || '')
+      // A 429 that reports a FULL remaining budget means the request itself is
+      // bigger than the token cap — waiting can't help, so don't auto-retry (this
+      // was the infinite "retry in 60s" loop on oversized whole-doc turns).
+      const _est429 = Math.ceil(JSON.stringify(payload).length / 4)
+      const _tooBig429 = _est429 > (r.limit429 || 200000) ||
+        (r.remaining429 != null && r.remaining429 >= (r.limit429 || 200000) * 0.95)   // near-FULL window still rejected: waiting can NEVER help (6 Jul retry loop)
+      if (r.kind === 'ratelimit' && _tooBig429) {
+        if ((chat.attachedFiles || []).length && typeof offerAttachEmbed === 'function') {
+          offerAttachEmbed(chat.attachedFiles.slice(), _est429, r.limit429 || 200000)
+          uiHealth('err', 'Request too large')
+          return
+        }
+        const note = 'Error 429: this request is larger than the model\u2019s token limit, so waiting won\u2019t help. Reduce the documents in context (switch Search mode to Auto or Specific, or ask about fewer files) and try again.'
+        chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
+        uiMsg('ai', note, null, ragSources, null, true)
+        uiHealth('err', 'Request too large')
+        return
+      }
+
+      // Any non-unwinnable 429 → standard countdown + auto-retry. Use the parsed
+      // reset when present, else a default 60s backoff (covers a 429 from embeddings
+      // using the shared budget, or a 429 whose reset time did not parse).
+      if (r.kind === 'ratelimit') {
+        rlWindowUntil = r.resetMs || (Date.now() + 60000)   // pre-send guard reads this to warn before firing into a drained window
+        if (isActive()) {
+          handleRateLimitWait(chat, payload, ragSources, r.resetMs || (Date.now() + 60000), errData?.error?.message || '')
+        } else {
+          bgRetry(r.resetMs ? (r.resetMs - Date.now()) : 60000)   // finish-in-background: silent wait+retry, no bubble in the on-screen chat
+        }
         return
       }
 
       // Any 5xx is transient — auto-retry with backoff (up to 3 times). 429 with a
       // reset is handled above; everything else falls through to a clean box.
       if (r.kind === 'transient' && retry5xxCount < 3) {
-        handle5xxRetry(chat, payload, ragSources, r.status, r.message)
+        if (isActive()) { handle5xxRetry(chat, payload, ragSources, r.status, r.message) }
+        else { retry5xxCount++; bgRetry(RETRY_STEPS_MS[Math.min(retry5xxCount, 2)] || 5000) }   // finish-in-background
+        return
+      }
+      // API-key BUDGET exhaustion (terminal 429): a flat "budget(s) exceeded" body
+      // with no reset/limit fields. It never clears on a timer, so NO countdown /
+      // auto-retry - tell the user their key's overall spend cap is reached (15 Jul:
+      // this was misread as a rate limit and retried every ~63s for 10+ hours).
+      if (r.status === 429 && r.kind === 'terminal') {
+        retry5xxCount = 0
+        const note = 'API key budget exhausted — your key’s overall spend limit has been reached. This is not the per-minute rate limit and will not clear on its own; check your key’s quota or switch to another key, then try again.'
+        chat.messages.push({ role: 'assistant', content: note, ts: Date.now(), errored: true })
+        uiMsg('ai', note, null, ragSources, null, true)
+        uiHealth('err', 'Budget exhausted')
         return
       }
       retry5xxCount = 0
@@ -261,8 +640,8 @@ async function runStream(chat, payload, ragSources) {
         ? ('Error ' + r.status + ': ' + labels[r.status] + ' — The model service is temporarily unreachable. Please try again in a moment.')
         : ('Error ' + r.status + ': ' + cleanErrMsg(r.message))
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', labels[r.status] ? 'Service unavailable' : ('Error ' + r.status))
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', labels[r.status] ? 'Service unavailable' : ('Error ' + r.status))
       return
     }
     const resp = r.resp
@@ -289,13 +668,18 @@ async function runStream(chat, payload, ragSources) {
 
       if (delta || choice.finish_reason) swapBubble()
 
-      if (delta && msgObj && bubble) {
+      if (delta && msgObj) {
         accumulated += delta
         msgObj.content = accumulated
-        bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
-        const bodyEl = bubble.querySelector('.msg-body')
-        if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
-        if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
+        // Live DOM update only while this chat is on screen and the bubble is still
+        // attached (switching away detaches it via renderAll). Content is preserved
+        // on msgObj regardless, so switching back re-renders the latest text.
+        if (bubble && bubble.isConnected) {
+          bubble.dataset.raw = accumulated     // keep Copy-able raw markdown in sync
+          const bodyEl = bubble.querySelector('.msg-body')
+          if (bodyEl) bodyEl.innerHTML = fmt(accumulated)
+          if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight
+        }
       }
       if (choice.finish_reason === 'content_filter') filtered = true
       if (choice.finish_reason === 'length') truncated = true
@@ -312,62 +696,72 @@ async function runStream(chat, payload, ragSources) {
           if (bodyEl) bodyEl.innerHTML = fmt(msgObj.content)
         }
       } else {
-        try { typingEl.remove() } catch {}
+        if (typingEl) try { typingEl.remove() } catch {}
         chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true })
-        appendMsg('ai', '(stopped)', null, ragSources)
+        uiMsg('ai', '(stopped)', null, ragSources)
       }
-      setHealth('ok', 'Stopped')
+      uiHealth('ok', 'Stopped')
+      return
+    }
+    if (streamErr && msgObj) {
+      // Stream died MID-reply. Without this, the partial was accepted as a normal
+      // complete answer (silent truncation - the [[streamdie]] / 21:47 stall case).
+      // Discard the partial and route through the standard transient auto-retry.
+      if (chat.messages[chat.messages.length - 1] === msgObj) chat.messages.pop()
+      if (bubble) try { bubble.remove() } catch (e) {}
+      if (typeof lclCrumb === 'function') lclCrumb('stream_died_midreply', { chars: accumulated.length, err: String(streamErr).slice(0, 60) })
+      if (retry5xxCount < 3) {
+        if (isActive()) { handle5xxRetry(chat, payload, ragSources, 0, String(streamErr)) }
+        else { retry5xxCount++; bgRetry(RETRY_STEPS_MS[Math.min(retry5xxCount, 2)] || 5000) }   // finish-in-background
+        return
+      }
+      retry5xxCount = 0
+      const note = 'Stream error: ' + cleanErrMsg(String(streamErr)) + ' — the reply was cut off mid-stream. Please try again.'
+      chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', 'Stream died')
       return
     }
     if (streamErr && !msgObj) {
-      try { typingEl.remove() } catch {}
+      if (typingEl) try { typingEl.remove() } catch {}
       const note = 'Stream error: '+streamErr
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', 'Unreachable')
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', 'Unreachable')
       return
     }
     if (!firstToken) {
-      try { typingEl.remove() } catch {}
+      if (typingEl) try { typingEl.remove() } catch {}
       chat.messages.push({ role:'assistant', content:'(no response)', ts:Date.now(), errored:true })
-      appendMsg('ai', '(no response)', null, ragSources)
-      setHealth('err', 'Empty')
+      uiMsg('ai', '(no response)', null, ragSources)
+      uiHealth('err', 'Empty')
       return
     }
 
     if (filtered) msgObj.filtered = true
     if (truncated) msgObj.truncated = true
-    if (filtered && bubble) {
-      const warn = document.createElement('div')
-      warn.className = 'filter-warn'
-      warn.textContent = 'Filtered by safety guardrail'
-      bubble.insertBefore(warn, bubble.querySelector('.msg-acts'))
-    }
-    if (truncated && bubble) {
-      const warn = document.createElement('div')
-      warn.style.cssText = 'font-size:11px;color:#f0a500;font-style:italic;margin-top:6px;padding-left:37px'
-      warn.textContent = '⚠️ Response was truncated (token limit reached). Consider increasing max tokens or splitting your question.'
-      bubble.insertBefore(warn, bubble.querySelector('.msg-acts'))
-    }
+    if (bubble) attachMsgFlags(bubble, msgObj)
+    if (bubble && typeof enhanceCodeBlocks === 'function') enhanceCodeBlocks(bubble)   // Copy/Download + preview once the reply is complete
     retry5xxCount = 0
-    setHealth('ok', connectedLabel())
+    rlWindowUntil = 0   // a clean success means the window has room again; clear the pre-send guard
+    uiHealth('ok', connectedLabel())
   } catch (err) {
-    try { typingEl.remove() } catch {}
+    if (typingEl) try { typingEl.remove() } catch {}
     if (err.name === 'AbortError') {
       if (msgObj) msgObj.stopped = true
       else {
         chat.messages.push({ role:'assistant', content:'(stopped)', ts:Date.now(), stopped:true })
-        appendMsg('ai', '(stopped)', null, ragSources)
+        uiMsg('ai', '(stopped)', null, ragSources)
       }
-      setHealth('ok', 'Stopped')
+      uiHealth('ok', 'Stopped')
     } else {
       const isSsl = /certificate|CERT|SSL|TLS|issuer/i.test(err.message)
       const note = isSsl
         ? 'SSL certificate error — Please try restarting your Zscaler connection, then retry.'
         : 'Network error: '+err.message
       chat.messages.push({ role:'assistant', content: note, ts:Date.now(), errored:true })
-      appendMsg('ai', note, null, ragSources, null, true)
-      setHealth('err', 'Unreachable')
+      uiMsg('ai', note, null, ragSources, null, true)
+      uiHealth('err', 'Unreachable')
     }
   } finally {
     chat.updatedAt = Date.now()
@@ -376,6 +770,16 @@ async function runStream(chat, payload, ragSources) {
     updateSendBtn()
     await persist()
     renderChatList()
+    // finish-in-background: if this chat is back on screen, rebuild it to show the
+    // final state. BUT skip it when a retry is pending - handleRateLimitWait /
+    // handle5xxRetry just appended a transient countdown bubble that is NOT in
+    // chat.messages, so re-rendering here would wipe the visible countdown.
+    if (!pendingRetry) uiSync()
+    // If the run finished while its chat was OFF screen, its uiHealth calls were
+    // guarded, so the global pill can be stuck on 'Replying'. Nothing is generating
+    // now, so clear it to the idle connected label (the on-screen path already set
+    // its own ok/err/stopped label when active).
+    if (!isActive() && typeof setHealth === 'function' && typeof connectedLabel === 'function' && typeof creds !== 'undefined' && creds) setHealth('ok', connectedLabel())
     // If this was the first successful exchange in the chat, fire off an
     // auto-title call in the background. Doesn't block; runs at most once
     // per chat (guarded by chat.titledByAI).
@@ -395,13 +799,33 @@ async function runStream(chat, payload, ragSources) {
 // merged from 52-chat-retry.js
 // ---------------------------------------------------------------------------
 
+// A usable title is one short line of prose. Anything carrying markup, code
+// fences, line breaks or one giant unbroken token is the model echoing the reply
+// back instead of titling it (seen when the reply is a generated HTML file).
+function isTitleLike(s) {
+  const t = String(s || '').trim()
+  if (!t || t.length > 60) return false
+  if (/[<>{}]|```/.test(t)) return false
+  if (/[\r\n]/.test(t)) return false
+  if (/^(<!doctype|<html|<\?xml)/i.test(t)) return false
+  if (!/\s/.test(t) && t.length > 30) return false
+  return true
+}
+
 async function autoTitleChat(chat) {
   if (!creds || !chat || chat.titledByAI) return
   if (!chat.messages || chat.messages.length < 2) return
   const extract = (m) => typeof m.content === 'string' ? m.content :
     (m.content?.find?.(b => b.type === 'text')?.text || '')
-  const seed = (extract(chat.messages[0]) + '\n\n' +
-                extract(chat.messages[1])).slice(0, 1500)
+  // Strip fenced code and stray tags before seeding: a generated HTML document
+  // would otherwise dominate the prompt and get echoed back as the "title".
+  const deCode = (s) => String(s || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/```[\s\S]*$/, ' ')
+    .replace(/<[^>]{0,200}>/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+  const seed = (deCode(extract(chat.messages[0])) + '\n\n' +
+                deCode(extract(chat.messages[1]))).slice(0, 1500)
   try {
     const resp = await httpPost('/api/chat', {
         apiKey: creds.apiKey, modelId: creds.model,
@@ -423,7 +847,8 @@ async function autoTitleChat(chat) {
     title = title.replace(/^["'`""'']/, '').replace(/["'`""'']$/, '')
                  .replace(/^Title:\s*/i, '').replace(/[.!?]+$/, '')
                  .slice(0, 60)
-    if (title && chat) {
+    // Reject a non-title (echoed markup/code) and keep the first-message title.
+    if (title && isTitleLike(title) && chat) {
       chat.title = title
       chat.titledByAI = true
       persist()
@@ -434,6 +859,7 @@ async function autoTitleChat(chat) {
 }
 
 function stopStreaming(silent = false) {
+  if (!silent && typeof lclCrumb === 'function') lclCrumb('stop', { inflight: !!inflightCtl, pendingRetry: !!pendingRetry, busy: busy })
   if (inflightCtl) {
     try { inflightCtl.abort() } catch {}
     if (!silent) toast('Stopped', 'info')
@@ -485,6 +911,7 @@ function scheduleRetry(opts) {
 // not get pushed into chat.messages, so retry can transparently replace it
 // with the real assistant response.
 function handleRateLimitWait(chat, payload, ragSources, resetMs, rawErrMsg) {
+  if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'chat', secs: Math.max(0, Math.round((resetMs - Date.now()) / 1000)) })
   const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
   const localTime = new Date(resetMs).toLocaleString(undefined, {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
@@ -536,10 +963,12 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   const delays = (typeof RETRY_STEPS_MS !== 'undefined') ? RETRY_STEPS_MS : [10000, 20000, 60000]
   const delayMs = delays[Math.min(retry5xxCount - 1, delays.length - 1)]
   const statusLabels = { 500: 'Server error', 502: 'Bad gateway', 503: 'Service unavailable', 504: 'Gateway timeout' }
-  const statusLabel = statusLabels[status] || 'Server error'
+  // status 0 = mid-stream death (no HTTP status) - label it honestly, not 'Error 0'.
+  const statusLabel = statusLabels[status] || (status ? 'Server error' : 'Stream interrupted')
+  const titleText = status ? ('Error ' + status + ': ' + statusLabel) : statusLabel
   const hint = status === 504
     ? 'The AI took too long to respond. If it keeps failing, try a shorter request.'
-    : 'The AI service is temporarily unavailable.'
+    : (status ? 'The AI service is temporarily unavailable.' : 'The reply was cut off mid-stream.')
   const pad = (n) => String(n).padStart(2, '0')
   const formatCountdown = (ms) => {
     if (ms <= 0) return '0'
@@ -551,7 +980,7 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
     ragSources,
     delayMs,
     intervalMs: 500,
-    render: (bodyEl, remain) => { bodyEl.innerHTML = statusBox('err', 'Error ' + status + ': ' + statusLabel,
+    render: (bodyEl, remain) => { bodyEl.innerHTML = statusBox('err', titleText,
       '<div style="margin-bottom:4px">' + hint + '</div>' +
       '<div>Retrying in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + formatCountdown(remain) + '</strong>' +
       '&nbsp;<span style="font-size:11px;opacity:.7">(attempt ' + retry5xxCount + ' of 3)</span></div>',
@@ -587,6 +1016,7 @@ function updateSendBtn() {
 async function regenerateLast() {
   if (busy) return
   const chat = curChat(); if (!chat||!chat.messages.length) return
+  if (typeof lclCrumb === 'function') lclCrumb('regenerate', { model: creds && creds.model })
   // Drop the trailing assistant message(s) until we hit a user message.
   while (chat.messages.length && chat.messages[chat.messages.length-1].role === 'assistant') {
     chat.messages.pop()
@@ -638,11 +1068,445 @@ const STATUS_ICON = {
 
 // tone: 'err' (red) | 'warn' (amber). title: header text. bodyHtml: inner body.
 // opts: { icon:'err'|'clock' (defaults by tone), cancel: a JS expression string that adds a Cancel button }
+// ===========================================================================
+// Whole-doc split + map-reduce (alpha). When a whole-doc turn is over the token
+// cap, offer to fan it out into one request per document, run sequentially so
+// each stays under the limit. A single document that is itself over-cap is
+// summarised in parts (map) and the part-summaries combined (reduce).
+// ===========================================================================
+function perRequestTokenCap() {
+  const ctx = (typeof getModelContext === 'function' && getModelContext(creds.model)) || 0
+  const rate = (typeof lastBudget !== 'undefined' && lastBudget && lastBudget.tokLimit) || 200000
+  const reserve = (creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192
+  const computed = Math.min(ctx || Infinity, rate) - reserve - 4000
+  // Conservative clamp: the char/4 token estimate undershoots the real count (HTML
+  // docs measured ~1.8-2.6x in the 2 Jul logs). Size parts so est x learned-inflation
+  // fits a FRESH window with 10% margin, so parts stop probe-429ing before splitting.
+  const inflCap = Math.floor((_rlPace.limit * 0.9) / _rlPace.infl)
+  return Math.max(20000, Math.min(computed, inflCap, 110000))
+}
+
+// Client-side view of the shared per-minute token window, used to pace multi-part
+// summaries PROACTIVELY. Streams return no rate-limit headers, so this is fed by
+// our own request estimates (x1.55 approximates the real token count) plus the
+// reliable body fields of any 429 we do hit. Avoids the fire-into-a-drained-window
+// pattern: every part->part transition used to burn a guaranteed 429.
+const _RL_WINDOW_MS = 62000
+// infl = real-tokens / est ratio. Starts at 1.8 (2 Jul log: HTML docs measured
+// ~1.8-2.6x, prose ~1.5x) and is re-learned from every 429 body: the gateway's
+// (limit - Remaining) is the REAL spend of this window's successful requests,
+// so used / ourRawEst gives the true ratio for the doc being processed.
+const _rlPace = { windowStart: 0, spentEst: 0, limit: 200000, infl: 1.8 }
+
+function offerDocSplit(chat, docs, instruction) {
+  const n = docs.length
+  const bubble = appendMsg('ai', '', null, null)
+  const bodyEl = bubble.querySelector('.msg-body')
+  const acts = bubble.querySelector('.msg-acts'); if (acts) acts.style.display = 'none'
+  bodyEl.innerHTML = statusBox('warn', 'Too many documents for one request',
+    'All ' + n + ' documents at once is over the token limit, so it cannot be sent in one go. I can split it into <b>' + n + ' separate requests</b> (one per document) and run them one after another. This may take a few minutes.', {})
+  bodyEl.appendChild(mkEl('div', { style: 'margin-top:10px;display:flex;gap:8px' }, [
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} ; if (typeof lclCrumb === 'function') lclCrumb('split_accepted', { docs: n }); runSplitSummaries(chat, docs, instruction) } }, 'Split into ' + n + ' requests'),
+    mkEl('button', { class: 'btn-s', style: 'font-size:11px;padding:5px 12px', onclick: function () { try { bubble.remove() } catch (e) {} } }, 'Cancel')
+  ]))
+}
+
+async function streamChatOnce(payload, onToken, signal) {
+  payload.stream = true
+  const r = await postClassified('/api/chat', { apiKey: creds.apiKey, modelId: creds.model, payload }, signal ? { signal: signal } : {})
+  if (!r.ok) return { ok: false, status: r.status, kind: r.kind, limit429: r.limit429, remaining429: r.remaining429, resetMs: r.resetMs, message: r.message }
+  let acc = '', usage = null, streamErr = null, finish = null
+  await streamSse(r.resp, function (data) {
+    if (data === '[DONE]') return
+    let j; try { j = JSON.parse(data) } catch (e) { return }
+    // Proxy injects {"error": "..."} when the upstream dies MID-stream. Without
+    // this check a truncated summary was silently accepted as complete.
+    if (j && j.error && !j.choices) { streamErr = String(j.error.message || j.error); return }
+    if (j && j.usage) usage = j.usage   // terminal chunk: REAL token count for this request
+    const ch0 = j.choices && j.choices[0]
+    if (ch0 && ch0.finish_reason) finish = ch0.finish_reason
+    const dc = ch0 && ch0.delta && ch0.delta.content
+    if (dc) { acc += dc; if (onToken) onToken(acc) }
+  }, { aborted: function () { return signal && signal.aborted } })
+  if (streamErr && !(signal && signal.aborted)) return { ok: false, status: 0, kind: 'transient', message: streamErr }
+  return { ok: true, text: acc, usage: usage, finish: finish }
+}
+
+// Summarise one blob (a whole doc, or one part during map-reduce), streaming into
+// bodyEl. Waits out a partial-budget 429; returns text, or null on abort/terminal.
+// Standard rate-limit countdown used during split summaries: renders the same
+// 'Error 429: Rate limit reached' box as the main chat path and resolves after
+// waitMs (or immediately on abort).
+// Sleep that resolves early when the signal aborts (so Stop is responsive during
+// the pacing gap between docs).
+function abortableSleep(ms, signal) {
+  return new Promise(function (resolve) {
+    if (signal && signal.aborted) return resolve()
+    const t = setTimeout(function () { clearInterval(iv); resolve() }, ms)
+    const iv = setInterval(function () { if (signal && signal.aborted) { clearTimeout(t); clearInterval(iv); resolve() } }, 150)
+  })
+}
+function countdownWait(bodyEl, waitMs, resetMs, signal, uiLabel) {
+  return new Promise(function (resolve) {
+    const fireAt = Date.now() + waitMs
+    const pad = function (n) { return String(n).padStart(2, '0') }
+    const fmtCd = function (ms) { if (ms <= 0) return '0:00'; const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60; return (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(ss) }
+    let iv = null, to = null
+    function cleanup() { if (iv) clearInterval(iv); if (to) clearTimeout(to) }
+    function tick() {
+      if (signal && signal.aborted) { cleanup(); resolve(); return }
+      const remain = fireAt - Date.now()
+      if (bodyEl) {
+        const resetLine = resetMs ? '<div>Resets at: <strong style="color:var(--tx);font-family:var(--mono)">' + new Date(resetMs).toLocaleTimeString() + '</strong></div>' : ''
+        const title = uiLabel ? 'Waiting for the rate-limit window' : 'Error 429: Rate limit reached'
+        const lead  = uiLabel ? '<div>' + uiLabel + ' — the shared per-minute token window is used up. This is normal for large documents; the run resumes automatically.</div>' : ''
+        bodyEl.innerHTML = statusBox('warn', title, lead + resetLine + '<div>' + (uiLabel ? 'Resuming' : 'Retrying') + ' in: <strong style="color:var(--ac);font-family:var(--mono);font-size:13px">' + fmtCd(remain) + '</strong></div>', { icon: 'clock' })
+      }
+      if (remain <= 0) { cleanup(); resolve() }
+    }
+    iv = setInterval(tick, 1000)
+    to = setTimeout(function () { cleanup(); resolve() }, waitMs)
+    tick()
+  })
+}
+
+// A split run is only a SUMMARY run when the user asked for one (or typed
+// nothing). Any other ask (find/search/extract/compare...) must ride through
+// the map-reduce, or big docs come back as generic summaries (7 Jul: 'search
+// the presenter's name' returned summaries because part prompts were fixed).
+function isSummariseAsk(instruction) {
+  const s = String(instruction || '').trim()
+  if (!s) return true
+  return /\b(summar|overview|tl;?dr|key\s+points|main\s+points)/i.test(s)
+}
+
+async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal) {
+  const payload = { messages: [
+    { role: 'system', content: (isSummariseAsk(instruction) ? 'You are summarising content for the user. Be faithful and concise.' : 'You are processing a document to answer the user\u2019s request. Be faithful and concise; use only the provided content.') + (sysPrompt ? '\n\n' + sysPrompt : '') },
+    { role: 'user', content: (instruction || 'Summarise this document.') + '\n\n--- ' + label + ' ---\n' + text }
+  ] }
+  const reqTok = Math.ceil(JSON.stringify(payload).length / 4)
+  const uiLabel = (isSummariseAsk(instruction) ? 'Summarising ' : 'Processing ') + (typeof esc === 'function' ? esc(label) : label)
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // Proactive pacing: if this request cannot fit in what is left of the current
+    // window, wait for the reset BEFORE firing instead of collecting a guaranteed 429.
+    const _winAge = Date.now() - _rlPace.windowStart
+    if (_rlPace.spentEst > 0 && _winAge < _RL_WINDOW_MS && (_rlPace.spentEst + reqTok) * _rlPace.infl > _rlPace.limit * 0.95) {
+      const pauseMs = _RL_WINDOW_MS - _winAge
+      if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'pace', secs: Math.round(pauseMs / 1000) })
+      await countdownWait(bodyEl, pauseMs, _rlPace.windowStart + _RL_WINDOW_MS, signal, uiLabel)
+      if (signal && signal.aborted) return { text: null }
+      _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0
+      if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — resuming…_')
+    }
+    if (Date.now() - _rlPace.windowStart >= _RL_WINDOW_MS) { _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0 }
+    _rlPace.spentEst += reqTok
+    const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(acc) }, signal)
+    if (r.ok) {
+      // The stream's terminal usage chunk gives the TRUE est->real ratio for this
+      // request. EMA it into infl (both directions), so an HTML-doc ratchet-up
+      // (~2.6x) relaxes again on prose docs (~1.5x) without needing a 429 to teach.
+      const u = r.usage && (r.usage.total_tokens || r.usage.prompt_tokens)
+      if (u && reqTok > 500) {
+        const ratio = u / reqTok
+        if (Number.isFinite(ratio) && ratio > 0.5) _rlPace.infl = Math.max(1.2, Math.min(3.0, 0.5 * _rlPace.infl + 0.5 * ratio))
+      }
+      return { text: r.text }
+    }
+    if (signal && signal.aborted) return { text: null }
+    if (r.kind === 'ratelimit') {
+      if (r.limit429) _rlPace.limit = r.limit429
+      // The gateway did NOT count this rejected request; drop it from our model and
+      // re-learn the est->real inflation from the body's real-time figures: what the
+      // window's earlier successful requests consumed vs what we estimated for them.
+      _rlPace.spentEst -= reqTok
+      if (r.remaining429 != null && r.limit429 && _rlPace.spentEst > 3000) {
+        const used = r.limit429 - r.remaining429
+        if (used > 0) _rlPace.infl = Math.max(1.4, Math.min(3.0, used / _rlPace.spentEst))
+      }
+      // Judge by the gateway's REAL-TIME body Remaining (not the stale client meter,
+      // which streams never refresh). "Too big -> split" ONLY when a NEAR-FULL window
+      // still rejected the request (no wait can ever fit it). A partially-drained
+      // window rejecting it (2 Jul log: est 53k vs Remaining 59k, real ~95k) is NOT
+      // too big - it fits a fresh window; wait for the reset + retry instead.
+      if (r.remaining429 != null && r.remaining429 >= (r.limit429 || _rlPace.limit) * 0.95) return { text: null, tooBig: true }
+      const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
+      if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'summary', secs: Math.round(waitMs / 1000) })
+      await countdownWait(bodyEl, waitMs, r.resetMs, signal, uiLabel)
+      if (signal && signal.aborted) return { text: null }
+      _rlPace.windowStart = Date.now(); _rlPace.spentEst = 0
+      if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — resuming…_')
+      continue
+    }
+    // Transient upstream failure (5xx / inactivity-timeout 502): retry after a short
+    // pause instead of failing the whole doc (2 Jul log: one 60s upstream stall on
+    // part 2/5 killed the remaining parts). The attempt cap still bounds this.
+    if (r.kind === 'transient') {
+      if (typeof lclCrumb === 'function') lclCrumb('summary_transient_retry', { attempt: attempt + 1, status: r.status })
+      if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — upstream hiccup (' + (r.status || '5xx') + '), retrying…_')
+      await abortableSleep(4000, signal)
+      if (signal && signal.aborted) return { text: null }
+      continue
+    }
+    return { text: null }
+  }
+  return { text: null }
+}
+
+// One source of truth for the map-reduce part counter, so the in-body label and
+// the top progress pill always show the same numbers (never drift to "1/1").
+function splitPartLabel(p, n) { return 'part ' + p + '/' + n }
+
+async function summariseDoc(sysPrompt, doc, instruction, bodyEl, signal, partCb) {
+  return await summariseText(sysPrompt, doc.name, doc.content, instruction, bodyEl, signal, 0, partCb)
+}
+
+// Summarise one blob, splitting into parts (map-reduce) when it is over the cap OR
+// when the gateway rejects it as too big even with a free budget. Recurses so a part
+// that is still too big splits again. Depth-guarded to avoid runaway.
+async function summariseText(sysPrompt, label, text, instruction, bodyEl, signal, depth, partCb) {
+  if (signal && signal.aborted) return null
+  const cap = perRequestTokenCap()
+  const est = estTokens(text)
+  if (est <= cap) {
+    const r = await summariseInto(sysPrompt, label, text, instruction, bodyEl, signal)
+    if (r.text != null) return r.text
+    if (!r.tooBig) return null
+  }
+  if (depth >= 4 || text.length < 4000) return null
+  const nParts = Math.max(2, Math.ceil(est / Math.max(20000, cap)))
+  const partLen = Math.ceil(text.length / nParts)
+  const parts = []
+  for (let i = 0; i < text.length; i += partLen) parts.push(text.slice(i, i + partLen))
+  if (typeof lclCrumb === 'function') lclCrumb('map_reduce', { label: label, parts: parts.length, depth: depth })
+  const partSummaries = []
+  const summaryAsk = isSummariseAsk(instruction)
+  // Map: mine each part for the USER\u2019S request; irrelevant parts say so in one
+  // line instead of padding the reduce with generic summary filler.
+  const partInstr = summaryAsk
+    ? 'Summarise this part of a document.'
+    : 'From this part of a document, extract everything relevant to the request below. Quote names, figures, and wording exactly. If nothing is relevant, reply exactly: Nothing relevant in this part.\n\nRequest: ' + instruction
+  // Finished part-summaries stay VISIBLE (doneEl) while the next part streams into
+  // its own area (liveEl) - previously each new part's placeholder wiped the summary
+  // the user was reading. The final combine replaces everything with the full summary.
+  let doneEl = null, liveEl = null
+  if (bodyEl) {
+    bodyEl.innerHTML = ''
+    doneEl = document.createElement('div')
+    liveEl = document.createElement('div')
+    bodyEl.appendChild(doneEl); bodyEl.appendChild(liveEl)
+  }
+  for (let p = 0; p < parts.length; p++) {
+    if (signal && signal.aborted) return null
+    if (liveEl) liveEl.innerHTML = fmt('_' + label + ' \u2014 ' + (summaryAsk ? 'summarising' : 'processing') + ' part ' + (p + 1) + ' of ' + parts.length + '…_')
+    const pl = splitPartLabel(p + 1, parts.length)
+    if (depth === 0 && typeof partCb === 'function') partCb(p + 1, parts.length)
+    const s = await summariseText(sysPrompt, label + ' (' + pl + ')', parts[p], partInstr, liveEl, signal, depth + 1)
+    if (s == null) return null
+    partSummaries.push('Part ' + (p + 1) + ': ' + s)
+    if (doneEl) doneEl.innerHTML = fmt(partSummaries.join('\n\n'))
+    if (liveEl) liveEl.innerHTML = ''
+  }
+  if (liveEl) liveEl.innerHTML = fmt('_Combining ' + parts.length + (summaryAsk ? ' part-summaries…_' : ' part-extracts…_'))
+  // Reduce: answer the ORIGINAL request from the extracts (or combine summaries).
+  const combineInstr = summaryAsk
+    ? 'Combine these part-summaries into one cohesive summary of the whole document.'
+    : 'Below are extracts from consecutive parts of one document. Using ONLY these extracts, answer the original request. Ignore parts that say nothing is relevant.\n\nOriginal request: ' + instruction
+  return await summariseText(sysPrompt, label + ' (combined)', partSummaries.join('\n\n'), combineInstr, liveEl || bodyEl, signal, depth + 1)
+}
+
+// Embedding-vs-summary contention gate: embeddings are the RAG prerequisite and
+// share the same per-minute budget, so a split-summary run waits for any active
+// embeds to finish instead of starving them (seen as embed_fail 429 in the logs).
+function embedsActive() {
+  for (const ch of Object.values(D.chats || {})) {
+    if (!Array.isArray(ch.docs)) continue
+    for (const d of ch.docs) if (d && (d.status === 'embedding' || d.status === 'pending')) return true
+  }
+  return false
+}
+async function waitForEmbedsIdle(bodyEl, header, signal) {
+  if (!embedsActive()) return
+  if (typeof lclCrumb === 'function') lclCrumb('summary_wait_embed', {})
+  while (embedsActive() && !(signal && signal.aborted)) {
+    if (bodyEl) bodyEl.innerHTML = fmt(header + '_Waiting for document embedding to finish before starting…_')
+    await abortableSleep(1000, signal)
+  }
+}
+
+async function runSplitSummaries(chat, docs, instruction) {
+  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
+  inflightCtl = new AbortController()
+  const signal = inflightCtl.signal
+  // Finish-in-background: this run is scoped to its origin chat. Only touch the live
+  // view / health pill while that chat is on screen; per-doc results are pushed to
+  // chat.messages regardless, so switching back shows completed docs.
+  const runChatId = chat.id
+  const isActive = () => typeof chatId === 'undefined' || chatId === runChatId
+  const rs = await resolveSystemPrompt(chat)
+  const sys = rs && rs.sys
+  if (typeof lclCrumb === 'function') lclCrumb('split_run', { docs: docs.length })
+  const summaryAsk = isSummariseAsk(instruction)
+  const kindWord = summaryAsk ? 'summary' : 'response'
+  try {
+    for (let i = 0; i < docs.length; i++) {
+      if (signal.aborted) break
+      if (chat && chat.id && !D.chats[chat.id]) break   // chat deleted mid-run - don't append into another chat
+      const doc = docs[i]
+      // Single pill setter for this run. With no part yet it shows the doc count;
+      // once a doc splits, partCb feeds it the SAME numbers the body shows, so the
+      // pill reads e.g. "Processing part 3/5" instead of a frozen "1/1".
+      const setProc = (pp, pn) => {
+        if (!isActive()) return
+        const verb = summaryAsk ? 'Summarising ' : 'Processing '
+        const count = pn
+          ? (docs.length > 1 ? (i + 1) + '/' + docs.length + ' · ' : '') + splitPartLabel(pp, pn)
+          : (i + 1) + '/' + docs.length
+        setHealth('warn', verb + count)
+      }
+      setProc()
+      const header = '**' + doc.name + '** - ' + kindWord + ' (' + (i + 1) + ' of ' + docs.length + ')\n\n'
+      const bubble = isActive() ? appendMsg('ai', '', null, [doc.name]) : null
+      const bodyEl = bubble ? bubble.querySelector('.msg-body') : null
+      if (bodyEl) bodyEl.innerHTML = fmt(header + (summaryAsk ? '_Summarising…_' : '_Working…_'))
+      await waitForEmbedsIdle(bodyEl, header, signal)
+      let summary = null
+      try { summary = await summariseDoc(sys, doc, instruction, bodyEl, signal, setProc) } catch (e) { summary = null }
+      if (signal.aborted) {
+        if (bodyEl) bodyEl.innerHTML = fmt(header + '_Stopped._')
+        if (typeof lclCrumb === 'function') lclCrumb('split_stopped', { at: i + 1, total: docs.length })
+        break
+      }
+      const finalText = header + (summary != null ? summary : '_Could not ' + (summaryAsk ? 'summarise' : 'process') + ' this document (over the limit or an error). Try Specific search for it._')
+      if (bodyEl) bodyEl.innerHTML = fmt(finalText)
+      if (bubble) bubble.dataset.raw = finalText
+      chat.messages.push({ role: 'assistant', content: finalText, ts: Date.now(), sources: [doc.name] })
+      try { await persist() } catch (e) {}
+      if (!signal.aborted && i < docs.length - 1) await abortableSleep(1200, signal)
+    }
+    if (isActive()) setHealth('ok', connectedLabel())
+    else if (typeof renderChatList === 'function') renderChatList()
+  } catch (e) {
+    if (isActive()) setHealth('err', 'Summary failed')
+  } finally {
+    busy = false; if (typeof updateSendBtn === 'function') updateSendBtn()
+    inflightCtl = null
+    if (isActive() && typeof renderMessages === 'function') renderMessages()
+    else if (typeof setHealth === 'function' && typeof connectedLabel === 'function' && typeof creds !== 'undefined' && creds) setHealth('ok', connectedLabel())   // background split run ended: clear stale 'Summarising' pill
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Truncated / filtered reply notes (persisted): rendered from msg flags by BOTH
+// the live stream path and renderMessages, so they survive reloads. The
+// truncation note carries a Continue button that extends the SAME message.
+// ---------------------------------------------------------------------------
+function attachMsgFlags(bubble, msg) {
+  if (!bubble || !msg || typeof document === 'undefined') return
+  const acts = bubble.querySelector('.msg-acts')
+  if (msg.filtered) {
+    const w = document.createElement('div')
+    w.className = 'filter-warn'
+    w.textContent = 'Filtered by safety guardrail'
+    bubble.insertBefore(w, acts)
+  }
+  if (msg.truncated) {
+    const n = msg.continues || 0
+    const kTok = ((creds && creds.maxTokens) || CFG.DEFAULT_MAX_TOKENS || 8192).toLocaleString()
+    const w = document.createElement('div')
+    w.className = 'trunc-note'
+    w.style.cssText = 'margin-top:4px;margin-bottom:14px'   // breathing room above the Copy/Regenerate row
+    w.innerHTML = statusBox('warn',
+      n ? ('Still over the limit after ' + n + ' continuation' + (n > 1 ? 's' : '')) : 'Reply hit the token limit',
+      '<div style="margin-bottom:8px">' + (n
+        ? 'Each continue adds up to ~' + kTok + ' more tokens.'
+        : 'Showing the first ~' + kTok + ' tokens (the max per reply — adjustable in Settings). Continue picks up exactly where it stopped, in this same message.') + '</div>' +
+      '<button class="btn-s" style="font-size:11px;padding:4px 12px" onclick="continueTruncated(event)">Continue reply</button>',
+      { icon: 'clock' })
+    bubble.insertBefore(w, acts)
+  }
+}
+
+// Continue a token-limit-truncated reply IN PLACE: buildPayload on the original
+// question keeps the same doc/system context, the history already includes the
+// partial reply, and a continue instruction is appended to the PAYLOAD only
+// (it never appears in the chat).
+async function continueTruncated(event) {
+  if (event && event.stopPropagation) event.stopPropagation()
+  if (busy) { toast('Still replying — wait for it to finish or press Stop, then continue', 'info'); return }
+  const chat = curChat(); if (!chat || !creds) return
+  let idx = -1
+  for (let i = chat.messages.length - 1; i >= 0; i--) {
+    const m = chat.messages[i]
+    if (m.role === 'assistant' && m.truncated) { idx = i; break }
+  }
+  if (idx < 0) return
+  const msg = chat.messages[idx]
+  if (typeof lclCrumb === 'function') lclCrumb('continue_truncated', { n: (msg.continues || 0) + 1 })
+  let userText = ''
+  for (let i = idx - 1; i >= 0; i--) {
+    const m = chat.messages[i]
+    if (m.role === 'user') { userText = typeof m.content === 'string' ? m.content : (((m.content || []).find && (m.content.find(b => b.type === 'text') || {}).text) || ''); break }
+  }
+  let bubble = event && event.target ? event.target.parentElement : null
+  while (bubble && !(bubble.querySelector && bubble.querySelector('.msg-body'))) bubble = bubble.parentElement
+  const bodyEl = bubble ? bubble.querySelector('.msg-body') : null
+  const noteEl = bubble ? bubble.querySelector('.trunc-note') : null
+  busy = true; if (typeof updateSendBtn === 'function') updateSendBtn()
+  inflightCtl = new AbortController()
+  const signal = inflightCtl.signal
+  setHealth('warn', 'Continuing reply')
+  try {
+    const built = await buildPayload(chat, userText)
+    if (built.skillErr) { toast(built.skillErr, 'err'); return }
+    const payload = built.payload
+    payload.messages.push({ role: 'user', content: 'Continue your previous reply EXACTLY from where it was cut off. Do not repeat any earlier content and do not add a preamble — output only the continuation text.' })
+    const base = typeof msg.content === 'string' ? msg.content : ''
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (noteEl) noteEl.innerHTML = statusBox('warn', 'Continuing the reply', '<div>Picking up from where it stopped…</div>', { icon: 'clock' })
+      const r = await streamChatOnce(payload, function (acc) { if (bodyEl) bodyEl.innerHTML = fmt(base + acc) }, signal)
+      if (signal.aborted) return
+      if (r.ok) {
+        msg.content = base + (r.text || '')
+        msg.continues = (msg.continues || 0) + 1
+        msg.truncated = (r.finish === 'length')
+        chat.updatedAt = Date.now()
+        try { await persist() } catch (e) {}
+        setHealth('ok', connectedLabel())
+        return
+      }
+      if (r.kind === 'ratelimit') {
+        if (r.remaining429 != null && r.limit429 && r.remaining429 >= r.limit429 * 0.95) {
+          toast('The continuation request itself is over the token limit — ask about fewer documents at once.', 'err'); return
+        }
+        const waitMs = Math.min(180000, r.resetMs ? Math.max(1000, r.resetMs - Date.now() + 1500) : 60000)
+        if (typeof lclCrumb === 'function') lclCrumb('rl_wait', { where: 'continue', secs: Math.round(waitMs / 1000) })
+        await countdownWait(noteEl, waitMs, r.resetMs, signal, 'Continuing the reply')
+        if (signal.aborted) return
+        continue
+      }
+      if (r.kind === 'transient') {
+        if (typeof lclCrumb === 'function') lclCrumb('summary_transient_retry', { attempt: attempt + 1, status: r.status, where: 'continue' })
+        await abortableSleep(4000, signal)
+        if (signal.aborted) return
+        continue
+      }
+      toast('Continue failed: ' + cleanErrMsg(r.message), 'err')
+      return
+    }
+    toast('Continue failed after retries — try again in a minute.', 'err')
+  } finally {
+    busy = false; if (typeof updateSendBtn === 'function') updateSendBtn()
+    inflightCtl = null
+    renderMessages()
+  }
+}
+
 function statusBox(tone, title, bodyHtml, opts) {
   opts = opts || {}
   const c = tone === 'warn'
     ? { bg: 'var(--pinbg)',            border: 'rgba(240,165,0,.35)', fg: 'var(--pin)' }
-    : { bg: 'rgba(220,60,60,.08)',     border: 'rgba(220,60,60,.3)',  fg: '#e05050'   }
+    : { bg: 'var(--redbg)',            border: 'rgba(231,76,60,.35)', fg: 'var(--red)' }
   const icon = STATUS_ICON[opts.icon || (tone === 'warn' ? 'clock' : 'err')] || ''
   const cancel = opts.cancel
     ? '<div style="margin-top:10px"><button class="btn-s" style="font-size:11px;padding:4px 12px" onclick="' + opts.cancel + '">Cancel retry</button></div>'
