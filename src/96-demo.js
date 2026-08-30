@@ -256,11 +256,11 @@ function maybeDemo() {
 
   // Demo: show the "update available" state so the update UI is visible.
   // Demo pretends you're one version behind so the upgrade panel shows a real
-  // pending update (installed v0.67d -> latest v0.67e).
+  // pending update (installed v0.67e -> latest v0.67f).
   if (typeof relockDemoAlpha === 'function') relockDemoAlpha()  // Reset demo re-locks the easter-egg channel
-  const _vb = document.getElementById('ver-badge'); if (_vb) _vb.textContent = 'v0.67d'
-  lclUpdate = { checked:true, channel:'stable', current:'0.67d', latest:'0.67e', tag:'v0.67e',
-                newer:true, notes:'### v0.67e\n\n- Card-based settings\n- Token presets + editable RAG sliders\n- Condensed updates panel\n- Comet easter egg', html_url:'',
+  const _vb = document.getElementById('ver-badge'); if (_vb) _vb.textContent = 'v0.67e'
+  lclUpdate = { checked:true, channel:'stable', current:'0.67e', latest:'0.67f', tag:'v0.67f',
+                newer:true, notes:'### v0.67f\n\n- Card-based settings\n- Token presets + editable RAG sliders\n- Condensed updates panel\n- Comet easter egg', html_url:'',
                 error:null, ref:'alpha', inSync:true, changed:[], hash:'' }
   if (typeof renderUpdateBadge === 'function') renderUpdateBadge()
   if (typeof renderUpdateSettings === 'function') renderUpdateSettings()
