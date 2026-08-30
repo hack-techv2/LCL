@@ -1149,6 +1149,40 @@ const CASES = [
       allowlisted && noPersist && masked && scrubbed && bounded && authReason && routed && noStack && stable && controlStacks,
       'allow=' + allowlisted + ' noPersist=' + noPersist + ' masked=' + masked + ' scrub=' + scrubbed + ' bounded=' + bounded + ' auth=' + authReason + ' route=' + routed + ' src=' + noStack + ' depths=' + d1 + '/' + d2 + '/' + d3 + ' controlStacks=' + controlStacks)
   } },
+  { id: 'C74 log sinks split: verbose goes to the file only, console stays quiet (Windows stdout stall)', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const blk = S.slice(S.indexOf('const LOG_LEVELS'), S.indexOf('function dlog('))
+    const run = (env) => {
+      const con = [], file = []
+      const ctx = { process: { env }, parseInt, Number, Object, String,
+        console: { log: (...a) => con.push(['log', a.join(' ')]), warn: (...a) => con.push(['warn', a.join(' ')]), error: (...a) => con.push(['error', a.join(' ')]) },
+        dbgWrite: (lvl, args) => file.push([lvl, args.join(' ')]),
+        _sanitizeParts: a => a, _logStamp: () => 'TS' }
+      vm.createContext(ctx); vm.runInContext(blk, ctx)
+      const log = vm.runInContext('log', ctx)
+      log.debug('verbose detail'); log.info('an info line'); log.warn('a warning'); log.error('an error')
+      return { con, file, consoleLevel: vm.runInContext('CONSOLE_LEVEL', ctx), fileLevel: vm.runInContext('LOG_LEVEL', ctx) }
+    }
+    // Default: file keeps everything, console drops debug only.
+    const d = run({})
+    const fileHasAll = d.file.length + d.con.length >= 4 &&
+      d.file.some(x => x[1] === 'verbose detail')            // debug reached the file
+    const consoleQuiet = !d.con.some(x => x[1] === 'verbose detail')  // but NOT the terminal
+    const consoleKeepsRest = d.con.some(x => x[1] === 'an info line') &&
+      d.con.some(x => x[1] === 'a warning') && d.con.some(x => x[1] === 'an error')
+    const defaults = d.fileLevel === 3 && d.consoleLevel === 2
+    // Opt back in to a verbose terminal.
+    const v = run({ LCL_CONSOLE_LEVEL: 'debug' })
+    const optIn = v.con.some(x => x[1] === 'verbose detail')
+    // Lowering the FILE level drops the record entirely (no sink).
+    const q = run({ LCL_LOG_LEVEL: 'warn' })
+    const fileGate = !q.file.some(x => x[1] === 'verbose detail') && !q.con.some(x => x[1] === 'verbose detail') &&
+                     q.con.some(x => x[1] === 'a warning')
+    check('C74 verbose -> file only, console quiet by default, opt-in restores it',
+      fileHasAll && consoleQuiet && consoleKeepsRest && defaults && optIn && fileGate,
+      'fileHasDebug=' + fileHasAll + ' consoleQuiet=' + consoleQuiet + ' keepsRest=' + consoleKeepsRest +
+      ' levels=' + d.fileLevel + '/' + d.consoleLevel + ' optIn=' + optIn + ' fileGate=' + fileGate)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
