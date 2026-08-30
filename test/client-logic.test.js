@@ -1183,6 +1183,49 @@ const CASES = [
       'fileHasDebug=' + fileHasAll + ' consoleQuiet=' + consoleQuiet + ' keepsRest=' + consoleKeepsRest +
       ' levels=' + d.fileLevel + '/' + d.consoleLevel + ' optIn=' + optIn + ' fileGate=' + fileGate)
   } },
+  { id: 'C75 channel switch survives a stale client save; revert with matching files skips the download', fn: async () => {
+    const S = fs.readFileSync(path.join(__dirname, '..', 'server.txt'), 'utf8')
+    const crypto = require('crypto')
+    // 1. updateChannel must be SERVER-owned: a stale channel in the client's /api/data
+    //    body (sent by flushBeforeRestart after a switch) must NOT overwrite it.
+    const hs = S.slice(S.indexOf('function handleSaveData'), S.indexOf('function handleSaveData') + 2000)
+    const serverOwned = hs.includes('if (appData.updateChannel !== undefined) body.updateChannel = appData.updateChannel') &&
+                        hs.includes('else delete body.updateChannel') &&
+                        !/body\.updateChannel === undefined && appData/.test(hs)   // old weak backfill gone
+    // Simulate the exact sequence: server flips to stable, client then POSTs its
+    // boot-time copy that still says alpha.
+    const applyGuard = (appData, body) => {
+      if (appData.updateChannel !== undefined) body.updateChannel = appData.updateChannel
+      else delete body.updateChannel
+      return body
+    }
+    const appData = { updateChannel: 'stable' }
+    const staleBody = { chats: {}, updateChannel: 'alpha' }
+    const survives = applyGuard(appData, staleBody).updateChannel === 'stable'
+    // and the reverse direction (enabling alpha) is protected too
+    const survives2 = applyGuard({ updateChannel: 'alpha' }, { updateChannel: 'stable' }).updateChannel === 'alpha'
+    // 2. restoreStable must short-circuit when local files already match stable.
+    const rs = S.slice(S.indexOf('async function restoreStable'), S.indexOf('// .stable backup helpers'))
+    const shortCircuit = rs.includes('alreadyStable: true') && /const already = UPDATE_FILES\.every/.test(rs) &&
+                         rs.indexOf('const already') < rs.indexOf('downloadVerified')   // checked BEFORE downloading
+    const noRestartWhenNoop = S.includes('restartNeeded: !r.alreadyStable')
+    // Functional: with matching hashes the loop must do zero downloads.
+    const sha = b => crypto.createHash('sha256').update(b).digest('hex')
+    const files = { 'index.html': Buffer.from('IDX'), 'server.txt': Buffer.from('SRV') }
+    const exp = { 'index.html': sha(files['index.html']), 'server.txt': sha(files['server.txt']) }
+    let downloads = 0
+    const already = ['index.html', 'server.txt'].every(f => { const want = exp[f]; if (!want) return false
+      return sha(files[f]) === want })
+    if (!already) downloads++
+    const zeroDownloads = already === true && downloads === 0
+    // and it must NOT short-circuit when a file differs
+    const files2 = Object.assign({}, files, { 'server.txt': Buffer.from('DIFFERENT') })
+    const already2 = ['index.html', 'server.txt'].every(f => sha(files2[f]) === exp[f])
+    check('C75 server-owned channel + no-op revert skips download',
+      serverOwned && survives && survives2 && shortCircuit && noRestartWhenNoop && zeroDownloads && already2 === false,
+      'owned=' + serverOwned + ' stale->stable=' + survives + ' stale->alpha=' + survives2 +
+      ' shortCircuit=' + shortCircuit + ' noRestart=' + noRestartWhenNoop + ' zeroDl=' + zeroDownloads + ' detectsDiff=' + (already2 === false))
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
