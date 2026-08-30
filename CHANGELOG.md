@@ -8,6 +8,16 @@ v0.67e is the current stable release (28 Aug 2026). Everything under the
 Alpha is one version ahead of stable so testers can be offered builds without
 touching stable installs.
 
+### 30 Aug 2026 - Channel switching actually sticks (revert to stable was silently undone)
+
+Switching off the Experimental channel appeared to do nothing — you stayed on alpha. The switch itself worked; it was immediately overwritten.
+
+`updateChannel` lives in `lcl_data.json`, and the client holds a copy of that whole blob loaded once at page boot. After a channel switch the client runs `flushBeforeRestart()` → `persist()` → `POST /api/data`, sending its **boot-time** copy — which still carried the old channel. `handleSaveData` only backfilled `updateChannel` when the client *omitted* it, so a stale value passed straight through and reverted the flag the switch had just written. Node then restarted onto the channel you were trying to leave. `endpoint` was already hardened against exactly this (the 7 Jul gateway bug); `updateChannel` had the weaker guard. It is now server-owned in the same way: the server's value always wins and the client's copy is ignored, which fixes both directions of the switch.
+
+This was invisible when alpha and stable were the same build — no files change, so there was no other symptom to notice.
+
+Separately, **reverting no longer downloads anything when it doesn't need to.** `restoreStable()` now hashes the files on disk against the release's `checksums.txt` first; if they already match, the revert is a pure channel flip — no downloads, no restart. That is the common case when alpha hasn't diverged from stable, and it means a revert can't be defeated by GitHub's unauthenticated rate limit (60/hr per IP, easily exhausted behind a shared corporate NAT). When files genuinely differ, the original download-verify-swap path runs unchanged. Test **C75** covers both: a stale client channel failing to overwrite the server's, and the no-op revert doing zero downloads while still detecting a real difference.
+
 ### 30 Aug 2026 - Console and file logging split (Windows stdout stall)
 
 Console verbosity is now separate from file verbosity, and quieter by default. `LCL_LOG_LEVEL` (default `debug`) still governs what reaches `debug_logs.txt` — no diagnostics are lost — while a new `LCL_CONSOLE_LEVEL` (default `info`) governs the terminal. Verbose per-request output (the `STREAMING OUTBOUND` block and everything else at `log.debug`) now goes to the file **only**. Set `LCL_CONSOLE_LEVEL=debug` to restore the old verbose terminal.
