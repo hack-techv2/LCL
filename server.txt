@@ -1877,9 +1877,16 @@ function handleSaveData(req, res) {
     if (!body.settings && appData.settings) {
       body.settings = appData.settings
     }
-    if (body.updateChannel === undefined && appData.updateChannel !== undefined) {
-      body.updateChannel = appData.updateChannel
-    }
+    // updateChannel is SERVER-owned (only /api/update/channel may change it).
+    // ALWAYS take the server's current value and IGNORE any (possibly stale)
+    // channel the client sent. Backfilling only when ABSENT was not enough: the
+    // client's D is loaded once at page boot, so a channel switch is followed by
+    // flushBeforeRestart() -> persist() -> POST /api/data carrying the OLD
+    // channel, which silently overwrote the switch that had just happened and
+    // left the user on the channel they were trying to leave. Same failure the
+    // endpoint guard below was added for.
+    if (appData.updateChannel !== undefined) body.updateChannel = appData.updateChannel
+    else delete body.updateChannel
     // The endpoint override is SERVER-owned (set via /api/endpoint) - the client's
     // settings copy never carries it, so a full /api/data save must not wipe it.
     // (7 Jul log: Kepler set, then a debounced persist() replaced settings and the
@@ -2335,6 +2342,19 @@ async function restoreStable() {
   const cs = await ghFetchFile(tag, 'checksums.txt')
   if (cs.statusCode !== 200) throw new Error('no checksums in ' + tag)
   const exp = parseChecksums(cs.buf.toString('utf8'))
+  // Nothing to restore when the running files ALREADY match the published stable
+  // build - the common case when alpha has not diverged from stable. Reverting is
+  // then a pure channel flip, so skip the downloads entirely: it is faster, and it
+  // still works when GitHub is rate-limited (60 req/hr per IP, shared behind a
+  // corporate NAT) which would otherwise fail a revert that had nothing to do.
+  const already = UPDATE_FILES.every(f => {
+    const want = exp[f]; if (!want) return false
+    try { return sha256Buf(fs.readFileSync(path.join(LCL_DIR, f))) === want } catch { return false }
+  })
+  if (already) {
+    const skills = await syncBundledSkills(tag).catch(() => null)
+    return { tag, applied: [], unchanged: UPDATE_FILES.slice(), alreadyStable: true, skills }
+  }
   const bufs = {}
   for (const f of UPDATE_FILES) {
     const want = exp[f]; if (!want) throw new Error('no checksum for ' + f)
@@ -2499,7 +2519,10 @@ function handleUpdateChannel(req, res) {
     restoreStable().then(r => {
       writeChannel('stable')
       clearStableBackup()
-      json(res, { ok: true, channel: 'stable', restored: r, restartNeeded: true })
+      // No restart when no files changed - the channel is read live, so a pure
+      // flip needs nothing reloaded. The client falls through to a re-check and
+      // re-renders as stable.
+      json(res, { ok: true, channel: 'stable', restored: r, restartNeeded: !r.alreadyStable })
     }).catch(e => {
       const fb = restoreFromBackup()
       if (fb.length) { writeChannel('stable'); clearStableBackup(); json(res, { ok: true, channel: 'stable', restoredFromBackup: fb, restartNeeded: true }) }
