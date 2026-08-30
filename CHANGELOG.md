@@ -1,7 +1,22 @@
-# LCL Changelog — v0.67e
+# LCL Changelog — v0.67f (alpha)
 
-All notable changes to Local Comet LLM. Everything below is part of the v0.67e
-release.
+v0.67e is the current stable release (28 Aug 2026). Everything under the
+**v0.67f (alpha)** heading below is unreleased and rides the alpha channel only.
+
+## v0.67f (alpha — unreleased)
+
+Alpha is one version ahead of stable so testers can be offered builds without
+touching stable installs.
+
+### 30 Aug 2026 - Console and file logging split (Windows stdout stall)
+
+Console verbosity is now separate from file verbosity, and quieter by default. `LCL_LOG_LEVEL` (default `debug`) still governs what reaches `debug_logs.txt` — no diagnostics are lost — while a new `LCL_CONSOLE_LEVEL` (default `info`) governs the terminal. Verbose per-request output (the `STREAMING OUTBOUND` block and everything else at `log.debug`) now goes to the file **only**. Set `LCL_CONSOLE_LEVEL=debug` to restore the old verbose terminal.
+
+Why: console writes are the expensive, risky sink on Windows. When the terminal enters QuickEdit/mark mode — a stray click in the Node window — **stdout blocks**, and the next synchronous console write freezes the entire server until a key is pressed. That is the "frozen until I click the Node window" symptom, and it also produces secondary damage: with the UI unresponsive the user retries, and a real log showed three ~90 KB (~23k token) chat requests firing within 40 ms once the console unblocked. Each request previously wrote ~8 debug lines to the console; routing those to the file cuts terminal writes by roughly 90%, which proportionally cuts the odds of hitting a blocked write.
+
+This reduces exposure rather than eliminating it — any console write (startup banner, error, endpoint change) can still block if the terminal is in mark mode. Disabling QuickEdit in the Node window's properties remains the complete fix. Test **C74** drives the real logger and asserts a `debug` record reaches the file and not the console, that `info`/`warn`/`error` still reach the console, that the opt-in env var restores verbose output, and that lowering the file level drops the record from both sinks.
+
+## v0.67e (stable — released 28 Aug 2026)
 
 > **Why 0.67e:** the in-app updater offers a build only when the release tag is
 > strictly newer than the running `APP_VERSION`. A second v0.67d release would
