@@ -1226,6 +1226,38 @@ const CASES = [
       'owned=' + serverOwned + ' stale->stable=' + survives + ' stale->alpha=' + survives2 +
       ' shortCircuit=' + shortCircuit + ' noRestart=' + noRestartWhenNoop + ' zeroDl=' + zeroDownloads + ' detectsDiff=' + (already2 === false))
   } },
+  { id: 'C76 model tiers: CCE/SN catalogue intact, R/SN limited to fable-5 with no embeddings', fn: async () => {
+    const M = src('05-models.js')
+    const blk = M.slice(M.indexOf('const MODEL_TIERS = {'), M.indexOf('// ---', M.indexOf('const EMBED_TIERS')))
+    const ctx = {}; vm.createContext(ctx); vm.runInContext(blk, ctx)
+    const MT = vm.runInContext('MODEL_TIERS', ctx), ET = vm.runInContext('EMBED_TIERS', ctx)
+    const all = t => (t || []).reduce((a, g) => a.concat(g.ids), [])
+    const cceChat = all(MT.cce), cceEmb = all(ET.cce), rsnChat = all(MT.rsn), rsnEmb = all(ET.rsn)
+    // Counts pin the catalogue so an accidental truncation is caught.
+    const counts = cceChat.length === 86 && cceEmb.length === 8 && rsnChat.length === 4 && rsnEmb.length === 0
+    // No id may appear twice within a tier, and no chat model may leak into embeds.
+    const noDupes = new Set(cceChat).size === cceChat.length && new Set(rsnChat).size === rsnChat.length
+    const embAreEmbeds = cceEmb.every(id => /embed/.test(id))
+    const chatNotEmbeds = cceChat.every(id => !/embed/.test(id)) && rsnChat.every(id => !/embed/.test(id))
+    // R/SN is exactly the four fable-5 variants - nothing wider leaked in.
+    const rsnExact = ['azure.claude-fable-5', 'ocns.claude-fable-5', 'bedrock.claude-fable-5', 'vertex_ai.claude-fable-5']
+      .every(id => rsnChat.includes(id)) && rsnChat.length === 4
+    // Tiers must not silently overlap: nothing cleared only for CCE may sit in R/SN.
+    const noLeak = rsnChat.every(id => !cceChat.includes(id))
+    // Spot-check representative members of each CCE provider group.
+    const cceHas = ['azure.claude-opus-5', 'gpt-5.6-terra', 'bedrock.gpt-5.5', 'gemini-3.7-flash',
+                    'rsn.vertex_ai.claude-sonnet-4-6', 'cce.claude-3-5-sonnet'].every(id => cceChat.includes(id))
+    // The new ocns. prefix must be stripped for display like every other prefix.
+    const strip = M.match(/replace\(\/\^\((.*?)\)\/, ''\)/)
+    const ocnsStripped = !!strip && strip[1].includes('ocns\\.')
+    // An empty tier must state so rather than looking broken.
+    const emptyLabelled = M.includes('None approved for this classification')
+    check('C76 tier catalogue: counts, no dupes/leaks, R/SN fable-only, ocns prefix, empty-tier label',
+      counts && noDupes && embAreEmbeds && chatNotEmbeds && rsnExact && noLeak && cceHas && ocnsStripped && emptyLabelled,
+      'counts=' + counts + '(' + cceChat.length + '/' + cceEmb.length + '/' + rsnChat.length + '/' + rsnEmb.length + ')' +
+      ' dupes=' + noDupes + ' embSplit=' + (embAreEmbeds && chatNotEmbeds) + ' rsnExact=' + rsnExact +
+      ' noLeak=' + noLeak + ' cceSpot=' + cceHas + ' ocns=' + ocnsStripped + ' emptyLbl=' + emptyLabelled)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
