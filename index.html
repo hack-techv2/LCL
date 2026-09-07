@@ -1374,35 +1374,53 @@ const CLS_DEFAULT = Object.keys(CLS)[0]
 const MODEL_TIERS = {
   cce: [
     { label: 'Claude (Anthropic)', ids: [
-      'cce.claude-opus-4-6','cce.claude-sonnet-4-6','cce.claude-opus-4-5','cce.claude-sonnet-4-5','cce.claude-3-5-sonnet',
-      'vertex_ai.claude-opus-4-6','vertex_ai.claude-opus-4-5','vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-4-5',
-      'bedrock.claude-3-5-sonnet'
-    ] },
-    { label: 'OpenAI', ids: ['gpt-4o-pt'] },
-    { label: 'Google Gemini', ids: ['gemini-2.5-flash-pt'] },
-  ],
-  rsn: [
-    { label: 'Claude (Anthropic)', ids: [
-      'azure.claude-opus-4-8','azure.claude-opus-4-7','azure.claude-opus-4-6','azure.claude-opus-4-5','azure.claude-sonnet-4-6','azure.claude-sonnet-4-5','azure.claude-haiku-4-5',
-      'rsn.claude-opus-4-8','rsn.claude-opus-4-7','rsn.claude-opus-4-6','rsn.claude-opus-4-5','rsn.claude-opus-4-1','rsn.claude-sonnet-4-6','rsn.claude-sonnet-4-5','rsn.claude-sonnet-4-0','rsn.claude-haiku-4-5',
-      'rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-sonnet-4-6','rsn.vertex_ai.claude-sonnet-4-5',
-      'bedrock.claude-opus-4-8','bedrock.claude-opus-4-7','bedrock.claude-opus-4-6','bedrock.claude-opus-4-5','bedrock.claude-sonnet-4-6','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-0','bedrock.claude-haiku-4-5',
-      'vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-1','vertex_ai.claude-haiku-4-5'
+      'azure.claude-haiku-4-5','azure.claude-opus-4-5','azure.claude-opus-4-6','azure.claude-opus-4-7',
+      'azure.claude-opus-4-8','azure.claude-opus-5','azure.claude-sonnet-4-5','azure.claude-sonnet-4-6',
+      'azure.claude-sonnet-5','rsn.claude-haiku-4-5','rsn.claude-opus-4-5','rsn.claude-opus-4-6',
+      'rsn.claude-opus-4-7','rsn.claude-opus-4-8','rsn.claude-opus-5','rsn.claude-sonnet-4-5',
+      'rsn.claude-sonnet-4-6','rsn.claude-sonnet-5','bedrock.claude-3-5-sonnet','bedrock.claude-haiku-4-5',
+      'bedrock.claude-opus-4-5','bedrock.claude-opus-4-6','bedrock.claude-opus-4-7','bedrock.claude-opus-4-8',
+      'bedrock.claude-opus-5','bedrock.claude-sonnet-4-0','bedrock.claude-sonnet-4-5','bedrock.claude-sonnet-4-6',
+      'bedrock.claude-sonnet-5','cce.claude-3-5-sonnet','rsn.claude-sonnet-4-0','cce.claude-opus-4-5',
+      'cce.claude-opus-4-6','cce.claude-sonnet-4-5','cce.claude-sonnet-4-6','rsn.claude-opus-4-1',
+      'rsn.vertex_ai.claude-opus-4-5','rsn.vertex_ai.claude-opus-4-6','rsn.vertex_ai.claude-sonnet-4-5','rsn.vertex_ai.claude-sonnet-4-6',
+      'vertex_ai.claude-haiku-4-5','vertex_ai.claude-opus-4-1','vertex_ai.claude-opus-4-5','vertex_ai.claude-opus-4-6',
+      'vertex_ai.claude-opus-4-7','vertex_ai.claude-opus-4-8','vertex_ai.claude-opus-5','vertex_ai.claude-sonnet-4-5',
+      'vertex_ai.claude-sonnet-4-6','vertex_ai.claude-sonnet-5'
     ] },
     { label: 'OpenAI', ids: [
-      'gpt-5.5','gpt-5.4-pro','gpt-5.4','gpt-5.3-codex','gpt-5.2-chat','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano',
-      'gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','gpt-4o','gpt-4o-mini','o3','o3-mini','o4-mini'
+      'gpt-5.2-chat','gpt-4.1','gpt-4.1-mini','gpt-4.1-nano',
+      'gpt-4o','gpt-4o-mini','gpt-5','gpt-5.1',
+      'gpt-5.2','gpt-5.3-codex','gpt-5.4','gpt-5.4-pro',
+      'gpt-5.5','gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra',
+      'gpt-5-mini','gpt-5-nano','o3','o3-mini',
+      'o4-mini','bedrock.gpt-5.4','bedrock.gpt-5.5','bedrock.gpt-5.6-luna',
+      'bedrock.gpt-5.6-sol','bedrock.gpt-5.6-terra'
     ] },
     { label: 'Google Gemini', ids: [
-      'gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-3.1-flash-lite-preview','gemini-3-flash-preview',
-      'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite'
+      'gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro','gemini-3.1-flash-lite',
+      'gemini-3.1-pro-preview','gemini-3.5-flash','gemini-3.5-flash-lite','gemini-3.6-flash',
+      'gemini-3.7-flash','gemini-3-flash-preview'
+    ] },
+  ],
+  // R/SN is deliberately narrow: only the claude-fable-5 variants are cleared for
+  // this tier. Everything else (GPT, Gemini, the wider Claude range) is CCE/SN only.
+  rsn: [
+    { label: 'Claude (Anthropic)', ids: [
+      'azure.claude-fable-5','ocns.claude-fable-5','bedrock.claude-fable-5','vertex_ai.claude-fable-5'
     ] },
   ],
 }
 
 const EMBED_TIERS = {
-  cce: [ { label: 'Embedding models', ids: ['cohere.embed-english-v3','cohere.embed-multilingual-v3','gemini-embedding-001'] } ],
-  rsn: [ { label: 'Embedding models', ids: ['text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002','cohere.embed-v4:0','gemini-embedding-2'] } ],
+  cce: [ { label: 'Embedding models', ids: [
+    'text-embedding-3-large','text-embedding-3-small','text-embedding-ada-002',
+    'cohere.embed-english-v3','cohere.embed-multilingual-v3','cohere.embed-v4:0',
+    'gemini-embedding-001','gemini-embedding-2'
+  ] } ],
+  // No embedding models are cleared for R/SN, so document embedding / RAG is
+  // unavailable at this tier by design - not an oversight.
+  rsn: [],
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,7 +1453,7 @@ const EMBED_MAX_TOKENS = {
   'text-embedding-3-large': 8192, 'text-embedding-3-small': 8192, 'text-embedding-ada-002': 8192,
 }
 function normalizeModelId(id) {
-  return (id || '').trim().replace(/^(rsn\.vertex_ai\.|rsn\.|cce\.|azure\.|bedrock\.|vertex_ai\.)/, '')
+  return (id || '').trim().replace(/^(rsn\.vertex_ai\.|rsn\.|cce\.|ocns\.|azure\.|bedrock\.|vertex_ai\.)/, '')
 }
 // Chat-model context window in tokens, or null when unknown (caller uses floor).
 function getModelContext(id) { return MODEL_CONTEXT[normalizeModelId(id)] || null }
@@ -1474,6 +1492,15 @@ function clsSuffix(c) {
 function fillModelSelect(sel, groups, current) {
   sel.innerHTML = ''
   let found = false
+  // A tier can legitimately have NO approved models (R/SN has no cleared
+  // embedding models). Say so, rather than showing a bare "Custom…" box that
+  // reads like a loading failure.
+  if (!groups || !groups.length) {
+    const none = document.createElement('option')
+    none.value = ''; none.disabled = true; none.selected = !current
+    none.textContent = 'None approved for this classification'
+    sel.appendChild(none)
+  }
   for (const g of groups) {
     const og = document.createElement('optgroup'); og.label = g.label
     for (const id of g.ids) {
