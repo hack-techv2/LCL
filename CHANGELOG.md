@@ -8,6 +8,16 @@ v0.67e is the current stable release (28 Aug 2026). Everything under the
 Alpha is one version ahead of stable so testers can be offered builds without
 touching stable installs.
 
+### 7 Sep 2026 - Model catalogue refreshed per classification tier
+
+Both tiers replaced with the current approved lists.
+
+**CCE/SN** now carries 94 entries — 86 chat models and 8 embedding models. Chat spans Claude across the `azure.`, `rsn.`, `bedrock.`, `vertex_ai.`, `rsn.vertex_ai.` and `cce.` prefixes (including the new `claude-opus-5` / `claude-sonnet-5`), the OpenAI GPT-5.x line (`gpt-5.6-luna` / `-sol` / `-terra`, `gpt-5.5`, `gpt-5.4-pro`, the 4.1/4o families and `o3`/`o3-mini`/`o4-mini`) plus `bedrock.gpt-*`, and Gemini 2.5 through 3.7. Embeddings are `text-embedding-3-large/small`, `ada-002`, the three `cohere.embed-*`, `gemini-embedding-001` and `gemini-embedding-2`.
+
+**R/SN** is deliberately narrow: only the four `claude-fable-5` variants (`azure.`, `ocns.`, `bedrock.`, `vertex_ai.`), and **no embedding models are cleared for this tier** — so document embedding and RAG are unavailable at R/SN by design, not by oversight. The model picker now says "None approved for this classification" instead of showing an empty box that reads like a loading failure.
+
+Also added the new `ocns.` prefix to the display-name stripper so it shortens like every other provider prefix. Test **C76** pins the catalogue: exact counts per tier, no duplicates, no chat model leaking into the embedding list (or vice versa), R/SN containing exactly the four fable variants with nothing wider leaking in, and the prefix/empty-tier handling.
+
 ### 30 Aug 2026 - Channel switching actually sticks (revert to stable was silently undone)
 
 Switching off the Experimental channel appeared to do nothing — you stayed on alpha. The switch itself worked; it was immediately overwritten.
