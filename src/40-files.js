@@ -482,6 +482,9 @@ function loadScript(url) {
 // skip caching and just download the language data into memory once per session.
 const TESSERACT_CDN  = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js'
 const TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'
+// Higher-accuracy LSTM models, same reachable CDN. Served uncompressed, hence the
+// gzip:false above. Opt-in via CFG.OCR_USE_BEST_MODELS.
+const TESSERACT_LANG_BEST = 'https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_best@main'
 
 let _ocrWorker = null            // shared Tesseract worker (created once, reused)
 let _ocrState  = 'idle'          // 'idle' | 'loading' | 'ready' | 'blocked'
@@ -567,7 +570,14 @@ async function ensureOcrWorker() {
     // which the gov proxy serves without CORS (fetch blocked). After creating, we
     // must explicitly loadLanguage + initialize or the core stays null and recognize
     // throws "reading 'SetImageFile' of null".
-    const w = await Tesseract.createWorker({ langPath: TESSERACT_LANG, cacheMethod: 'none' })
+    // tessdata_best trades speed for accuracy (~15 MB vs ~4 MB, 2-3x slower). Off by
+    // default so the first-use download stays small on the gov network; both paths
+    // are jsDelivr, which is reachable here (the upstream tessdata host is not).
+    const _useBest = !!(CFG && CFG.OCR_USE_BEST_MODELS)
+    const _langPath = _useBest ? TESSERACT_LANG_BEST : TESSERACT_LANG
+    const w = await Tesseract.createWorker(
+      _useBest ? { langPath: _langPath, cacheMethod: 'none', gzip: false }   // tessdata_best ships uncompressed
+               : { langPath: _langPath, cacheMethod: 'none' })
     if (typeof w.loadLanguage === 'function') await w.loadLanguage('eng')
     if (typeof w.initialize === 'function') await w.initialize('eng', 1)
     // Tell Tesseract the effective resolution instead of letting it guess from the
@@ -649,9 +659,70 @@ async function ocrPrepImage(file) {
     if ((sum / (w * h)) < 110) for (let i = 0; i < d.length; i += 4) {
       d[i] = d[i + 1] = d[i + 2] = 255 - d[i]
     }
+    // Stretch contrast so faint captures (grey text on a tinted panel) get definite
+    // strokes. Find the ink and paper levels with Otsu and map BETWEEN them, rather
+    // than percentile-clipping the histogram: text is a tiny share of a screenshot
+    // - typically ~1% of pixels - so any sane percentile clip swallows all of it
+    // and collapses the range to zero, silently doing nothing on exactly the images
+    // this is meant to rescue.
+    //
+    // Otsu is used only to LOCATE the two levels. The output stays greyscale, so
+    // anti-aliased edges survive; Tesseract still does its own binarisation.
+    const hist = new Uint32Array(256)
+    for (let i = 0; i < d.length; i += 4) hist[d[i]]++
+    const total = w * h
+    let histSum = 0
+    for (let v = 0; v < 256; v++) histSum += v * hist[v]
+    let sumB = 0, wB = 0, bestVar = -1, t = 128
+    for (let v = 0; v < 256; v++) {
+      wB += hist[v]; if (!wB) continue
+      const wF = total - wB; if (!wF) break
+      sumB += v * hist[v]
+      const mB = sumB / wB, mF = (histSum - sumB) / wF
+      const between = wB * wF * (mB - mF) * (mB - mF)
+      if (between > bestVar) { bestVar = between; t = v }
+    }
+    let nInk = 0, sInk = 0, nPap = 0, sPap = 0
+    for (let v = 0; v <= t; v++) { nInk += hist[v]; sInk += v * hist[v] }
+    for (let v = t + 1; v < 256; v++) { nPap += hist[v]; sPap += v * hist[v] }
+    if (nInk && nPap) {
+      const lo = sInk / nInk, hi = sPap / nPap
+      if (hi - lo > 16) {                    // skip near-flat images; stretching noise hurts
+        const span = 255 / (hi - lo)
+        for (let i = 0; i < d.length; i += 4) {
+          const g = d[i]
+          const v = g <= lo ? 0 : g >= hi ? 255 : Math.round((g - lo) * span)
+          d[i] = d[i + 1] = d[i + 2] = v
+        }
+      }
+    }
     ctx.putImageData(img, 0, 0)
   } catch (e) {}   // tainted canvas etc - fall back to the plain upscale
   return { canvas: cv, scale: scale, from: w0 + 'x' + h0, to: w + 'x' + h }
+}
+
+// Recognise, and if Tesseract itself reports low confidence, try ONE more pass
+// with a different page-segmentation mode and keep whichever scored better.
+//
+// The default PSM 3 auto-segments the page, which is right for mixed layouts but
+// frequently mis-splits a cropped screenshot (a UI panel, a table region). PSM 6
+// - "one uniform block of text" - handles those far better. We cannot know which
+// applies up front, so we let the engine's own mean confidence decide, and cap it
+// at a single retry so a bad image costs 2x, never N x.
+async function ocrRecognizeBest(worker, input) {
+  const r1 = await worker.recognize(input)
+  const best = { text: (r1 && r1.data && r1.data.text) || '', conf: (r1 && r1.data && r1.data.confidence) || 0 }
+  const floor = CFG.OCR_RETRY_BELOW_CONF == null ? 75 : CFG.OCR_RETRY_BELOW_CONF
+  if (best.conf >= floor || typeof worker.setParameters !== 'function') return best.text
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: '6' })
+    const r2 = await worker.recognize(input)
+    const c2 = (r2 && r2.data && r2.data.confidence) || 0
+    if (typeof lclCrumb === 'function') lclCrumb('ocr_retry', { psm: 6, was: Math.round(best.conf), now: Math.round(c2) })
+    if (c2 > best.conf) { best.text = (r2 && r2.data && r2.data.text) || best.text; best.conf = c2 }
+  } catch (e) { /* keep the first pass */ }
+  finally { try { await worker.setParameters({ tessedit_pageseg_mode: '3' }) } catch (e) {} }
+  return best.text
 }
 
 // OCR a queued item in place: a scanned PDF (empty pages -> canvas) or an image
@@ -688,8 +759,7 @@ async function ocrQueueItem(item) {
         input = prep.canvas
         if (typeof lclCrumb === 'function') lclCrumb('ocr_prep', { from: prep.from, to: prep.to, scale: +prep.scale.toFixed(2) })
       } catch (e) { /* fall back to the original file */ }
-      const { data: { text } } = await worker.recognize(input)
-      item.extractedText = (text || '').trim()
+      item.extractedText = (await ocrRecognizeBest(worker, input)).trim()
     }
     item.scanWarning = null
   } finally {
