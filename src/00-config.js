@@ -51,7 +51,16 @@ const CFG = {
   // Files / OCR
   SCAN_MIN_PAGES: 2,
   SCAN_MIN_SHARE: 0.15,
-  OCR_SCALE: 2.0,
+  // OCR input sizing. Tesseract is trained on ~300 DPI print; accuracy falls off
+  // sharply below ~200. A PDF viewport is 72 DPI, so scale 4.2 ~= 300 DPI (the old
+  // 2.0 rendered at just 144). Screenshots carry no DPI at all, so they are scaled
+  // toward a target long edge instead. Both are bounded by OCR_MAX_PIXELS so a big
+  // page can't blow the canvas/memory budget.
+  OCR_SCALE: 4.2,               // PDF page render scale (72 DPI base -> ~300 DPI)
+  OCR_TARGET_LONG_EDGE: 2200,   // px; screenshots are upscaled toward this
+  OCR_MAX_UPSCALE: 4,           // never enlarge an image more than this
+  OCR_MAX_PIXELS: 12e6,         // hard ceiling on rendered pixels (w*h)
+  OCR_DPI_HINT: 300,            // user_defined_dpi passed to Tesseract
 
   // Conversation compaction (auto-summarise old turns to keep each send small)
   COMPACT_TOKENS: 50000,     // trigger: compact when the history that WOULD be sent exceeds this (~25% of the 200k/min budget, so several turns fit per minute)
