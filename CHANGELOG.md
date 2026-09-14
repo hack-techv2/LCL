@@ -8,6 +8,18 @@ v0.67e is the current stable release (28 Aug 2026). Everything under the
 Alpha is one version ahead of stable so testers can be offered builds without
 touching stable installs.
 
+### 14 Sep 2026 - OCR accuracy: screenshots are now prepared before recognition
+
+OCR on screen captures was poor because images were handed to Tesseract completely untouched — whatever resolution, contrast and polarity they happened to have.
+
+Three things changed. **Images are now upscaled** toward a ~300 DPI equivalent (long edge ~2200px, capped at 4x and bounded by a pixel budget). Tesseract is trained on ~300 DPI print, and a typical capture is ~96 DPI with 10–12px anti-aliased glyphs — far outside that, which is where most of the errors came from. **Dark-mode captures are auto-inverted**: if mean luminance says the background is dark, the image is flipped so text is dark-on-light, the polarity Tesseract expects. And **the DPI is now declared** (`user_defined_dpi`) instead of being guessed from a bitmap that carries no such metadata, with `preserve_interword_spaces` on so table-like captures keep their column gaps.
+
+Scanned PDFs also render sharper: page scale went from 2.0 (**144 DPI** — below the level where accuracy starts collapsing) to 4.2 (**~300 DPI**), clamped by the same pixel budget so an oversized page can't blow the canvas.
+
+Deliberately *not* added: a binarisation/threshold pass. Tesseract already binarises internally with Otsu, and thresholding anti-aliased small text twice erodes thin strokes and loses characters — upscaling and correcting polarity is where the gain actually is.
+
+Expect OCR to be slower and more memory-hungry per page; ~300 DPI is roughly 4x the pixels of 144. Note also that no amount of preparation rescues a genuinely poor source — a skewed, low-resolution or heavily compressed scan will still read badly. Tests **C77** (sizing maths, budget clamp, never-shrink floor, DPI hint, inversion) and an updated **C36** (images route through the prep pass with a fallback to the raw file).
+
 ### 7 Sep 2026 - Model catalogue refreshed per classification tier
 
 Both tiers replaced with the current approved lists.
