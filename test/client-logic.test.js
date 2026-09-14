@@ -1258,6 +1258,45 @@ const CASES = [
       ' dupes=' + noDupes + ' embSplit=' + (embAreEmbeds && chatNotEmbeds) + ' rsnExact=' + rsnExact +
       ' noLeak=' + noLeak + ' cceSpot=' + cceHas + ' ocns=' + ocnsStripped + ' emptyLbl=' + emptyLabelled)
   } },
+  { id: 'C77 OCR prep: upscales toward ~300 DPI, respects the pixel budget, inverts dark captures', fn: async () => {
+    const S = src('40-files.js'), C = src('00-config.js')
+    // Config: PDF render targets ~300 DPI (72 base * 4.2), not the old 144.
+    const cfg = /OCR_SCALE: 4\.2/.test(C) && /OCR_TARGET_LONG_EDGE: 2200/.test(C) &&
+                /OCR_MAX_PIXELS: 12e6/.test(C) && /OCR_DPI_HINT: 300/.test(C)
+    // Tesseract must be told the DPI (it guesses badly on screenshots).
+    const dpiHint = S.includes('user_defined_dpi') && S.includes('preserve_interword_spaces')
+    // PDF pages are clamped by the same budget so a big page can't blow the canvas.
+    const pdfClamped = S.includes('ocrFitScale(_base.width, _base.height, _want)')
+    // We must NOT hard-threshold: Tesseract binarises internally, doing it twice
+    // erodes thin anti-aliased strokes.
+    const noDoubleThreshold = !/>\s*thr\s*\?\s*255\s*:\s*0/.test(S)
+    // Functional: the sizing maths.
+    const blk = S.slice(S.indexOf('function ocrFitScale'), S.indexOf('async function ocrPrepImage'))
+    const ctx = { CFG: { OCR_MAX_PIXELS: 12e6 }, Math }
+    vm.createContext(ctx); vm.runInContext(blk, ctx)
+    const fit = vm.runInContext('ocrFitScale', ctx)
+    const small = fit(800, 600, 2.75) === 2.75                       // within budget: unchanged
+    // A4 at 72dpi (595x842) x4.2 is ~8.8M px - comfortably inside the budget.
+    const a4 = fit(595, 842, 4.2) === 4.2
+    // A2-ish page x4.2 would be ~35M px, so it must be clamped to sit ON the cap.
+    const big = fit(1191, 1684, 4.2)
+    const bigClamped = big < 4.2 && Math.abs(1191 * 1684 * big * big - 12e6) < 1
+    // Floor: never shrink below native size, even if the source alone exceeds the
+    // budget - downscaling would destroy the detail OCR needs.
+    const neverBelowOne = fit(4000, 4000, 4.2) === 1
+    // Upscale target: a 1280-wide capture should scale up toward 2200, never down.
+    const scaleFor = (w, h) => Math.max(1, Math.min(4, 2200 / Math.max(w, h)))
+    const upscales = Math.abs(scaleFor(1280, 720) - 2200 / 1280) < 1e-9
+    const neverShrinks = scaleFor(4000, 3000) === 1                  // big image: left alone
+    const capped = scaleFor(200, 100) === 4                          // tiny image: capped at 4x
+    // Dark-mode inversion is present and threshold-based on mean luminance.
+    const inverts = /sum \/ \(w \* h\)\) < 110/.test(S) && S.includes('255 - d[i]')
+    check('C77 OCR prep sizing + DPI hint + dark-capture inversion',
+      cfg && dpiHint && pdfClamped && noDoubleThreshold && small && a4 && bigClamped && neverBelowOne && upscales && neverShrinks && capped && inverts,
+      'cfg=' + cfg + ' dpi=' + dpiHint + ' pdfClamp=' + pdfClamped + ' noDblThresh=' + noDoubleThreshold +
+      ' fit(small)=' + small + ' a4=' + a4 + ' bigClamped=' + bigClamped + ' floor1=' + neverBelowOne +
+      ' upscale=' + upscales + ' noShrink=' + neverShrinks + ' cap4x=' + capped + ' invert=' + inverts)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
@@ -1274,7 +1313,10 @@ const CASES = [
     const regd = S.includes('png:  (file) => imageExtractor(file)') && S.includes('jpeg: (file) => imageExtractor(file)')
     const fn = S.includes('function imageExtractor(file)') && S.includes('ocrFile: file') && S.includes("scanWarning: 'Image file")
     const filter = S.includes('f.scanWarning && (f.pdfDoc || f.ocrFile)')
-    const imgOcr = S.includes('else if (item.ocrFile)') && S.includes('worker.recognize(item.ocrFile)')
+    // Images go through ocrPrepImage() first (upscale/greyscale/invert) and only
+    // fall back to the raw file if prep throws - so recognise takes `input`.
+    const imgOcr = S.includes('else if (item.ocrFile)') && S.includes('worker.recognize(input)') &&
+                   S.includes('let input = item.ocrFile') && S.includes('await ocrPrepImage(item.ocrFile)')
     const carried = (S.match(/pdfDoc, ocrFile,/g) || []).length >= 3   // destructure + progressive assign + docs push
     check('C36 image files route through OCR (imageExtractor + filter + recognize + ocrFile carried)', regd && fn && filter && imgOcr && carried, 'regd=' + regd + ' fn=' + fn + ' filter=' + filter + ' imgOcr=' + imgOcr + ' carried=' + carried)
   } },
