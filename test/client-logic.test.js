@@ -1291,22 +1291,85 @@ const CASES = [
     const capped = scaleFor(200, 100) === 4                          // tiny image: capped at 4x
     // Dark-mode inversion is present and threshold-based on mean luminance.
     const inverts = /sum \/ \(w \* h\)\) < 110/.test(S) && S.includes('255 - d[i]')
+    // Contrast levels come from Otsu class MEANS, not a percentile clip. Text is
+    // ~1% of a screenshot's pixels, so any sane percentile clip swallows all of it
+    // and the stretch silently becomes a no-op on exactly the faint captures it is
+    // meant to rescue (observed: lo==hi==background, span 0).
+    const otsuLevels = S.includes('sInk / nInk') && S.includes('sPap / nPap') && !S.includes('OCR_CONTRAST_CLIP')
+    // Functional: sparse dark text on a light panel must still yield a wide span.
+    const hist = new Uint32Array(256)
+    hist[215] = 37913; hist[154] = 487                    // 1.27% ink, like a real capture
+    const total = 38400
+    let hs = 0; for (let v = 0; v < 256; v++) hs += v * hist[v]
+    let sB = 0, wB2 = 0, bv = -1, thr = 128
+    for (let v = 0; v < 256; v++) { wB2 += hist[v]; if (!wB2) continue
+      const wF = total - wB2; if (!wF) break
+      sB += v * hist[v]; const mB = sB / wB2, mF = (hs - sB) / wF
+      const bt = wB2 * wF * (mB - mF) * (mB - mF); if (bt > bv) { bv = bt; thr = v } }
+    let nI = 0, sI = 0, nP = 0, sP = 0
+    for (let v = 0; v <= thr; v++) { nI += hist[v]; sI += v * hist[v] }
+    for (let v = thr + 1; v < 256; v++) { nP += hist[v]; sP += v * hist[v] }
+    const spanOk = nI > 0 && nP > 0 && (sP / nP) - (sI / nI) > 16   // would actually stretch
+    // The old percentile approach on the SAME histogram collapses to zero span.
+    let acc2 = 0, ploLevel = 0
+    for (let v = 0; v < 256; v++) { acc2 += hist[v]; if (acc2 >= total * 0.02) { ploLevel = v; break } }
+    const percentileWouldFail = ploLevel === 215                    // lands on background, not ink
     check('C77 OCR prep sizing + DPI hint + dark-capture inversion',
-      cfg && dpiHint && pdfClamped && noDoubleThreshold && small && a4 && bigClamped && neverBelowOne && upscales && neverShrinks && capped && inverts,
+      cfg && dpiHint && pdfClamped && noDoubleThreshold && small && a4 && bigClamped && neverBelowOne && upscales && neverShrinks && capped && inverts && otsuLevels && spanOk && percentileWouldFail,
       'cfg=' + cfg + ' dpi=' + dpiHint + ' pdfClamp=' + pdfClamped + ' noDblThresh=' + noDoubleThreshold +
       ' fit(small)=' + small + ' a4=' + a4 + ' bigClamped=' + bigClamped + ' floor1=' + neverBelowOne +
-      ' upscale=' + upscales + ' noShrink=' + neverShrinks + ' cap4x=' + capped + ' invert=' + inverts)
+      ' upscale=' + upscales + ' noShrink=' + neverShrinks + ' cap4x=' + capped + ' invert=' + inverts + ' otsu=' + otsuLevels + ' stretches=' + spanOk + ' pctlWouldFail=' + percentileWouldFail)
+  } },
+  { id: 'C78 OCR: confidence-gated PSM retry keeps the better pass and always restores PSM', fn: async () => {
+    const S = src('40-files.js')
+    const blk = S.slice(S.indexOf('async function ocrRecognizeBest'), S.indexOf('// OCR a queued item in place'))
+    const mk = (c1, c2) => {
+      const calls = [], params = []
+      const worker = {
+        recognize: async () => { calls.push('recognize'); return { data: calls.length === 1 ? { text: 'first', confidence: c1 } : { text: 'second', confidence: c2 } } },
+        setParameters: async (p) => { params.push(p.tessedit_pageseg_mode) }
+      }
+      const ctx = { CFG: { OCR_RETRY_BELOW_CONF: 75 }, Math, lclCrumb: () => {} }
+      vm.createContext(ctx); vm.runInContext(blk, ctx)
+      return { fn: vm.runInContext('ocrRecognizeBest', ctx), worker, calls, params }
+    }
+    // High confidence: single pass, no PSM fiddling at all.
+    const a = mk(92, 99); const aText = await a.fn(a.worker, {})
+    const noRetry = aText === 'first' && a.calls.length === 1 && a.params.length === 0
+    // Low confidence + better retry: takes the second pass, and restores PSM 3.
+    const b = mk(40, 88); const bText = await b.fn(b.worker, {})
+    const tookBetter = bText === 'second' && b.calls.length === 2 && b.params[0] === '6' && b.params[b.params.length - 1] === '3'
+    // Low confidence but retry is WORSE: must keep the first pass, not blindly overwrite.
+    const c = mk(40, 12); const cText = await c.fn(c.worker, {})
+    const keptBetter = cText === 'first' && c.calls.length === 2 && c.params[c.params.length - 1] === '3'
+    // Retry throwing must not lose the first result, and must still restore PSM.
+    const d = mk(40, 88)
+    d.worker.recognize = async () => { d.calls.push('r'); if (d.calls.length === 1) return { data: { text: 'first', confidence: 40 } }; throw new Error('boom') }
+    const dText = await d.fn(d.worker, {})
+    const survivesThrow = dText === 'first' && d.params[d.params.length - 1] === '3'
+    // Bounded: never more than one retry.
+    const capped = b.calls.length === 2 && c.calls.length === 2
+    check('C78 PSM retry: gated, keeps the better pass, restores PSM, survives a throw',
+      noRetry && tookBetter && keptBetter && survivesThrow && capped,
+      'noRetry=' + noRetry + ' tookBetter=' + tookBetter + ' keptBetter=' + keptBetter + ' survivesThrow=' + survivesThrow + ' capped=' + capped)
   } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
     const jsdelivrLang = S.includes("TESSERACT_LANG = 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0'")
-    const wiredLang = S.includes('langPath: TESSERACT_LANG')
+    const wiredLang = S.includes('const _langPath = _useBest ? TESSERACT_LANG_BEST : TESSERACT_LANG')
     const persistent = S.includes('let _ocrWorker = null') && S.includes('async function ensureOcrWorker')
     const noStore = S.includes("cacheMethod: 'none'")
     const inits = S.includes("loadLanguage('eng')") && S.includes("initialize('eng', 1)")
-    const optsFirstArg = S.includes('createWorker({ langPath: TESSERACT_LANG')  // langPath MUST be the 1st-arg options or it falls back to the CORS-blocked default host
-    check('C35 OCR engine: reachable CDN + persistent worker + no IndexedDB + explicit init', noNaptha && jsdelivrLang && wiredLang && persistent && noStore && inits && optsFirstArg, 'noNaptha=' + noNaptha + ' lang=' + jsdelivrLang + ' wired=' + wiredLang + ' persistent=' + persistent + ' noStore=' + noStore + ' inits=' + inits + ' optsFirstArg=' + optsFirstArg)
+    // langPath MUST be in the FIRST-ARG options object on BOTH branches, or
+    // tesseract.js falls back to the CORS-blocked default tessdata host.
+    const createArgs = S.slice(S.indexOf('Tesseract.createWorker('), S.indexOf('Tesseract.createWorker(') + 320)
+    const optsFirstArg = (createArgs.match(/langPath: _langPath/g) || []).length === 2
+    // The optional high-accuracy models must also come from the reachable CDN, and
+    // tessdata_best ships uncompressed so gzip must be disabled for that path.
+    const bestReachable = S.includes("TESSERACT_LANG_BEST = 'https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_best@main'") &&
+                          createArgs.includes('gzip: false') && S.includes('OCR_USE_BEST_MODELS')
+    check('C35 OCR engine: reachable CDN + persistent worker + no IndexedDB + explicit init', noNaptha && jsdelivrLang && wiredLang && persistent && noStore && inits && optsFirstArg && bestReachable, 'noNaptha=' + noNaptha + ' lang=' + jsdelivrLang + ' wired=' + wiredLang + ' persistent=' + persistent + ' noStore=' + noStore + ' inits=' + inits + ' optsFirstArg=' + optsFirstArg + ' bestReachable=' + bestReachable)
   } },
   { id: 'C36 image files route through OCR (imageExtractor + filter + recognize)', fn: async () => {
     const S = src('40-files.js')
