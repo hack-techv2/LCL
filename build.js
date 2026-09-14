@@ -23,6 +23,7 @@ const KNOWN_GLOBALS = new Set([
   'setTimeout','setInterval','clearTimeout','clearInterval','requestAnimationFrame',
   'getComputedStyle','encodeURIComponent','decodeURIComponent','structuredClone',
   'queueMicrotask','parseInt','parseFloat','isNaN','fetch','confirm','alert','prompt','atob','btoa',
+  'createImageBitmap',
   'marked','DOMPurify','Tesseract','pdfjsLib','mammoth','XLSX',
   'onData',  // callback parameter of streamSse() (12-transport), not a global fn
   'onProgress',  // callback parameter of embedBatch() (15-rag), not a global fn
