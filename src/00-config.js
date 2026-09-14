@@ -61,6 +61,11 @@ const CFG = {
   OCR_MAX_UPSCALE: 4,           // never enlarge an image more than this
   OCR_MAX_PIXELS: 12e6,         // hard ceiling on rendered pixels (w*h)
   OCR_DPI_HINT: 300,            // user_defined_dpi passed to Tesseract
+  OCR_RETRY_BELOW_CONF: 75,     // mean confidence under this triggers one retry at a different PSM
+  // Language data. The default (tessdata "fast", integer models) is what the gov
+  // mirror serves and is ~4 MB. tessdata_best is measurably more accurate but
+  // ~15 MB and 2-3x slower; flip this on to trade speed for accuracy.
+  OCR_USE_BEST_MODELS: false,
 
   // Conversation compaction (auto-summarise old turns to keep each send small)
   COMPACT_TOKENS: 50000,     // trigger: compact when the history that WOULD be sent exceeds this (~25% of the 200k/min budget, so several turns fit per minute)
