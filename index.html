@@ -1342,7 +1342,16 @@ const CFG = {
   // Files / OCR
   SCAN_MIN_PAGES: 2,
   SCAN_MIN_SHARE: 0.15,
-  OCR_SCALE: 2.0,
+  // OCR input sizing. Tesseract is trained on ~300 DPI print; accuracy falls off
+  // sharply below ~200. A PDF viewport is 72 DPI, so scale 4.2 ~= 300 DPI (the old
+  // 2.0 rendered at just 144). Screenshots carry no DPI at all, so they are scaled
+  // toward a target long edge instead. Both are bounded by OCR_MAX_PIXELS so a big
+  // page can't blow the canvas/memory budget.
+  OCR_SCALE: 4.2,               // PDF page render scale (72 DPI base -> ~300 DPI)
+  OCR_TARGET_LONG_EDGE: 2200,   // px; screenshots are upscaled toward this
+  OCR_MAX_UPSCALE: 4,           // never enlarge an image more than this
+  OCR_MAX_PIXELS: 12e6,         // hard ceiling on rendered pixels (w*h)
+  OCR_DPI_HINT: 300,            // user_defined_dpi passed to Tesseract
 
   // Conversation compaction (auto-summarise old turns to keep each send small)
   COMPACT_TOKENS: 50000,     // trigger: compact when the history that WOULD be sent exceeds this (~25% of the 200k/min budget, so several turns fit per minute)
@@ -4151,6 +4160,15 @@ async function ensureOcrWorker() {
     const w = await Tesseract.createWorker({ langPath: TESSERACT_LANG, cacheMethod: 'none' })
     if (typeof w.loadLanguage === 'function') await w.loadLanguage('eng')
     if (typeof w.initialize === 'function') await w.initialize('eng', 1)
+    // Tell Tesseract the effective resolution instead of letting it guess from the
+    // bitmap (it guesses badly on screenshots, which carry no DPI metadata), and
+    // keep run-together spacing so table-ish captures stay column-separated.
+    try {
+      if (typeof w.setParameters === 'function') await w.setParameters({
+        user_defined_dpi: String(CFG.OCR_DPI_HINT || 300),
+        preserve_interword_spaces: '1'
+      })
+    } catch (e) {}
     _ocrWorker = w
     setOcrState('ready')
     return _ocrWorker
@@ -4180,6 +4198,52 @@ async function enableOcrEngine() {
   catch (e) { if (typeof toast === 'function') toast(e.message, 'err') }
 }
 
+// Clamp a scale so w*h stays inside the pixel budget (canvas + memory guard).
+function ocrFitScale(w, h, want) {
+  const cap = CFG.OCR_MAX_PIXELS || 12e6
+  if (w * h * want * want <= cap) return want
+  return Math.max(1, Math.sqrt(cap / (w * h)))
+}
+
+// Prepare an image for OCR. A raw screen capture is about the worst input you can
+// hand Tesseract: ~96 DPI, anti-aliased 10-12px glyphs, often light-on-dark. This
+// upscales toward a ~300 DPI equivalent, flattens to greyscale, and inverts
+// dark-mode captures so text ends up dark-on-light.
+//
+// Deliberately NO hard threshold here: Tesseract already binarises internally
+// (Otsu), and thresholding anti-aliased small text twice tends to erode thin
+// strokes and LOSE characters. Upscaling + orientation of contrast is where the
+// real gain is.
+async function ocrPrepImage(file) {
+  const bmp = await createImageBitmap(file)
+  const w0 = bmp.width, h0 = bmp.height
+  const target = CFG.OCR_TARGET_LONG_EDGE || 2200
+  let scale = target / Math.max(w0, h0)
+  scale = Math.max(1, Math.min(CFG.OCR_MAX_UPSCALE || 4, scale))   // never shrink
+  scale = ocrFitScale(w0, h0, scale)
+  const w = Math.max(1, Math.round(w0 * scale)), h = Math.max(1, Math.round(h0 * scale))
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h
+  const ctx = cv.getContext('2d', { willReadFrequently: true })
+  ctx.imageSmoothingEnabled = true
+  try { ctx.imageSmoothingQuality = 'high' } catch (e) {}
+  ctx.drawImage(bmp, 0, 0, w, h)
+  try { bmp.close() } catch (e) {}
+  try {
+    const img = ctx.getImageData(0, 0, w, h), d = img.data
+    let sum = 0
+    for (let i = 0; i < d.length; i += 4) {
+      const g = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0
+      d[i] = d[i + 1] = d[i + 2] = g; sum += g
+    }
+    // Mostly-dark image => light text on a dark UI; invert so it reads like print.
+    if ((sum / (w * h)) < 110) for (let i = 0; i < d.length; i += 4) {
+      d[i] = d[i + 1] = d[i + 2] = 255 - d[i]
+    }
+    ctx.putImageData(img, 0, 0)
+  } catch (e) {}   // tainted canvas etc - fall back to the plain upscale
+  return { canvas: cv, scale: scale, from: w0 + 'x' + h0, to: w + 'x' + h }
+}
+
 // OCR a queued item in place: a scanned PDF (empty pages -> canvas) or an image
 // file (item.ocrFile). Patches item.extractedText and clears item.scanWarning.
 async function ocrQueueItem(item) {
@@ -4192,7 +4256,11 @@ async function ocrQueueItem(item) {
         const pageNum  = item.emptyPageNums[i]
         setOcrProgress(i + 1, item.emptyPageNums.length)
         const page     = await pdf.getPage(pageNum)
-        const viewport = page.getViewport({ scale: CFG.OCR_SCALE || 2.0 })
+        // Render near 300 DPI (72 DPI base x 4.2), but clamp so an oversized page
+        // can't exceed the pixel budget and blow the canvas.
+        const _base    = page.getViewport({ scale: 1 })
+        const _want    = CFG.OCR_SCALE || 4.2
+        const viewport = page.getViewport({ scale: ocrFitScale(_base.width, _base.height, _want) })
         const canvas   = document.createElement('canvas')
         canvas.width   = viewport.width
         canvas.height  = viewport.height
@@ -4203,7 +4271,14 @@ async function ocrQueueItem(item) {
       item.extractedText = pageTexts.join('\n').trim()
     } else if (item.ocrFile) {
       setOcrProgress(1, 1)
-      const { data: { text } } = await worker.recognize(item.ocrFile)
+      // Prep first - a raw screenshot handed straight to recognize() reads poorly.
+      let input = item.ocrFile
+      try {
+        const prep = await ocrPrepImage(item.ocrFile)
+        input = prep.canvas
+        if (typeof lclCrumb === 'function') lclCrumb('ocr_prep', { from: prep.from, to: prep.to, scale: +prep.scale.toFixed(2) })
+      } catch (e) { /* fall back to the original file */ }
+      const { data: { text } } = await worker.recognize(input)
       item.extractedText = (text || '').trim()
     }
     item.scanWarning = null
