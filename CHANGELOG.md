@@ -8,6 +8,20 @@ v0.67e is the current stable release (28 Aug 2026). Everything under the
 Alpha is one version ahead of stable so testers can be offered builds without
 touching stable installs.
 
+### 14 Sep 2026 - OCR: contrast normalisation + confidence-gated retry
+
+Follow-on to the preparation work below, and **scoped deliberately to screen captures** — the case that actually comes up.
+
+**Faint captures are now normalised.** Grey text on a tinted panel previously went to Tesseract as-is. The ink and paper levels are located with Otsu and the image is stretched between them, taking a washed-out capture from a ~62-level range to full black-on-white. Images that are already clean pass through untouched.
+
+A first attempt used percentile clipping (trim the top and bottom 2% of the histogram) and was a **silent no-op on exactly the images it was meant to rescue**: text is only ~1% of a screenshot's pixels, so a 2% clip swallows all of it and both ends land on the background, collapsing the range to zero. Using Otsu class means instead is independent of how sparse the text is. The test asserts the percentile approach would fail on the same histogram, so the trap can't return.
+
+**Low-confidence results get one retry at a different page-segmentation mode.** Tesseract reports a mean confidence that was being discarded; below 75 it now retries with PSM 6 ("single uniform block"), which suits cropped UI regions far better than the default auto-segmentation, and keeps whichever pass scored higher. Capped at one retry so a hard image costs 2x rather than N x, and the mode is always restored even if the retry throws. Worth knowing the limitation: Tesseract's confidence is imperfectly calibrated and can be high on confidently-wrong output, so this is a cheap heuristic, not a guarantee.
+
+**Optional higher-accuracy models** via `CFG.OCR_USE_BEST_MODELS` (default off). `tessdata_best` is more accurate but ~15 MB versus ~4 MB and 2-3x slower, so the small models stay the default to keep first-use download light.
+
+Out of scope by choice: flat-field correction, deskew and adaptive thresholding. Those address photographed and scanned documents, where uneven lighting defeats a global threshold — they are not needed for synthetic screen captures, where lighting is uniform. Tables also remain a known ceiling: Tesseract returns a reading-order text stream with no table model, so columns flatten regardless of preparation. Tests **C77** (extended) and **C78** (retry gating, keeping the better pass, mode restoration, surviving a throw).
+
 ### 14 Sep 2026 - OCR accuracy: screenshots are now prepared before recognition
 
 OCR on screen captures was poor because images were handed to Tesseract completely untouched — whatever resolution, contrast and polarity they happened to have.
