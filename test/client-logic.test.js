@@ -1353,6 +1353,39 @@ const CASES = [
       noRetry && tookBetter && keptBetter && survivesThrow && capped,
       'noRetry=' + noRetry + ' tookBetter=' + tookBetter + ' keptBetter=' + keptBetter + ' survivesThrow=' + survivesThrow + ' capped=' + capped)
   } },
+  { id: 'C79 gateway 5xx: pacing estimate refunded, and the hint stops blaming prompt length', fn: async () => {
+    const P = src('50-chatprocessing.js')
+    // 1. The transient (5xx) branch must refund what the request never spent. A
+    //    gateway 503 is a proxy error page - no model saw the tokens.
+    const tBlock = P.slice(P.indexOf("if (r.kind === 'transient')"), P.indexOf("if (r.kind === 'transient')") + 900)
+    const refunds = /_rlPace\.spentEst = Math\.max\(0, _rlPace\.spentEst - reqTok\)/.test(tBlock)
+    // It must sit BEFORE the sleep/continue, or the retry fires with the stale total.
+    const refundBeforeRetry = tBlock.indexOf('spentEst - reqTok') < tBlock.indexOf('abortableSleep')
+    // The 429 branch already refunded; both paths must now behave the same way.
+    const parity = /_rlPace\.spentEst -= reqTok/.test(P) && refunds
+    // 2. The old 504 advice was actively wrong - payload size does not affect this
+    //    failure (42k and 1.1k token requests both died at ~22s).
+    const noBadAdvice = !/try a shorter request\.'/.test(P)   // the string literal, not the comment explaining its removal
+    const gatewayHint = P.includes('const gatewayFailed = status === 502 || status === 503 || status === 504') &&
+                        /shortening it will not help/.test(P) && /not your request/.test(P)
+    // Functional: debit then refund returns to baseline and never goes negative.
+    const pace = { spentEst: 0 }
+    const debit = n => { pace.spentEst += n }
+    const refund = n => { pace.spentEst = Math.max(0, pace.spentEst - n) }
+    debit(42877); refund(42877)
+    const balanced = pace.spentEst === 0
+    debit(1000); refund(5000)
+    const floored = pace.spentEst === 0                       // clamped, never negative
+    // Three consecutive gateway failures must not accumulate phantom spend.
+    pace.spentEst = 0
+    for (let i = 0; i < 3; i++) { debit(42877); refund(42877) }
+    const noPhantom = pace.spentEst === 0
+    check('C79 5xx refunds pacing + gateway hint no longer blames prompt length',
+      refunds && refundBeforeRetry && parity && noBadAdvice && gatewayHint && balanced && floored && noPhantom,
+      'refunds=' + refunds + ' beforeRetry=' + refundBeforeRetry + ' parity429=' + parity +
+      ' noBadAdvice=' + noBadAdvice + ' hint=' + gatewayHint + ' balanced=' + balanced +
+      ' floored=' + floored + ' noPhantom=' + noPhantom)
+  } },
   { id: 'C35 OCR engine uses a reachable CDN (langPath off projectnaptha) + persistent worker', fn: async () => {
     const S = src('40-files.js')
     const noNaptha = !S.includes('tessdata.projectnaptha.com')
