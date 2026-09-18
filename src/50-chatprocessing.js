@@ -966,9 +966,15 @@ function handle5xxRetry(chat, payload, ragSources, status, errMsg) {
   // status 0 = mid-stream death (no HTTP status) - label it honestly, not 'Error 0'.
   const statusLabel = statusLabels[status] || (status ? 'Server error' : 'Stream interrupted')
   const titleText = status ? ('Error ' + status + ': ' + statusLabel) : statusLabel
-  const hint = status === 504
-    ? 'The AI took too long to respond. If it keeps failing, try a shorter request.'
-    : (status ? 'The AI service is temporarily unavailable.' : 'The reply was cut off mid-stream.')
+  // 502/503/504 here are the GATEWAY giving up, not the model thinking too long.
+  // Observed signature: the response arrives at a flat ~22s regardless of payload -
+  // 42k-token and 1.1k-token requests fail identically, while anything that does
+  // succeed answers in under 3s. So "try a shorter request" (the old 504 hint) is
+  // wrong and sends people off trimming prompts for nothing.
+  const gatewayFailed = status === 502 || status === 503 || status === 504
+  const hint = gatewayFailed
+    ? 'The gateway did not respond. This is an upstream problem, not your request — long and short prompts fail the same way, so shortening it will not help. It usually clears within a few minutes.'
+    : (status ? 'The AI service returned an error.' : 'The reply was cut off mid-stream.')
   const pad = (n) => String(n).padStart(2, '0')
   const formatCountdown = (ms) => {
     if (ms <= 0) return '0'
@@ -1242,7 +1248,14 @@ async function summariseInto(sysPrompt, label, text, instruction, bodyEl, signal
     // pause instead of failing the whole doc (2 Jul log: one 60s upstream stall on
     // part 2/5 killed the remaining parts). The attempt cap still bounds this.
     if (r.kind === 'transient') {
-      if (typeof lclCrumb === 'function') lclCrumb('summary_transient_retry', { attempt: attempt + 1, status: r.status })
+      // A 5xx from the gateway means NOTHING was consumed upstream - the request
+      // never reached a model (the body is a proxy error page, not a completion).
+      // Refund the estimate, exactly as the 429 branch does. Without this a run of
+      // gateway failures convinces the pacer it has spent tokens it never spent,
+      // and it then stalls waiting for a window reset that was never needed -
+      // turning an upstream outage into self-inflicted delay on top.
+      _rlPace.spentEst = Math.max(0, _rlPace.spentEst - reqTok)
+      if (typeof lclCrumb === 'function') lclCrumb('summary_transient_retry', { attempt: attempt + 1, status: r.status, refunded: reqTok })
       if (bodyEl) bodyEl.innerHTML = fmt('_' + label + ' — upstream hiccup (' + (r.status || '5xx') + '), retrying…_')
       await abortableSleep(4000, signal)
       if (signal && signal.aborted) return { text: null }
